@@ -12,7 +12,7 @@ wheels/
 # Data
 *.csv
 *.parquet
-data/
+
 
 # Jupyter Notebook
 .ipynb_checkpoints/
