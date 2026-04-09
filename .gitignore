@@ -22,6 +22,11 @@ __pycache__/
 ~$*.docx
 ~$*.xlsx
 ~$*.pptx
+*.xlsx
+*.hwp
+*.pptx
+*.pdf
+*.numbers
 
 # Claude 파일
 CLAUDE.md
