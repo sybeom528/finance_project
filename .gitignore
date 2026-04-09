@@ -16,3 +16,14 @@ wheels/
 
 # Jupyter Notebook
 .ipynb_checkpoints/
+__pycache__/
+ 
+# Word 임시 파일
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# Claude 파일
+CLAUDE.md
+context_packet.json
+log.md
