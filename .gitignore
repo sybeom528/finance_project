@@ -32,3 +32,6 @@ __pycache__/
 CLAUDE.md
 context_packet.json
 log.md
+
+# API 보안
+*.env

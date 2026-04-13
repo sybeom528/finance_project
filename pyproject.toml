@@ -12,6 +12,7 @@ dependencies = [
     "catboost>=1.2.10",
     "curl-cffi>=0.14.0",
     "dotenv>=0.9.9",
+    "fredapi>=0.5.2",
     "google-genai>=1.70.0",
     "graphviz>=0.21",
     "hdbscan>=0.8.42",
