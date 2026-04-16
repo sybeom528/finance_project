@@ -10,17 +10,19 @@
 ## 0. 결론 요약
 
 GDELT를 **레짐 판별 전용**으로 사용한다.  
-GKG 테이블에서 3개 컬럼, EVENTS 테이블에서 1개 컬럼 = **총 4개 컬럼**으로 충분하다.
+GKG 테이블에서 2개 컬럼, EVENTS 테이블에서 1개 컬럼 = **총 3개 컬럼**을 HMM에 투입한다.
 
-| 컬럼 | 원천 테이블 | 역할 |
-|------|-----------|------|
-| `fin_sentiment` | GKG (GCAM c6.5-c6.4) / wc | 레짐 경계선 핵심 신호 |
-| `fin_uncertainty` | GKG (GCAM c6.6) / wc | 레짐 전환 선행 신호 (단, VIX와 중복 가능) |
-| `article_count` | GKG COUNT(*) | 시장 주목도 — 현재 데이터셋에 없는 정보 |
-| `min_shock` | EVENTS GoldsteinScale MIN | Bear / Crisis 구분 보완 |
+| 컬럼 | 원천 테이블 | 역할 | 사용 여부 |
+|------|-----------|------|---------|
+| `fin_sentiment` | GKG (GCAM c6.5-c6.4) / wc | 레짐 경계선 핵심 신호 | **사용** |
+| ~~`fin_uncertainty`~~ | ~~GKG (GCAM c6.6) / wc~~ | ~~레짐 전환 선행 신호~~ | **제거** |
+| `article_count` | GKG COUNT(*) | 시장 주목도 — 현재 데이터셋에 없는 정보 | **사용** |
+| `min_shock` | EVENTS GoldsteinScale MIN | Bear / Crisis 구분 보완 | **사용** |
 
-> **fin_uncertainty 주의**: 이미 ^VIX, ^VIX3M 등 4개 변동성 지표를 보유 중.  
-> HMM 투입 피처 결정 시 VIF 검증 후 중복이면 제거 검토.
+> **fin_uncertainty 제거 확정**  
+> 제거 이유 ①: 이미 ^VIX, ^VIX3M 등 VIX 계열 변동성 지표 4개를 보유하고 있어 중복.  
+> 제거 이유 ②: HMM 위기 레짐 추정 안정성 확보를 위해 피처 수를 p ≤ 7로 제한해야 함.  
+> &nbsp;&nbsp;&nbsp;&nbsp;(p=7 기준 위기 레짐 실효 비율 7.1:1 ✅, p=10이면 3.8:1 ❌ — decision_log 17-4 참조)
 
 ---
 
@@ -52,7 +54,7 @@ GDELT 데이터셋
 | `c6.3` | ModalWeak | 약한 추측 표현 ("may", "might") | 미사용 |
 | `c6.4` | **Negative** | 금융 부정어 ("loss", "default", "liability") | **사용** |
 | `c6.5` | **Positive** | 금융 긍정어 ("profit", "growth", "gain") | **사용** |
-| `c6.6` | **Uncertainty** | 불확실성어 ("uncertain", "unclear", "risk") | **사용** |
+| `c6.6` | **Uncertainty** | 불확실성어 ("uncertain", "unclear", "risk") | ~~사용~~ → **제거** (VIX 중복) |
 
 **왜 c6(Loughran-McDonald)인가:**  
 일반 감성 사전은 금융 텍스트에서 오류를 냅니다.
@@ -119,7 +121,7 @@ fin_uncertainty = c6.6 / wc
 | 컬럼 | 판단 | 이유 |
 |------|------|------|
 | `fin_sentiment` | **유지** | 레짐 경계선 핵심 신호 |
-| `fin_uncertainty` | **유지 (검토 필요)** | VIX와 중복 가능, HMM 투입 전 VIF 확인 |
+| `fin_uncertainty` | **제거** | VIX 계열(^VIX, ^VIX3M 등)과 중복. HMM 피처 수 p≤7 유지 필요 (위기 레짐 실효 비율 확보) |
 | `article_count` | **유지** | 시장 주목도 — 기존 데이터에 없는 정보 |
 | `min_shock` | **유지** | Bear/Crisis 구분 유일한 신호 |
 | `avg_tone` | **제거** | V2Tone 일반 사전 기반, fin_sentiment와 구조 동일하며 금융 정확도 낮음 |
@@ -148,11 +150,7 @@ SELECT
         COALESCE(CAST(REGEXP_EXTRACT(GCAM, r'wc:([0-9]+)')     AS FLOAT64), 1)
     )) AS fin_sentiment,
 
-    AVG(SAFE_DIVIDE(
-        COALESCE(CAST(REGEXP_EXTRACT(GCAM, r'c6\\.6:([0-9]+)') AS FLOAT64), 0),
-        COALESCE(CAST(REGEXP_EXTRACT(GCAM, r'wc:([0-9]+)')     AS FLOAT64), 1)
-    )) AS fin_uncertainty,
-
+    -- fin_uncertainty (c6.6) 제거: VIX 계열과 중복, p≤7 유지
     COUNT(*) AS article_count
 
 FROM `gdelt-bq.gdeltv2.gkg`
