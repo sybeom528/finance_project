@@ -30,6 +30,7 @@ dependencies = [
     "lxml>=6.0.2",
     "matplotlib>=3.10.8",
     "openpyxl>=3.1.5",
+    "optuna>=4.8.0",
     "pandas<3",
     "pandas-datareader>=0.10.0",
     "pandas-gbq>=0.35.0",
