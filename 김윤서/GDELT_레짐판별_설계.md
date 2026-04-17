@@ -76,7 +76,6 @@ LM 사전은 SEC 공시, 애널리스트 보고서, 재무제표를 기반으로
 | `c15` | WordNet Affect 1.1 (감정 분류: abashment, admiration 등) | 심리학적 감정 범주 — 금융 도메인 무관 |
 | 기타 (c1, c2, c3, c5, c9 등) | 공식 코드북 확인 필요 | 정의 미확인 상태에서 사용 보류 |
 
-> **주의**: 이전 버전 문서의 `c15(Henry Financial)`, `c6(ANEW)` 표기는 오류.  
 > 공식 문서 기준: c6 = Loughran-McDonald, c15 = WordNet Affect.
 
 ---
