@@ -57,7 +57,7 @@
 |----------------------------|------------------------|
 | 경로 1: 경보 → 주식 축소 | ✅ Step7 구현 완료 |
 | 경로 2: HMM 레짐 → Σ_crisis 전환 → 재최적화 | ❌ **전면 미구현** |
-| Step7의 baseline은 PJ12 MV 최적화 | ❌ **Equal Weight 1/30으로 단순화됨** |
+| Step7의 baseline은 Final Project MV 최적화 | ❌ **Equal Weight 1/30으로 단순화됨** |
 | 계층형 공분산 (Level 1 블록 대각 + Level 2 PCA) | ❌ 30자산 단일 최적화로 축소 |
 | 스트레스 시나리오 11개 | ⚠️ 일부만 Step5에 구현 |
 | Bonferroni + Cohen's d 통계 검정 | ❌ Bootstrap 95% CI만 구현 |

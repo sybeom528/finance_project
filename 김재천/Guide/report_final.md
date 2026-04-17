@@ -1,4 +1,4 @@
-# PJ12 최종 통합 보고서 (v4.1.1)
+# Final Project 최종 통합 보고서 (v4.1.1)
 ## 대안데이터 기반 포트폴리오 시뮬레이터: 전체 파이프라인 한눈 보기
 
 > **프로젝트 기간**: 2016-01 ~ 2025-12 (10년, 2,609 NYSE 영업일)
@@ -531,6 +531,31 @@ finance_project/김재천/Guide/
 │   ├── Step10_해설.md
 │   └── Step11_해설.md      ⭐ (v4.1.1)
 │
+├── 📋 quick_reference/ ⭐ (v4.1.1) — 13종 빠른 참조
+│   ├── 01_executive_one_pager.md    (30초 요약)
+│   ├── 02_investor_summary_card.md  (실전 가이드)
+│   ├── 03_v3_v4_changes.md
+│   ├── 04_pipeline_flowchart.md
+│   ├── 05_path1_vs_path2.md
+│   ├── 06_decision_tree.md
+│   ├── 07_data_erd.md
+│   ├── 08_crisis_case_studies.md
+│   ├── 09_timeline_narrative.md
+│   ├── 10_day_in_life.md
+│   ├── 11_glossary_cheatsheet.md
+│   ├── 12_faq_unified.md
+│   ├── 13_operating_checklist.md
+│   └── README.md
+│
+├── 🎮 interactive/ ⭐ (v4.1.1) — HTML + Streamlit
+│   ├── dashboard.html                 (정적 HTML, 1.1MB)
+│   ├── streamlit_app/                 (8페이지 인터랙티브 앱)
+│   │   ├── app.py
+│   │   ├── pages/ (7개 페이지)
+│   │   ├── utils/ (data_loader, theme)
+│   │   └── requirements.txt
+│   └── README.md
+│
 ├── 💾 data/ (CSV + PKL)
 │   ├── portfolio_prices.csv, external_prices.csv, fred_data.csv
 │   ├── df_reg_v2.csv, features.csv, granger_results.csv
@@ -541,12 +566,14 @@ finance_project/김재천/Guide/
 │   ├── step10_final_recommendation.csv, step10_cost_mitigation_decision.pkl
 │   └── step11_top10_weights.pkl                      ⭐ (v4.1.1)
 │
-└── 🖼️ images/ (28+ PNG)
+└── 🖼️ images/ (36+ PNG)
     ├── step1~step7_*.png
     ├── step8_01~03_*.png
     ├── step9_01~04_*.png
     ├── step10_01~04_*.png
-    └── step11_01~08_*.png                            ⭐ (v4.1.1)
+    ├── step11_01~08_*.png                            ⭐ (v4.1.1)
+    ├── infographic_poster.png                        ⭐ (v4.1.1 포스터)
+    └── key_finding_01~05.png                         ⭐ (v4.1.1 카드 5종)
 ```
 
 ### 🧭 독자별 추천 읽기 순서
