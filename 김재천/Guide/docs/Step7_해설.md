@@ -1,15 +1,36 @@
-# Step 7 해설 — 동적 리밸런싱 + Ablation Study (v3)
+# Step 7 해설 — 동적 리밸런싱 + Ablation Study (v3 / v4.2b)
 
 > **독자 대상**: 비전문가 투자자
 > **관련 파일**: [`Step7_Dynamic_Rebalancing.ipynb`](../Step7_Dynamic_Rebalancing.ipynb)
-> **⚠️ 버전 주의**: Step 7은 **v3 결과** (EW baseline). v4.1의 최종 결론은 Step 9/10 참조
+> **버전**: v4.2b (2026-04-19, **alert_lag=1 + Block bootstrap + EW 비용**) / v3 (EW baseline)
+> **역할**: 경보 효과 격리 검증 (Step 9 M1이 MV 기반 통합 검증 담당)
+
+## ⚠️ v4.2b 주요 업데이트
+
+1. **이슈 1 — Alert 1일 lag 적용**: `shift(1)`로 look-ahead 제거
+2. **이슈 2 — EW 벤치마크 비용 차감**: 공정 비교를 위해 EW도 15bps 적용
+3. **이슈 5 — Block Bootstrap 추가**: IID와 병행, autocorr 보존
+4. **이슈 4 — Config D 해설**: precision vs timing 트레이드오프 명시
+
+### Config D 성과 역전
+- v4.1(same-day alert): Config D 최저 성과
+- v4.2b(1일 lag): Config D가 오히려 **개선** (lag와 디바운싱 지연이 상쇄)
 
 ## 🎯 TL;DR
 
-- **Step 6의 경보를 활용한 동적 리밸런싱 구현** (경로 1)
+- **Step 6의 경보를 활용한 동적 리밸런싱 구현** (경로 1 격리 검증)
 - **16개 시뮬레이션** (4 성향 × 4 Config) + 2 벤치마크 = 18 전략
-- **v3 최우수**: 보수형_ALERT_B (**Sharpe 1.473**, EW baseline)
-- **⚠️ 중요**: Step 7의 baseline은 **Equal Weight 1/30**. v4.1 Step 9에서 MV baseline으로 재수행 시 Sharpe가 1.064로 변경됨
+- **v3 최우수**: 보수형_ALERT_B (Sharpe 1.473, EW baseline, 일별 lag 없음)
+- **v4.2b 최우수**: 적극형_ALERT_C (Sharpe 0.960, alert_lag=1 적용)
+- **Step 9 (MV baseline)**: M1_보수형_ALERT_B (v4.1 1.064) → M2_보수형_ALERT_A (v4.2b 0.847)
+
+### 📊 세 버전 Sharpe 비교 (보수형_ALERT_B)
+
+| 버전 | Sharpe | 차이 원인 |
+|------|--------|----------|
+| v3 (EW + same-day) | 1.473 | EW baseline + look-ahead |
+| v4.1 (MV + same-day) | 1.064 | MV baseline + look-ahead |
+| **v4.2b (MV + shift 1일)** | **0.644** ⭐ | 모두 제거 (실무 기준) |
 
 ---
 
