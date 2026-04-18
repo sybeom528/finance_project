@@ -1,0 +1,98 @@
+=======================================================
+GDELT 1일치 전체 수집 테스트 (coverage=True)
+=======================================================
+수집 중... (1~3분 소요)
+수집 완료: 126,375행 x 27열
+
+종목별 필터링 실행 중...
+
+=== 종목별 필터링 결과 (coverage=True, 1일치) ===
+  [O] SPY   (시장/섹터ETF ) |     5건 (0.00%)
+  [O] QQQ   (시장/섹터ETF ) |  1295건 (1.02%)
+  [O] IWM   (시장/섹터ETF ) |     1건 (0.00%)
+  [O] EFA   (시장/섹터ETF ) |     4건 (0.00%)
+  [O] EEM   (시장/섹터ETF ) |     2건 (0.00%)
+  [X] TLT   (채권ETF    ) |     0건 
+  [X] AGG   (채권ETF    ) |     0건 
+  [X] SHY   (채권ETF    ) |     0건 
+  [X] TIP   (채권ETF    ) |     0건 
+  [X] GLD   (대안ETF    ) |     0건 
+  [X] DBC   (대안ETF    ) |     0건 
+  [O] XLK   (시장/섹터ETF ) |    13건 (0.01%)
+  [O] XLF   (시장/섹터ETF ) |     1건 (0.00%)
+  [O] XLE   (시장/섹터ETF ) |     4건 (0.00%)
+  [X] XLV   (시장/섹터ETF ) |     0건 
+  [X] VOX   (시장/섹터ETF ) |     0건 
+  [X] XLY   (시장/섹터ETF ) |     0건 
+  [X] XLP   (시장/섹터ETF ) |     0건 
+  [X] XLI   (시장/섹터ETF ) |     0건 
+  [X] XLU   (시장/섹터ETF ) |     0건 
+  [X] XLRE  (시장/섹터ETF ) |     0건 
+  [X] XLB   (시장/섹터ETF ) |     0건 
+  [O] AAPL  (대형주      ) |   254건 (0.20%)
+  [O] MSFT  (대형주      ) |   615건 (0.49%)
+  [O] AMZN  (대형주      ) |    14건 (0.01%)
+  [O] GOOGL (대형주      ) |  1872건 (1.48%)
+  [O] JPM   (대형주      ) |   419건 (0.33%)
+  [X] JNJ   (대형주      ) |     0건 
+  [X] PG    (대형주      ) |     0건 
+  [O] XOM   (대형주      ) |    88건 (0.07%)
+
+커버 종목: 14/30개 (47%)
+
+=== (date, ticker) 집계 결과 ((14, 7)) ===
+      date ticker  tone_avg  tone_neg  tone_polar  event_cnt  tone_std
+2025-04-14  GOOGL -0.411858  3.099258    5.786658       1872  3.086579
+2025-04-14    QQQ -0.063952  2.406457    4.748961       1295  2.005857
+2025-04-14   MSFT  0.526718  2.454888    5.436494        615  2.627779
+2025-04-14    JPM  1.197340  0.989886    3.177112        419  1.500425
+2025-04-14   AAPL -0.411956  2.871884    5.331813        254  3.084593
+2025-04-14    XOM  0.023377  2.444912    4.913202         88  2.796775
+2025-04-14   AMZN  1.116089  1.241987    3.600062         14  0.945120
+2025-04-14    XLK  1.915673  1.405839    4.727352         13  1.363854
+2025-04-14    SPY  0.842091  1.910618    4.663327          5  1.028775
+2025-04-14    EFA  1.668675  0.200658    2.069992          4  1.268785
+2025-04-14    XLE  0.902576  2.230252    5.363080          4  2.188578
+2025-04-14    EEM  2.649749  2.355761    7.361271          2  0.008900
+2025-04-14    IWM  0.292683  3.024390    6.341463          1       NaN
+2025-04-14    XLF -3.787375  5.647841    7.508306          1       NaN
+
+=== 노이즈 점검: AAPL (254건) ===
+  기관: traffic safety administration;google play;apple app
+  테마: AFFECT;CRISISLEX_C04_LOGISTICS_TRANSPORT;MANMADE_DISASTER_IMPLIED;TAX_
+  기관: apple inc;white house;dow jones co;nvidia corp;dow jones company inc
+  테마: EPU_ECONOMY_HISTORIC;TAX_FNCACT;TAX_FNCACT_SECRETARY;EPU_UNCERTAINTY;W
+  기관: birmingham police headquarters;apple app;google play;birmingham police department
+  테마: SECURITY_SERVICES;TAX_FNCACT;TAX_FNCACT_POLICE;CRISISLEX_C07_SAFETY;SO
+
+=== 노이즈 점검: AMZN (14건) ===
+  기관: amazon web services;goldman sachs;microsoft;nvidia
+  테마: WB_696_PUBLIC_SECTOR_MANAGEMENT;WB_713_PUBLIC_FINANCE;WB_718_PUBLIC_IN
+  기관: nasdaq;number of hedge fund holders;amazon web services;marvell technology inc
+  테마: ECON_STOCKMARKET;UNGP_FORESTS_RIVERS_OCEANS;EPU_ECONOMY;EPU_ECONOMY_HI
+  기관: instagram;google;amazon web services
+  테마: ECON_STOCKMARKET;USPEC_POLICY1;EPU_ECONOMY;EPU_ECONOMY_HISTORIC;UNREST
+
+=== 노이즈 점검: GLD (0건) ===
+  'GOLD' raw 검색: 1292건
+    number of hedge fund holders;merck co inc;its animal health;animal health;goldman sachs
+    federal reserve;health care;goldman sachs;nuvation bio inc;food drugs administration;numbe
+    new york knicks;golden state warriors;los angeles lakers;denver nuggets;detroit pistons;lo
+
+=== 노이즈 점검: TLT (0건) ===
+  'TREASURY' raw 검색: 114건
+    u s circuit court;u s agency for international development;department of justice;american 
+    treasury department
+    university of california;u s department of homeland security;dartmouth college;white house
+
+=== 전체 V2Tone 통계 ===
+count    126375.000
+mean         -0.473
+std           4.085
+min         -28.571
+25%          -2.829
+50%           0.000
+75%           1.996
+max          31.579
+
+완료.

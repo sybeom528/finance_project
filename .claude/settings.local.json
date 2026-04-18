@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import gdelt; import pandas; print\\('gdelt:', gdelt.__version__ if hasattr\\(gdelt,'__version__'\\) else 'OK'\\); print\\('pandas:', pandas.__version__\\)\")",
+      "Bash(where python:*)",
+      "Bash(pip show:*)",
+      "WebFetch(domain:data.gdeltproject.org)",
+      "WebFetch(domain:www.gdeltproject.org)",
+      "WebSearch",
+      "Bash(python3)",
+      "Bash(pip install *)",
+      "Bash(python)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

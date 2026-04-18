@@ -1,6 +1,6 @@
-# PJ12 v3 — 의사결정 기록 및 최종 설계 문서
+# Final Project — 의사결정 기록 및 최종 설계 문서
 
-> 이 문서는 PJ12 대안데이터 통합 포트폴리오 시뮬레이터 v3의 설계 과정에서
+> 이 문서는 Final Project 대안데이터 통합 포트폴리오 시뮬레이터 v3의 설계 과정에서
 > 내려진 모든 판단과 그 근거를 기록합니다.
 > 파일 위치: C:\Users\gorhk\.claude\plans\goofy-petting-hamster.md
 
@@ -46,7 +46,7 @@
 - 방법론: Look-ahead bias (Granger를 전체 데이터에서 실행), 일별 고회전 리밸런싱
 
 ### v3 원칙
-- 기존 PJ12 100% 보존 + 대안데이터를 경보/공분산 전환에만 주입
+- 기존 Final Project 100% 보존 + 대안데이터를 경보/공분산 전환에만 주입
 - 대안데이터의 비중 반영 경로:
   - 경로 1: 대안데이터 → 복합 스코어 → 경보 등급 → 주식 비중 축소
   - 경로 2: 대안데이터 → HMM 레짐 → Σ_crisis 전환 → 최적화 비중 자동 변화
@@ -404,7 +404,7 @@ HHI = Σ(w_i²), DOJ 시장 집중도 기준 차용
 
 ### 노트북 (7개)
 ```
-PJ12_v3_Final/
+Final_Project/
   Step1_Data_Collection.ipynb
   Step2_Preprocessing_EDA.ipynb       # + Granger 검정 포함
   Step3_Portfolio_Optimization.ipynb   # 계층형(L1블록대각 + L2팩터/LW) + 4성향×3전략
