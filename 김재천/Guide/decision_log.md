@@ -6,6 +6,47 @@
 
 ---
 
+## 📅 v4.2 업데이트 (2026-04) — PIT·BAA·옵션 B 적용
+
+### 주요 변경사항
+
+| # | 변경 | 세부 | 영향 |
+|---|------|------|------|
+| 1 | **SPY 실거래일 기준 인덱스** | `pd.bdate_range` → `yf_data['SPY'].dropna().index` | NYSE 공휴일 정확 반영 |
+| 2 | **bfill 제거** | `ffill().bfill()` → `ffill()` 단독 | look-ahead bias 제거 |
+| 3 | **워밍업 기간 도입** | `WARMUP_START='2014-01-01'` / `ANALYSIS_START='2016-01-01'` | 260일 롤링 변수 안정화 |
+| 4 | **ETH-USD 제거** | `external_prices`에서 제외 | 2015-08 이전 결측 + 미사용 |
+| 5 | **BAA10Y 대체** | `BAMLH0A0HYM2` → `BAA10Y` (FRED) | ICE 라이선스 3년 제약 우회 |
+| 6 | **FRED PIT 적용** | `observation_date` → vintage-PIT (WEI/ICSA/Sahm/CPI/UNRATE) | look-ahead bias 근본 제거 |
+| 7 | **WEI·SAHMREALTIME df_reg_v2 제거** | 2020-04/2019-09 신설 지표 배제 | df_reg_v2 10년 전체 기간 확보 |
+| 8 | **DGS10_chg 추가** | 5일 차분 금리 서프라이즈 변수 | 비정상 시계열 보정 |
+| 9 | **Step 6 Config C sahm 외부 로드** | `row['sahm_indicator']` → `sahm_series.get(row.name)` | df_reg 불포함에도 트리거 동작 |
+| 10 | **Step 3 Risk Contribution 시각화** | 파이 → 막대 차트 | 음의 RC(헤징 효과) 표현 |
+| 11 | **Step 6 HY_spread 임계값 조정** | `[2.5, 8.0]` → `[1.3, 4.0]` | BAA 스케일 대응 (HY/BAA ≈ 2배) |
+
+### 데이터 크기 변화
+
+| 산출물 | v3 | v4.2 | 변화 |
+|-------|----|------|------|
+| `portfolio_prices.csv` | (2609, 30) | (3017, 30) | 워밍업 포함 |
+| `external_prices.csv` | (2609, 12) | (3017, 11) | ETH 제거 |
+| `fred_data.csv` | (2609, 8) | (3017, 8) | PIT 기반 |
+| `features.csv` | (2609, 15) | (3017, 13) | WEI/sahm 제거 |
+| `df_reg_v2.csv` | (2328, 44) | (2491, 41) | +163행, -3컬럼 |
+
+### 변경 이유 요약
+
+> **v3의 개념적 한계**: FRED의 `observation_date` 사용은 "실제로 당일 알 수 없었던 정보"를
+> 투자 결정에 사용하는 look-ahead bias를 유발. 특히 WEI·SAHMREALTIME처럼
+> **최근 신설된 지표는 전 기간에 걸쳐 소급 계산값으로 구성**되어 PIT 위배가 극심.
+>
+> **v4.2 해결**:
+> 1. FRED API의 `get_series_all_releases()` vintage 기반 PIT 재구성
+> 2. 일별 시리즈(DGS10 등)는 API 상한 때문에 `observation + 발표 시차`로 대체
+> 3. 소급 계산 지표(WEI·Sahm)는 분석 데이터셋에서 제외, 원본은 보존
+
+---
+
 ## 목차
 
 1. [프로젝트 배경 및 종속변수](#1-프로젝트-배경-및-종속변수)

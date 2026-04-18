@@ -3,12 +3,20 @@
 > **독자 대상**: 비전문가 투자자
 > **관련 파일**: [`Step1_Data_Collection.ipynb`](../Step1_Data_Collection.ipynb)
 
+> **📅 2026-04 업데이트 요약 (v4.2)**:
+> 1. **워밍업 기간 도입**: 2014-01-01부터 수집, 분석은 2016-01-01~
+> 2. **SPY 실거래일 인덱스**: NYSE 공휴일 정확 반영 (`pd.bdate_range` 대체)
+> 3. **bfill 제거**: `ffill` 단독 사용 → look-ahead bias 차단
+> 4. **ETH-USD 제거**: 2015-08 이전 데이터 부재 + 미사용
+> 5. **BAA10Y 대체**: `BAMLH0A0HYM2`(HY)가 ICE 라이선스 3년 제약 → `BAA10Y`(Moody's)
+> 6. **FRED PIT 적용**: observation → realtime_start(발표일) 기반 하이브리드 처리
+
 ## 🎯 TL;DR (30초 요약)
 
-- **10년치(2016-2025) 금융 데이터 수집**: 30개 자산 + 12개 시장 지표 + 8개 거시경제 지표
-- **주요 출처**: yfinance (주식/ETF), FRED (거시지표)
-- **핵심 산출물**: `portfolio_prices.csv`, `external_prices.csv`, `fred_data.csv`
-- **데이터 품질**: 영업일 정렬, 결측치 forward-fill 처리
+- **12년치 수집(2014~2025) + 10년 분석(2016~2025)**: 30개 자산 + 11개 시장 지표 + 8개 거시경제 지표
+- **주요 출처**: yfinance (주식/ETF), FRED (거시지표, **PIT 방식**)
+- **핵심 산출물**: `portfolio_prices.csv`, `external_prices.csv`, `fred_data.csv` (모두 3,017행)
+- **데이터 품질**: SPY 실거래일 정렬, forward-fill만 사용 (look-ahead bias 제거)
 
 ---
 
@@ -50,11 +58,16 @@
 |------|---------|
 | **yfinance** | "Yahoo Finance 무료 API". 주식·ETF 가격을 파이썬으로 가져옴 |
 | **FRED** | "미국 연준(세인트루이스) 경제 데이터 API". 금리·GDP·실업률 등 |
+| **ALFRED** | "Archival FRED" — 발표 당시 값·수정 이력 전체 제공 (vintage 데이터) |
 | **OHLCV** | Open/High/Low/Close/Volume (시가/고가/저가/종가/거래량) |
 | **ETF (Exchange-Traded Fund)** | "여러 주식을 묶어서 1주처럼 거래하는 상품" (예: SPY=S&P 500 전체) |
-| **영업일** | 주식시장이 열리는 날 (평일 중 공휴일 제외) |
+| **NYSE 영업일** | 주식시장이 열리는 날 (SPY 실거래일로 자동 정렬) |
 | **Forward-fill** | 결측치를 앞의 값으로 채우는 방법 (전일 가격 유지) |
 | **로그 수익률** | ln(오늘 가격/어제 가격). 시간 합산 가능 + 정규분포 근사 |
+| **워밍업 기간** | 롤링 변수 안정화를 위해 분석 시작 전에 미리 수집하는 구간 |
+| **PIT (Point-In-Time)** | 각 시점 T에 대해 "T 시점에 실제로 알 수 있었던 값"만 사용 |
+| **Look-ahead bias** | 백테스트에 미래 정보가 섞여 성과가 과대평가되는 오류 |
+| **발표 시차 (Publication lag)** | 관측 종료 시점과 실제 발표 시점의 차이 (예: UNRATE는 ~30일 지연) |
 
 ---
 
@@ -63,34 +76,35 @@
 ### 📊 수집 데이터 3범주
 
 ```
-[범주 1] 포트폴리오 자산 (30개)
+[범주 1] 포트폴리오 자산 (30개) — 매매 대상
   - 인덱스 ETF (5): SPY, QQQ, IWM, EFA, EEM
   - 섹터 ETF (11): XLK, XLF, XLE, XLV, VOX, XLY, XLP, XLI, XLU, XLRE, XLB
   - 개별 주식 (8): AAPL, MSFT, AMZN, GOOGL, JPM, JNJ, PG, XOM
   - 채권 ETF (4): TLT, AGG, SHY, TIP
   - 대체 자산 (2): GLD (금), DBC (원자재)
 
-[범주 2] 외부 시장 지표 (12개)
-  - VIX 계열: VIX, VIX3M, VIX9D, VXN, VXEFA (변동성)
-  - VIX 기간구조 도출용 - VXO, SKEW 등
-  - 기타 시장 지표
+[범주 2] 외부 시장 지표 (6 + 5 = 11개) — 관찰용
+  - 외부 6: CL=F(원유), GC=F(금선물), SI=F(은), BTC-USD, ^VIX, DX-Y.NYB(달러)
+      · ETH-USD는 2015-08 이전 데이터 부재로 제거 (2026-04 업데이트)
+  - 대안 5: ^VIX9D, ^VIX3M, ^VIX6M, ^SKEW, HG=F(구리)
 
-[범주 3] FRED 거시경제 (8개)
-  - DGS10 (10년물 국채), DGS2 (2년물)
-  - UNRATE (실업률), ICSA (주간 실업수당 신청)
-  - BAA10Y (회사채 스프레드), T10Y2Y (수익률 곡선)
-  - USRECD (경기침체 여부), etc.
+[범주 3] FRED 거시경제 (8개) — PIT 적용
+  - 일별 (3): DGS10 (10년물), T10Y2Y (수익률 곡선), BAA10Y (신용 스프레드)
+      · BAA10Y는 BAMLH0A0HYM2 대체 (ICE 라이선스 3년 제약 우회, 2026-04)
+  - 주간 (2): ICSA (실업수당), WEI (주간 경제지수)
+  - 월간 (3): SAHMREALTIME (Sahm Rule), CPIAUCSL (CPI), UNRATE (실업률)
 ```
 
-### 🔧 처리 파이프라인
+### 🔧 처리 파이프라인 (2026-04 업데이트)
 
 ```
-1. yfinance API로 일별 데이터 다운로드 (2016-01-01 ~ 2025-12-31)
-2. FRED API로 거시지표 다운로드 (FRED_API_KEY 필요)
-3. NYSE 영업일 기준 인덱스 정렬
-4. 결측치 처리: forward-fill → back-fill
-5. 로그 수익률 계산 (ln(P_t / P_{t-1}))
-6. CSV 파일로 저장
+1. yfinance API로 일별 데이터 다운로드 (WARMUP_START=2014-01-01 ~ 2025-12-31)
+2. FRED API로 거시지표 수집 — 하이브리드 PIT:
+     · 일별 시리즈 (DGS10, T10Y2Y, BAA10Y): observation + 발표 시차(0~1일)
+     · 주간/월간 (ICSA, WEI, Sahm, CPI, UNRATE): ALFRED vintage 기반 완전 PIT
+3. SPY 실거래일 기준 인덱스 정렬 (NYSE 공휴일 자동 제외)
+4. 결측치 처리: forward-fill 단독 (bfill 제거 → look-ahead 방지)
+5. CSV 파일로 저장 (3,017일 기준)
 ```
 
 ---
@@ -130,14 +144,16 @@
 
 ### 🤔 주요 결정 사항
 
-#### 결정 1: 분석 기간 2016-2025
+#### 결정 1: 분석 기간 2016-2025 + 워밍업 2014-
 
 **후보**:
 - 15년 (2011-2025): 더 풍부한 데이터, 2012 유로존 위기 포함
-- **10년 (2016-2025)**: 현대적 시장 구조 반영, VIX9D 등 신지표 활용 가능
+- **10년 분석 + 2년 워밍업 (2014-수집 / 2016-분석)**: 현대적 시장 구조 + 롤링 변수 안정화
 - 5년 (2021-2025): 최신 흐름만
 
-**선택: 10년** (현대 시장 특성 + 충분한 위기 사례)
+**선택: 워밍업 포함 10년 분석** (2026-04 업데이트)
+- `WARMUP_START = 2014-01-01`: 최대 260일 롤링 변수(claims_zscore) 안정화
+- `ANALYSIS_START = 2016-01-01`: 실제 분석 기간
 
 #### 결정 2: 30개 자산 선정
 
@@ -146,16 +162,37 @@
 - **유동성**: 일평균 거래량 충분 (거래비용 정확성)
 - **10년 전 기간 존재**: 생존자 편향 최소화
 
-#### 결정 3: 결측 처리 방식
+#### 결정 3: 결측 처리 방식 (2026-04 수정)
 
-**선택: Forward-fill → Back-fill**
-- 국경일·장마감 등은 전날 가격 유지가 합리적
-- 데이터 시작 시점의 소수 결측만 back-fill
+**선택: Forward-fill 단독**
+- 국경일·장마감 등은 전날 가격 유지가 합리적 (ffill)
+- **bfill 제거**: "미래값으로 과거 채움"은 look-ahead bias 유발 → 절대 금지
+- 시작 시점 결측은 `dropna(how='all')`로 완전 NaN 행만 제거
+
+#### 결정 4: SPY 실거래일 인덱스 (2026-04 신규)
+
+**기존 문제**: `pd.bdate_range(freq='B')`는 NYSE 공휴일(MLK Day, Good Friday)을 포함 → 잘못된 인덱스  
+**해결**: `yf_data['SPY'].dropna().index` 사용 → SPY 실제 거래일만 = NYSE 영업일 정확
+
+#### 결정 5: FRED PIT 하이브리드 (2026-04 신규)
+
+**문제**: `get_series()`의 observation_date는 "측정 시점"일 뿐, 실제 발표일과 차이
+- 예: 2024-01 CPI는 2024-02-13 발표 → 43일 look-ahead bias
+
+**해결 (변수별 차등)**:
+- 일별 시리즈: vintage API 상한(2,000개) 초과 → observation + 하드코딩 lag 적용
+- 주간/월간: `get_series_all_releases()` vintage 기반 완전 PIT 재구성
+  - 각 거래일 T에 "T 시점까지 발표된 가장 최근 값" 사용
+  - 속보치 → 잠정치 → 확정치 → benchmark 수정 모두 반영
 
 ### 📝 특이 처리
 
-- **VIX9D**: 2014년 이후만 존재 → 2016 시작 기준에서도 모든 날짜 수집 가능
+- **VIX9D**: 2011년 이후 존재 → 워밍업 기간(2014~)에서도 모두 가용
 - **DBC**: 원자재 ETF, 환율 영향 있으나 단순 보유 목적이라 원가 기준으로 충분
+- **XLRE**: 2015-10-08 상장 → 워밍업 초기엔 NaN, ffill로 처리
+- **BTC-USD**: 2014-09 이후 데이터, 워밍업 8개월만 NaN (분석 기간에 영향 없음)
+- **WEI**: 2020-04 신설 소급 지표 → Step 2 df_reg_v2에서 제외 (fred_data.csv에 원본 보존)
+- **SAHMREALTIME**: 2019-09 신설 → Step 2 df_reg_v2 제외, Step 6 Config C에서 별도 로드
 
 ---
 
@@ -164,24 +201,27 @@
 ### 🔌 입출력
 
 **입력**: 없음 (API 직접 호출)
-**출력**:
+**출력** (2026-04 기준):
 ```
-data/portfolio_prices.csv   ← 30자산 × 2,609일 (1.5 MB)
-data/external_prices.csv    ← 12 지표 × 2,609일
-data/fred_data.csv          ← 8 거시지표 × 2,609일
+data/portfolio_prices.csv   ← 30자산 × 3,017일 (1.6 MB, 2014~2025)
+data/external_prices.csv    ← 11 지표 × 3,017일 (ETH 제거)
+data/fred_data.csv          ← 8 거시지표 × 3,017일 (PIT 적용)
 ```
 
 ### ⏱️ 실행 시간
 
-**약 3~5분** (네트워크 속도에 따라 변동)
+**약 5~10분** (FRED PIT vintage 처리 시간 포함, 네트워크 속도에 따라 변동)
+- yfinance 41개 티커: 약 2~3분
+- FRED 8 시리즈: 일별 3개 즉시, 주간/월간 5개는 vintage 처리로 각 30초~1분
 
 ### ✅ 체크리스트
 
 ```
 [ ] yfinance 패키지 설치 (pip install yfinance)
 [ ] FRED_API_KEY 환경변수 설정 (https://fred.stlouisfed.org/docs/api/api_key.html)
+[ ] .env 파일이 김재천/ 디렉토리에 존재 (Guide의 상위)
 [ ] 인터넷 연결 확인
-[ ] 2,609 영업일 수집 확인 (일부 공휴일 제외)
+[ ] 3,017 SPY 실거래일 수집 확인 (NYSE 공휴일 정확 제외)
 ```
 
 ---
@@ -222,7 +262,26 @@ data/fred_data.csv          ← 8 거시지표 × 2,609일
 
 ### ❓ Q3. 결측치가 얼마나 되나요?
 
-**A**: 1% 미만. Forward-fill로 대부분 처리. Step 2에서 Granger 분석 시 2,328일로 일부 축소.
+**A**: 대부분 변수 0~1%. 단 PIT 적용으로 **WEI 52%, SAHMREALTIME 47% NaN**.
+- 이유: 해당 지표들이 각각 2020-04, 2019-09 신설되어 그 이전은 "아직 발표 안 됨"
+- 처리: Step 2 df_reg_v2에서 제외 (원본은 `fred_data.csv`에 보존)
+- Step 2 최종 데이터셋: **2,491일 × 41 변수** (WEI/sahm 제외로 전체 분석 기간 확보)
+
+### ❓ Q5. PIT 처리가 왜 필요한가요?
+
+**A**: 백테스트의 look-ahead bias 제거.
+- 예: 2024-01 CPI는 실제 2024-02-13 발표 → observation 기준이면 43일 미래 정보 유입
+- 이 프로젝트는 Step 6 경보 시스템에 CPI·UNRATE·Sahm 등 사용 → PIT 미적용 시 과대평가
+- ALFRED vintage API로 "각 시점에 실제 알 수 있었던 값"만 사용하여 해결
+
+### ❓ Q6. BAA10Y가 BAMLH0A0HYM2와 같은 역할인가요?
+
+**A**: **비슷하지만 다름**.
+- BAMLH0A0HYM2: High Yield(투기등급) 스프레드, ICE BofA 제공
+- BAA10Y: Moody's Baa(투자등급 최하단) - 10Y 국채 스프레드
+- 상관관계 0.77, 변화 상관 0.64 (공통 3년 기준)
+- BAA가 HY보다 변동폭 약 1/2 수준 → Step 6 Config C 임계값을 비례 조정
+- 주된 이유: BAMLH0A0HYM2의 FRED API 제약(3년 롤링 데이터만 제공) 회피
 
 ### ❓ Q4. 왜 개별주 8개만 선정?
 
@@ -255,6 +314,7 @@ Guide/
 
 ## 🔄 변경 이력
 
-| 일자 | 내용 |
-|------|------|
-| 2026-04-17 | 최초 작성 (v4.1 기준) |
+| 일자 | 버전 | 내용 |
+|------|------|------|
+| 2026-04-17 | v4.1 | 최초 작성 |
+| 2026-04-19 | **v4.2** | **PIT 적용 + ETH 제거 + BAA10Y 대체 + 워밍업 도입 + bfill 제거 + SPY 실거래일** |
