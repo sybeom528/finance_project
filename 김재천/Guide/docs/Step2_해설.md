@@ -6,7 +6,7 @@
 > **📅 2026-04 업데이트 요약** (이 문서는 최신 변경 기준):
 > 1. **BAA10Y 대체**: BAMLH0A0HYM2(HY OAS)가 ICE 라이선스 3년 제약으로 사용 불가 → BAA10Y(Moody's)로 교체
 > 2. **FRED PIT 적용**: `observation_date` → `realtime_start(발표일)` 기반 처리로 look-ahead bias 제거
-> 3. **WEI·SAHMREALTIME 제거**: 각각 2020-04, 2019-09 신설 지표 → df_reg_v2에서 제외 (소급 계산값 배제)
+> 3. **WEI 제거**: 2020-04 신설 지표 → df_reg_v2에서 제외 (소급 계산값 배제). (이전 v4.x에서 추가 매크로 지표도 사용했으나 데이터 수집 제한으로 v4.x 후반부터 전 파이프라인 제거)
 > 4. **DGS10_chg 추가**: 비정상 시계열 보정을 위한 5일 차분 변수
 > 5. **ETH-USD 제거**: 2015-08 이전 데이터 부재 + 파이프라인 미사용
 
@@ -65,7 +65,6 @@
 | **파생 피처** | 원본 데이터에서 계산으로 만든 새 변수 (예: VIX3M-VIX) |
 | **Contango/Backwardation** | 기간구조. VIX3M>VIX면 Contango, 반대면 Backwardation |
 | **rv_neutral** | Realized Volatility. 실제 발생한 변동성 (사후적 측정) |
-| **Sahm Rule** | 실업률 3개월 이동평균 - 1년 최저 ≥ 0.5% → 경기침체 신호 |
 
 ---
 
@@ -87,12 +86,11 @@
   - VIX 기간구조 (Contango)
   - HY 스프레드 변화율
   - 수익률 곡선 (T10Y2Y)
-  - Sahm Rule 지시자 등
 
 [Step 2-4] df_reg_v2 최종 데이터셋 구축 (2026-04 업데이트)
   - 2,491일 × 41 변수 (2016-01-04 ~ 2025-12-30, 10년 전체)
   - 종속변수: rv_neutral (21일 롤링 표준편차 × √252)
-  - WEI·sahm_indicator 제외: PIT 소급창조 데이터 배제
+  - WEI 제외: PIT 소급창조 데이터 배제
   - DGS10_chg 추가: 비정상 시계열 보정
 
 [Step 2-5] 6종 EDA 시각화
@@ -136,9 +134,8 @@
 | 변수 | 제거 이유 |
 |------|---------|
 | ~~WEI_level~~ | **2020-04 신설 지표** (그 이전 값은 소급 계산) — PIT 원칙 위배 |
-| ~~sahm_indicator~~ | **2019-09 신설 지표** (소급 계산) — df_reg_v2 제거, Step 6 Config C 독립 트리거는 `fred_data.csv`에서 외부 로드 |
 
-**보존 위치**: `fred_data.csv`에는 WEI·SAHMREALTIME 원본 그대로 유지 (참고·검증용).
+**보존 위치**: `fred_data.csv`에는 WEI 원본 그대로 유지 (참고·검증용).
 
 ### 💡 HY_spread의 특별한 중요성
 
@@ -177,7 +174,7 @@ H₁ (대립가설): A는 B를 미래를 예측함
 ### 📊 Top 10 선행 지표 (2026-04 기준, 참고)
 
 > 실제 Granger 결과는 Step 2 재실행 후 `data/granger_results.csv` 확인.  
-> 아래는 **옵션 B 적용 후 예상 순위** (WEI·sahm 제외, BAA10Y 기반 HY_spread).
+> 아래는 **옵션 B 적용 후 예상 순위** (WEI 제외, BAA10Y 기반 HY_spread).
 
 | 순위 | 변수 | 카테고리 | 해석 |
 |------|------|-------|------|
@@ -274,7 +271,7 @@ images/step2_01~06_*.png  ← 6종 EDA 시각화
 
 → Config B (VIX + Contango)가 Config A (VIX만)보다 우수한 이유
 
-#### 3. **매크로 지표 (실업, Sahm Rule)도 유의**
+#### 3. **매크로 지표 (실업)도 유의**
 - 단, **lag가 길어** (주/월 단위) 실시간 대응 한계
 - 주간/월간 업데이트 지표로 활용 가능
 
@@ -293,11 +290,14 @@ images/step2_01~06_*.png  ← 6종 EDA 시각화
 
 ## 9. FAQ
 
-### ❓ Q1. 왜 34개 변수가 유의한데 모두 사용하지 않나요?
+### ❓ Q1. 왜 다수의 변수가 유의한데 모두 사용하지 않나요?
+
+> 참고: Granger 검정 결과 **raw p<0.05는 33/40, Bonferroni(α/40)는 25/40, FDR(BH, q=0.05)는 29/40** 유의 (Step2 노트북 재실행 후 기준). 본 해설에서는 FDR(29/40)을 primary 기준으로 사용.
+
 
 **A**: 다중공선성 문제. 서로 비슷한 변수(VIX와 VIX9D) 중복이면 모델 불안정. Step 6의 Config C에서 **7개 핵심 변수로 축약**하여 사용.
 
-### ❓ Q2. Granger 검정이 실패한 9개 변수는 뭐죠?
+### ❓ Q2. Granger 검정이 (FDR 기준) 실패한 변수는 뭐죠?
 
 **A**: 대체로 매우 느린 매크로 변수 (연간 GDP 성장률 등). 일별 빈도에서는 Granger 검정이 안 잡힘.
 
@@ -336,7 +336,6 @@ Guide/
 ### 📚 외부 참고
 
 - Granger, C.W.J. (1969). "Investigating Causal Relations by Econometric Models." *Econometrica*
-- Sahm, C. (2019). "Direct Stimulus Payments to Individuals." *Brookings*
 
 ---
 

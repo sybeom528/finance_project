@@ -77,7 +77,6 @@
 | **Contango** | VIX3M > VIX (정상) |
 | **Backwardation** | VIX3M < VIX (공포) |
 | **HY Spread** | BAA 회사채 - 국채 수익률 (신용 스트레스) |
-| **Sahm Rule** | 실업률 3M avg - 12M min ≥ 0.5 → 침체 신호 |
 | **Yield Curve** | T10Y - T2Y (음수면 역전 = 침체 선행) |
 | **SKEW Index** | S&P 500 옵션의 꼬리 리스크 |
 

@@ -54,7 +54,6 @@
 | **BIC (Bayesian Information Criterion)** | 모델 복잡도와 적합도 균형 기준 (작을수록 좋음) |
 | **경보 레벨** | L0(정상) / L1(주의) / L2(경계) / L3(위기) |
 | **VIX Contango** | VIX3M - VIX (양수=정상, 음수=공포) |
-| **Sahm Rule** | 실업률 급등 → 침체 신호 (경제학자 Sahm 2019) |
 | **디바운스 (Debounce)** | 짧은 변동 필터링 (5일 중 3일 같은 레벨이면 확정) |
 
 ---
@@ -140,14 +139,32 @@ BIC 단독 한계를 극복하기 위해 **8개 기준** 종합 평가:
 
 > **주의**: HY_spread는 v4.1에서 BAMLH0A0HYM2 → BAA10Y로 변경됨 (ICE 3년 라이선스 제약). 절대값이 낮으나 스프레드 움직임은 유사.
 
-### 📊 Forward 알고리즘 (Viterbi → Forward 교체)
+### 📊 설계 결정: Full-sample 학습 + Forward 추론
 
-**목적**: look-ahead bias 제거
+**핵심 분리**: 레짐 정의(파라미터)는 고정, 시점별 판단은 인과적.
+
+#### (a) 학습 단계 — Full-sample 1회
+
+본 HMM은 **의도적으로** 전체 시계열(2016~2025)로 1회 학습합니다. 짧은 IS 윈도우(예: 24개월)로 매 walk-forward마다 재학습하지 **않는** 이유:
+
+| 문제 | 설명 |
+|------|------|
+| (1) 추정 불안정 | 위기 레짐 관측이 거의 없는 윈도우(예: 2017년 calm 구간)에서 Σ_crisis 추정이 비정상적으로 큼 |
+| (2) 비교 불가 | 윈도우마다 레짐 정의가 달라져 "calm 레짐의 비중 변화" 같은 해석이 무의미 |
+| (3) 운영 복잡 | 매 윈도우마다 label switching 보정 + 다기준 n 재선택 필요 |
+
+→ "레짐 **정의**는 고정, 시점별 **판단**은 인과적"으로 책임 분리.
+
+#### (b) 추론 단계 — Forward 알고리즘 (시점별)
+
+학습 완료된 모델로 각 시점 t의 레짐 분류 시 **Forward 알고리즘**을 사용. t까지의 관측만으로 P(state_t | obs_1..t) 산출.
 
 - **Viterbi**: 전체 관측치로 최적 경로 탐색 → **미래 정보 사용** (backtest 편향)
 - **Forward**: 각 시점까지의 관측치로만 확률 계산 → **인과적**
 
-**실측 차이**: Forward vs Viterbi 레짐 불일치 39일 (1.57%)
+**실측 차이**: Forward vs Viterbi 레짐 불일치 39일 (1.57%) — 2026-04-19에 Viterbi → Forward로 교체.
+
+→ 결과: **Strict OOS와 호환** (학습 파라미터는 deployment-sim 성격이지만, 시점별 라벨 부여는 미래 정보 미사용).
 
 ### 💡 레짐 분류의 활용
 
@@ -207,8 +224,8 @@ return level
 **+ 4개 전문가 트리거**:
 - HY_spread 5일 변화 > 0.5%p
 - 수익률 곡선 역전 (yield_curve < 0)
-- Sahm Rule 지시자 ≥ 0.50
 - VIX_contango < -0.05 (깊은 백워데이션)
+- (실물경기 트리거는 v5 과제로 보류 — 데이터 PIT 제한 해소 후 도입)
 
 ### 🎯 Config D: C + 디바운스
 
@@ -368,9 +385,7 @@ images/step6_01~04_*.png
 
 **A**: Config A는 정확히 이 값 사용. Config B/C/D는 이를 기반으로 확장.
 
-### ❓ Q5. Sahm Rule이 정말 경제 예측에 유용한가요?
-
-**A**: 2021년 논문 이후 광범위 활용. 실업률 급등은 경제 침체 강력 선행지표.
+### ❓ Q5. (이전 v4.x에서 실물경기 독립 트리거에 대한 FAQ가 있었으나, 데이터 수집 제한으로 v4.x 후반부터 전 파이프라인에서 제거됨. v5에서 실물경기 트리거 보강(UNRATE z-score, claims_zscore 등) 검토 예정.)
 
 ---
 
@@ -390,7 +405,6 @@ Guide/
 ### 📚 외부 참고
 
 - Hamilton, J.D. (1994). *Time Series Analysis* (HMM 표준 교과서)
-- Sahm, C. (2019). "Direct Stimulus Payments." *Brookings*
 - Kass, R.E. & Raftery, A.E. (1995). "Bayes Factors." (BIC 기준)
 - Celeux, G. & Durand, J.-B. (2008). *Selecting hidden Markov model state number with cross-validated likelihood.* Computational Statistics. (HMM BIC 한계)
 - Guidolin, M. & Timmermann, A. (2007). *Asset allocation under multivariate regime switching.* JEDC. (금융 레짐 분류 표준)

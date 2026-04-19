@@ -92,7 +92,7 @@
   - 일별 (3): DGS10 (10년물), T10Y2Y (수익률 곡선), BAA10Y (신용 스프레드)
       · BAA10Y는 BAMLH0A0HYM2 대체 (ICE 라이선스 3년 제약 우회, 2026-04)
   - 주간 (2): ICSA (실업수당), WEI (주간 경제지수)
-  - 월간 (3): SAHMREALTIME (Sahm Rule), CPIAUCSL (CPI), UNRATE (실업률)
+  - 월간 (2): CPIAUCSL (CPI), UNRATE (실업률)
 ```
 
 ### 🔧 처리 파이프라인 (2026-04 업데이트)
@@ -101,7 +101,7 @@
 1. yfinance API로 일별 데이터 다운로드 (WARMUP_START=2014-01-01 ~ 2025-12-31)
 2. FRED API로 거시지표 수집 — 하이브리드 PIT:
      · 일별 시리즈 (DGS10, T10Y2Y, BAA10Y): observation + 발표 시차(0~1일)
-     · 주간/월간 (ICSA, WEI, Sahm, CPI, UNRATE): ALFRED vintage 기반 완전 PIT
+     · 주간/월간 (ICSA, WEI, CPI, UNRATE): ALFRED vintage 기반 완전 PIT
 3. SPY 실거래일 기준 인덱스 정렬 (NYSE 공휴일 자동 제외)
 4. 결측치 처리: forward-fill 단독 (bfill 제거 → look-ahead 방지)
 5. CSV 파일로 저장 (3,017일 기준)
@@ -136,7 +136,7 @@
 **왜 주식 데이터만으로는 부족한가**:
 - 주식은 시장 심리만 반영
 - FRED 지표는 **실물 경제**와 **정책**을 반영
-- 예: Sahm Rule (실업률 급등 → 경기침체 신호)
+- 예: claims_zscore (실업수당 청구 급증 → 경기침체 선행 신호)
 
 ---
 
@@ -192,7 +192,7 @@
 - **XLRE**: 2015-10-08 상장 → 워밍업 초기엔 NaN, ffill로 처리
 - **BTC-USD**: 2014-09 이후 데이터, 워밍업 8개월만 NaN (분석 기간에 영향 없음)
 - **WEI**: 2020-04 신설 소급 지표 → Step 2 df_reg_v2에서 제외 (fred_data.csv에 원본 보존)
-- **SAHMREALTIME**: 2019-09 신설 → Step 2 df_reg_v2 제외, Step 6 Config C에서 별도 로드
+  (이전 v4.x에서 추가 매크로 지표도 사용했으나 데이터 수집 제한으로 v4.x 후반부터 전 파이프라인에서 제거)
 
 ---
 
@@ -262,16 +262,16 @@ data/fred_data.csv          ← 8 거시지표 × 3,017일 (PIT 적용)
 
 ### ❓ Q3. 결측치가 얼마나 되나요?
 
-**A**: 대부분 변수 0~1%. 단 PIT 적용으로 **WEI 52%, SAHMREALTIME 47% NaN**.
-- 이유: 해당 지표들이 각각 2020-04, 2019-09 신설되어 그 이전은 "아직 발표 안 됨"
+**A**: 대부분 변수 0~1%. 단 PIT 적용으로 **WEI 52% NaN**.
+- 이유: WEI가 2020-04 신설되어 그 이전은 "아직 발표 안 됨"
 - 처리: Step 2 df_reg_v2에서 제외 (원본은 `fred_data.csv`에 보존)
-- Step 2 최종 데이터셋: **2,491일 × 41 변수** (WEI/sahm 제외로 전체 분석 기간 확보)
+- Step 2 최종 데이터셋: **2,491일 × 41 변수** (WEI 제외로 전체 분석 기간 확보)
 
 ### ❓ Q5. PIT 처리가 왜 필요한가요?
 
 **A**: 백테스트의 look-ahead bias 제거.
 - 예: 2024-01 CPI는 실제 2024-02-13 발표 → observation 기준이면 43일 미래 정보 유입
-- 이 프로젝트는 Step 6 경보 시스템에 CPI·UNRATE·Sahm 등 사용 → PIT 미적용 시 과대평가
+- 이 프로젝트는 Step 6 경보 시스템에 CPI·UNRATE 등 사용 → PIT 미적용 시 과대평가
 - ALFRED vintage API로 "각 시점에 실제 알 수 있었던 값"만 사용하여 해결
 
 ### ❓ Q6. BAA10Y가 BAMLH0A0HYM2와 같은 역할인가요?

@@ -166,7 +166,7 @@ Step 10 Ablation & Statistical Testing (v4.1 신규)
 **주요 산출물**:
 - `portfolio_prices.csv`: 30자산 × 2,609일
 - `external_prices.csv`: VIX 관련 12지표
-- `fred_data.csv`: Sahm Rule, ICSA 등 8개 매크로
+- `fred_data.csv`: ICSA 등 매크로 지표
 
 **30개 포트폴리오 자산**:
 - 인덱스 ETF 5 (SPY, QQQ, IWM, EFA, EEM)
@@ -188,7 +188,7 @@ Step 10 Ablation & Statistical Testing (v4.1 신규)
 
 **주요 결과**:
 - **df_reg_v2** (2,328×44) 구축 — Step 3 이후 입력
-- Granger 검정 **34개 변수 유의** (p<0.05)
+- Granger 검정 (v4.2d): raw 33/40 · Bonferroni 25/40 · **FDR(BH q=0.05) 29/40** 유의
 
 **Top 5 선행 지표** (Granger p-value):
 | 순위 | 변수 | p-value | 해석 |
@@ -732,7 +732,7 @@ finance_project/김재천/Guide/
 | 통계 검정 | Benjamini & Hochberg (1995), Kass & Raftery (1995) |
 | 정보 비율 | Grinold & Kahn (2000) |
 | HMM | Hamilton (1994) |
-| 경보 시스템 | Sahm (2019) Rule |
+
 
 ---
 

@@ -17,10 +17,10 @@
 | 3 | **워밍업 기간 도입** | `WARMUP_START='2014-01-01'` / `ANALYSIS_START='2016-01-01'` | 260일 롤링 변수 안정화 |
 | 4 | **ETH-USD 제거** | `external_prices`에서 제외 | 2015-08 이전 결측 + 미사용 |
 | 5 | **BAA10Y 대체** | `BAMLH0A0HYM2` → `BAA10Y` (FRED) | ICE 라이선스 3년 제약 우회 |
-| 6 | **FRED PIT 적용** | `observation_date` → vintage-PIT (WEI/ICSA/Sahm/CPI/UNRATE) | look-ahead bias 근본 제거 |
-| 7 | **WEI·SAHMREALTIME df_reg_v2 제거** | 2020-04/2019-09 신설 지표 배제 | df_reg_v2 10년 전체 기간 확보 |
+| 6 | **FRED PIT 적용** | `observation_date` → vintage-PIT (WEI/ICSA/CPI/UNRATE) | look-ahead bias 근본 제거 |
+| 7 | **WEI df_reg_v2 제거** | 2020-04 신설 지표 배제 | df_reg_v2 10년 전체 기간 확보 |
 | 8 | **DGS10_chg 추가** | 5일 차분 금리 서프라이즈 변수 | 비정상 시계열 보정 |
-| 9 | **Step 6 Config C sahm 외부 로드** | `row['sahm_indicator']` → `sahm_series.get(row.name)` | df_reg 불포함에도 트리거 동작 |
+| 9 | **Step 6 Config C 실물경기 트리거 보류** | 데이터 수집 제한으로 v5 과제로 분리 | (UNRATE z-score, claims_zscore 등 후보) |
 | 10 | **Step 3 Risk Contribution 시각화** | 파이 → 막대 차트 | 음의 RC(헤징 효과) 표현 |
 | 11 | **Step 6 HY_spread 임계값 조정** | `[2.5, 8.0]` → `[1.3, 4.0]` | BAA 스케일 대응 (HY/BAA ≈ 2배) |
 
@@ -31,19 +31,19 @@
 | `portfolio_prices.csv` | (2609, 30) | (3017, 30) | 워밍업 포함 |
 | `external_prices.csv` | (2609, 12) | (3017, 11) | ETH 제거 |
 | `fred_data.csv` | (2609, 8) | (3017, 8) | PIT 기반 |
-| `features.csv` | (2609, 15) | (3017, 13) | WEI/sahm 제거 |
+| `features.csv` | (2609, 15) | (3017, 13) | WEI 제거 |
 | `df_reg_v2.csv` | (2328, 44) | (2491, 41) | +163행, -3컬럼 |
 
 ### 변경 이유 요약
 
 > **v3의 개념적 한계**: FRED의 `observation_date` 사용은 "실제로 당일 알 수 없었던 정보"를
-> 투자 결정에 사용하는 look-ahead bias를 유발. 특히 WEI·SAHMREALTIME처럼
+> 투자 결정에 사용하는 look-ahead bias를 유발. 특히 WEI처럼
 > **최근 신설된 지표는 전 기간에 걸쳐 소급 계산값으로 구성**되어 PIT 위배가 극심.
 >
 > **v4.2 해결**:
 > 1. FRED API의 `get_series_all_releases()` vintage 기반 PIT 재구성
 > 2. 일별 시리즈(DGS10 등)는 API 상한 때문에 `observation + 발표 시차`로 대체
-> 3. 소급 계산 지표(WEI·Sahm)는 분석 데이터셋에서 제외, 원본은 보존
+> 3. 소급 계산 지표(WEI)는 분석 데이터셋에서 제외, 원본은 보존
 
 ---
 
@@ -133,14 +133,14 @@ ALT (2): GLD, DBC
 
 ### Tier 1 원시 (10개)
 - yfinance: ^VIX9D, ^VIX3M, ^VIX6M, ^SKEW, HG=F
-- FRED: BAMLH0A0HYM2, T10Y2Y, ICSA, WEI, SAHMREALTIME
+- FRED: BAMLH0A0HYM2, T10Y2Y, ICSA, WEI
 
 ### 파생 변수 (15개)
 - VIX 기간구조(3): VIX_contango, VIX_slope_9d_3m, VIX_slope_3m_6m
 - 꼬리 위험(2): SKEW_level, SKEW_zscore (63일 롤링)
 - 실물 경기(2): Cu_Au_ratio, Cu_Au_ratio_chg (21일)
 - 신용 시장(4): HY_spread, HY_spread_chg (5일), yield_curve, yield_curve_inv
-- 주간 매크로(4): claims_4wma (20일), claims_zscore (260일), WEI_level, sahm_indicator
+- 주간 매크로(3): claims_4wma (20일), claims_zscore (260일), WEI_level
 
 ### 외부 지표 (7개)
 CL=F, GC=F, SI=F, BTC-USD, ETH-USD, ^VIX, DX-Y.NYB
@@ -340,7 +340,7 @@ HHI = Σ(w_i²), DOJ 시장 집중도 기준 차용
 ## 11. 경보 시스템
 
 ### VIX 우선 구조의 근거
-1. 반응 속도: VIX(옵션) = 수초, HY스프레드 = 수시간, ICSA = 1주, Sahm = 1개월
+1. 반응 속도: VIX(옵션) = 수초, HY스프레드 = 수시간, ICSA = 1주
 2. 보편성: 거의 모든 유형의 위기에 VIX 반응 (다른 지표는 특정 채널만)
 3. Granger 검정: VIX 계열(2,3,6위)이 상위권 장악
 
@@ -355,7 +355,7 @@ HHI = Σ(w_i²), DOJ 시장 집중도 기준 차용
 |--------|-----------|-----------|
 | A | 없음 | VIX >= 20/28/35 (고정) |
 | B | 없음 | A + VIX_contango < 0 |
-| C | 백분위 기반 (IS 내 P75/P90/P97) | + HY 5일변화>+0.5%p, 곡선 역전 전환, Sahm>=0.50, 깊은 백워데이션<-0.05 |
+| C | 백분위 기반 (IS 내 P75/P90/P97) | + HY 5일변화>+0.5%p, 곡선 역전 전환, 깊은 백워데이션<-0.05 (실물경기 트리거 v5 과제) |
 | D | C + 디바운싱 (5일 중 3일) | C의 독립 트리거는 디바운싱 비대상 (구조적 이벤트는 즉시 반영) |
 
 ### 복합 스코어 구성 (Config C/D)
@@ -368,7 +368,6 @@ HHI = Σ(w_i²), DOJ 시장 집중도 기준 차용
 |--------|--------|-----------|
 | HY 5일 변화 > +0.5%p | 0.5%p | 2020 COVID +1.2%p/5일, 2023 SVB +0.6%p/5일 |
 | T10Y2Y 양→음 전환 | 0 교차 | 1970년 이후 역전 → 경기침체 100% |
-| Sahm >= 0.50 | 0.50 | 1960년 이후 경기침체 100% (Sahm, 2019) |
 | VIX_contango < -0.05 | -0.05 | 2020-02, 2022-01 깊은 백워데이션 후 VIX 급등 |
 
 ### 성향별 경보 차등 반응
@@ -781,7 +780,7 @@ model = GaussianHMM(
 | A. 주식시장 공포 | 옵션 내재 변동성, 꼬리 위험 | VIX_level, SKEW_zscore |
 | B. 신용·유동성 | 신용 위험 프리미엄 | HY_spread, HY_spread_chg |
 | C. 금리·경기 | 수익률 곡선 형태, 통화정책 | T10Y2Y, MOVE_index |
-| D. 실물 경기 | 경기 선행·동행 지표 | Cu_Au_ratio_chg, Sahm_indicator |
+| D. 실물 경기 | 경기 선행·동행 지표 | Cu_Au_ratio_chg (실물경기 트리거는 v5 과제) |
 | E. GDELT 감성 | 뉴스 기반 시장 심리 | gdelt_mkt_tone_avg, gdelt_mkt_event_cnt |
 
 설계 원칙: 각 그룹에서 최소 1개, 최대 2개를 유지 → 총 피처 수 p ≤ 10
@@ -833,7 +832,7 @@ Section 16 확정 사항:
 | A. 주식시장 공포 | `VIX_level` | SKEW_zscore는 Step 2에서 VIX와 상관 높으면 제거 |
 | B. 신용·유동성 | `HY_spread` | HY_spread_chg는 단기 변화 캡처, Step 2 후 결정 |
 | C. 금리·경기 | `T10Y2Y`, `MOVE_index` | MOVE는 채권 시장 변동성, VIX와 독립적 채널 |
-| D. 실물 경기 | `Sahm_indicator` | Cu_Au_ratio_chg는 WEI 대체 가능, Step 2 후 결정 |
+| D. 실물 경기 | (실물경기 트리거는 v5 과제로 보류) | Cu_Au_ratio_chg는 WEI 대체 가능 |
 | E. GDELT 감성 | `gdelt_mkt_tone_avg`, `gdelt_mkt_event_cnt` | 시장 전체 집계, 개별 종목 매핑 아님 |
 
 총 피처 수 p = 7 (잠정), 추가 검토 후 최대 10개까지 확장 가능.

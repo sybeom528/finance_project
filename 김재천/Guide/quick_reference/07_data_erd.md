@@ -53,7 +53,6 @@ erDiagram
         float HY_spread_chg
         float yield_curve
         float Cu_Au_ratio_chg
-        float sahm_indicator
         float claims_zscore
         float SKEW_level
         float rv_neutral
