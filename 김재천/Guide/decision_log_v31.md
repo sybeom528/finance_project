@@ -6,6 +6,11 @@
 > **전제 문서**: `decision_log.md` (v3), `report_v3.md`
 > **대상 파일**: `Step8_Regime_Covariance.ipynb`, `Step9_Integrated_Backtest.ipynb`, `Step10_Ablation_Final.ipynb`
 
+> ⚠️ **§4 (레짐 수 결정) 및 Appendix A (BIC 계산)는 [`decision_log_v32.md`](decision_log_v32.md)에서 갱신됨 (2026-04-19).**
+> - v4.2에서 BIC 공식 수정 + n 탐색 [2~8] 확장 + 다기준 scorecard 도입
+> - 최종 결과는 **n=4 유지** (v4.1과 동일)이나 선택 근거가 엄밀화됨
+> - 본 문서(v31) 하위 섹션들(§5~§14)은 유효함
+
 ## 🚨 v4.1 핵심 변경 사항
 
 ### 실증적 결론

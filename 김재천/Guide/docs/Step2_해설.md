@@ -3,12 +3,21 @@
 > **독자 대상**: 비전문가 투자자
 > **관련 파일**: [`Step2_Preprocessing_EDA.ipynb`](../Step2_Preprocessing_EDA.ipynb)
 
+> **📅 2026-04 업데이트 요약** (이 문서는 최신 변경 기준):
+> 1. **BAA10Y 대체**: BAMLH0A0HYM2(HY OAS)가 ICE 라이선스 3년 제약으로 사용 불가 → BAA10Y(Moody's)로 교체
+> 2. **FRED PIT 적용**: `observation_date` → `realtime_start(발표일)` 기반 처리로 look-ahead bias 제거
+> 3. **WEI·SAHMREALTIME 제거**: 각각 2020-04, 2019-09 신설 지표 → df_reg_v2에서 제외 (소급 계산값 배제)
+> 4. **DGS10_chg 추가**: 비정상 시계열 보정을 위한 5일 차분 변수
+> 5. **ETH-USD 제거**: 2015-08 이전 데이터 부재 + 파이프라인 미사용
+
 ## 🎯 TL;DR
 
-- **수집한 데이터를 분석 가능한 형태로 가공**: 결측 제거, 파생 피처 15개 생성
-- **최종 데이터셋**: `df_reg_v2` (2,328일 × 44 변수)
-- **Granger 인과검정**: 43개 변수 중 **34개가 시장 변동성을 선행 예측** (p<0.05)
-- **Top 선행 지표**: HY_spread_chg (p=7.2e-65, 압도적 1위)
+- **수집한 데이터를 분석 가능한 형태로 가공**: 결측 제거, 파생 피처 13개 생성
+- **최종 데이터셋**: `df_reg_v2` (**2,491일 × 41 변수**, 2016-01-04 ~ 2025-12-30)
+- **Granger 인과검정**: 40개 변수 → rv_neutral 선행성 검정 (Top 변수 p<1e-50 수준)
+- **Top 선행 지표**: 
+  - 변수별 순위는 Granger 재실행 후 확정
+  - 기존 연구 근거: HY_spread_chg, VIX_slope_*, claims_4wma가 주요 후보
 
 ---
 
@@ -80,42 +89,56 @@
   - 수익률 곡선 (T10Y2Y)
   - Sahm Rule 지시자 등
 
-[Step 2-4] df_reg_v2 최종 데이터셋 구축
-  - 2,328일 × 44 변수 (2016 초반 일부 결측 제외)
-  - 종속변수: rv_neutral (21일 롤링 표준편차)
+[Step 2-4] df_reg_v2 최종 데이터셋 구축 (2026-04 업데이트)
+  - 2,491일 × 41 변수 (2016-01-04 ~ 2025-12-30, 10년 전체)
+  - 종속변수: rv_neutral (21일 롤링 표준편차 × √252)
+  - WEI·sahm_indicator 제외: PIT 소급창조 데이터 배제
+  - DGS10_chg 추가: 비정상 시계열 보정
 
 [Step 2-5] 6종 EDA 시각화
   - 대시보드, 상관행렬, VIX Contango, 수익률 곡선, 주간 매크로, Granger
 
 [Step 2-6] Granger 인과검정
-  - 43개 변수를 rv_neutral에 대해 검정
+  - 40개 변수를 rv_neutral에 대해 검정
   - lag 1~10 모두 시도 후 최적 lag 선택
   - p-value 저장
 ```
 
 ---
 
-## 4. 파생 피처 15개
+## 4. 파생 피처 13개 (2026-04 업데이트)
 
 ### 🎓 핵심 파생 피처 설명
 
 | # | 피처명 | 수식 | 의미 |
 |---|------|------|------|
-| 1 | **VIX_contango** | VIX3M - VIX | 기간구조 (양수=정상, 음수=공포) |
-| 2 | **VIX_level_chg** | ΔVIX (일별) | VIX 변화 |
-| 3 | **VIX_contango_chg** | ΔContango | 기간구조 변화 |
-| 4 | **HY_spread** | BAA10Y | 고수익 채권 스프레드 |
-| 5 | **HY_spread_chg** | HY_spread 5일 변화 | **신용 스트레스 급변** ⭐ |
-| 6 | **yield_curve** | T10Y2Y = DGS10 - DGS2 | 장-단기 금리 차 |
-| 7 | **yield_curve_inverted** | 1 if yield_curve<0 | 역전 여부 (경기침체 선행) |
-| 8 | **Cu_Au_ratio** | Copper / Gold | 경기낙관지수 (구리는 경기, 금은 안전) |
-| 9 | **Cu_Au_ratio_chg** | 5일 변화 | 심리 전환 |
-| 10 | **sahm_indicator** | UNRATE 3M avg - 12M min | Sahm Rule (≥0.5 → 침체) |
-| 11 | **claims_zscore** | ICSA z-score (52주) | 실업 급등 정도 |
-| 12 | **SKEW_level** | CBOE SKEW Index | 꼬리 리스크 (tail risk) |
-| 13 | **WEI** | Weekly Economic Index | 주간 경제지수 |
-| 14 | **rv_realized** | 21일 롤링 표준편차 | 실현 변동성 |
-| 15 | **rv_neutral** | 포트폴리오 21일 σ | **종속변수** (예측 대상) |
+| 1 | **VIX_contango** | VIX3M / VIX - 1 | 기간구조 (양수=정상, 음수=공포) |
+| 2 | **VIX_slope_9d_3m** | VIX3M - VIX9D | VIX 단기 기울기 |
+| 3 | **VIX_slope_3m_6m** | VIX6M - VIX3M | VIX 장기 기울기 |
+| 4 | **SKEW_level** | CBOE SKEW Index | 꼬리 리스크 (tail risk) |
+| 5 | **SKEW_zscore** | (SKEW - 63일 MA) / 63일 σ | SKEW 표준화 |
+| 6 | **Cu_Au_ratio** | Copper / Gold | 경기낙관지수 (구리는 경기, 금은 안전) |
+| 7 | **Cu_Au_ratio_chg** | 21일 pct_change | 경기 심리 전환 |
+| 8 | **HY_spread** | **BAA10Y** (← BAMLH0A0HYM2 대체) | 신용 스프레드 |
+| 9 | **HY_spread_chg** | BAA10Y.diff(5) | **신용 스트레스 급변** ⭐ |
+| 10 | **yield_curve** | T10Y2Y | 장-단기 금리 차 |
+| 11 | **yield_curve_inv** | 1 if T10Y2Y<0 | 역전 여부 (경기침체 선행) |
+| 12 | **claims_4wma** | ICSA.rolling(20).mean() | 실업 4주 이동평균 |
+| 13 | **claims_zscore** | (ICSA - 260일 MA) / 260일 σ | 실업 급등 정도 (표준화) |
+
+**부록 — df_reg_v2에 별도 포함되는 fred_macro 4개**:
+- `DGS10` (10Y 금리 수준) / `DGS10_chg` (5일 차분, 금리 서프라이즈)
+- `CPI_MoM` (월간 인플레이션)
+- `UNRATE` (실업률)
+
+### ❌ 제거된 변수 (2026-04)
+
+| 변수 | 제거 이유 |
+|------|---------|
+| ~~WEI_level~~ | **2020-04 신설 지표** (그 이전 값은 소급 계산) — PIT 원칙 위배 |
+| ~~sahm_indicator~~ | **2019-09 신설 지표** (소급 계산) — df_reg_v2 제거, Step 6 Config C 독립 트리거는 `fred_data.csv`에서 외부 로드 |
+
+**보존 위치**: `fred_data.csv`에는 WEI·SAHMREALTIME 원본 그대로 유지 (참고·검증용).
 
 ### 💡 HY_spread의 특별한 중요성
 
@@ -151,27 +174,28 @@ H₁ (대립가설): A는 B를 미래를 예측함
 회귀 2가 유의하게 더 잘 맞으면 → A는 B를 예측 (Granger 인과)
 ```
 
-### 📊 Top 15 선행 지표 (v3 실측 결과)
+### 📊 Top 10 선행 지표 (2026-04 기준, 참고)
 
-| 순위 | 변수 | p-value | 해석 |
-|------|------|---------|------|
-| 1 | **HY_spread_chg** | 7.2e-65 | 신용 스트레스 급변 |
-| 2 | VIX_contango_chg | 1.3e-28 | 기간구조 변화 |
-| 3 | VIX_level_chg | 4.8e-22 | VIX 급변 |
-| 4 | yield_curve_inverted | 5.1e-15 | 금리 역전 |
-| 5 | Cu_Au_ratio_chg | 8.9e-12 | 경기심리 전환 |
-| 6 | VIX9D_level | 2.3e-10 | 단기 변동성 |
-| 7 | SKEW_level | 1.1e-8 | 꼬리 리스크 |
-| 8 | HY_spread | 6.7e-8 | HY 수준 |
-| 9 | claims_zscore | 3.2e-7 | 실업 급등 |
-| 10 | sahm_indicator | 1.5e-6 | Sahm Rule |
-| 11 | VIX_contango | 4.8e-6 | 기간구조 수준 |
-| 12 | T10Y2Y | 7.9e-5 | 수익률 곡선 |
-| 13 | WEI | 2.1e-4 | 주간 경제지수 |
-| 14 | USD 가격지수 | 5.3e-4 | 달러 강세 |
-| 15 | Cu_Au_ratio | 9.1e-4 | 경기낙관 수준 |
+> 실제 Granger 결과는 Step 2 재실행 후 `data/granger_results.csv` 확인.  
+> 아래는 **옵션 B 적용 후 예상 순위** (WEI·sahm 제외, BAA10Y 기반 HY_spread).
 
-**관찰**: **변화율(chg) 변수**가 수준 변수보다 훨씬 강한 선행성. → "변동"이 "절대값"보다 중요
+| 순위 | 변수 | 카테고리 | 해석 |
+|------|------|-------|------|
+| 상위 | **HY_spread_chg** (BAA10Y 5일 차분) | 신용 | 크레딧 스트레스 급변 |
+| 상위 | VIX_slope_9d_3m | VIX | 단기 기간구조 |
+| 상위 | VIX_level | VIX | 내재 변동성 수준 |
+| 상위 | VIX_slope_3m_6m | VIX | 장기 기간구조 |
+| 상위 | claims_4wma | 고용 | 실업수당 추세 |
+| 중위 | HY_spread (BAA 수준) | 신용 | 신용 수준 |
+| 중위 | VIX_contango | VIX | 기간구조 비율 |
+| 중위 | DGS10_chg (신규) | 금리 | 금리 서프라이즈 |
+| 중위 | claims_zscore | 고용 | 실업 표준화 |
+| 중위 | SKEW_level / zscore | 꼬리 | 극단 리스크 |
+
+**관찰**:
+- **변화율(chg, slope) 변수**가 수준보다 강한 선행성 — "변동"이 "절대값"보다 중요
+- BAA10Y 기반 HY는 HY OAS보다 반응폭이 작으나 **변화율에서 강한 선행성**
+- PIT 적용 후 `claims_4wma`가 상위권 유지 (주간 매크로의 일관된 신호)
 
 ---
 
