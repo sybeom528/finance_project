@@ -10,7 +10,9 @@
       "Bash(python3)",
       "Bash(pip install *)",
       "Bash(python)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(\"C:/Users/gorhk/최종 프로젝트/finance_project/.venv/Scripts/python.exe\" test_01.py)",
+      "Bash(.venv/Scripts/python.exe -c ' *)"
     ]
   }
 }

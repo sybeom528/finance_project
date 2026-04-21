@@ -231,7 +231,28 @@ def estimate_historical_market_cap(
                 }
 
 
-# ── 함수 정의 (노트북 셀 [06] — top_n_by_sector) ─────────────────────────────
+# ── 함수 정의 (노트북 셀 [06] — merge_dual_class_shares + top_n_by_sector) ────
+DUAL_CLASS_MAP = {
+    "GOOG": "GOOGL",
+}
+
+
+def merge_dual_class_shares(universe_df: pd.DataFrame) -> pd.DataFrame:
+    df = universe_df.copy()
+    for secondary, primary in DUAL_CLASS_MAP.items():
+        sec_mask = df["ticker"] == secondary
+        pri_mask = df["ticker"] == primary
+        if not sec_mask.any() or not pri_mask.any():
+            continue
+        sec_mcap = df.loc[sec_mask, "mcap_estimate"].values[0]
+        pri_mcap = df.loc[pri_mask, "mcap_estimate"].values[0]
+        combined = (pri_mcap or 0) + (sec_mcap or 0)
+        df.loc[pri_mask, "mcap_estimate"] = combined
+        df = df[~sec_mask].reset_index(drop=True)
+        print(f"  합산: {secondary}(${sec_mcap/1e9:.1f}B) → {primary} | 결과: ${combined/1e9:.1f}B")
+    return df
+
+
 def top_n_by_sector(universe_df: pd.DataFrame, n: int = 10) -> pd.DataFrame:
     df = universe_df.dropna(subset=["mcap_estimate"]).copy()
     df = df.sort_values(
@@ -396,12 +417,36 @@ assert n_ok >= len(df_full) * 0.7, f"추정 성공률 70% 미만: {n_ok}/{len(df
 print("SECTION 3 PASS [OK]")
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SECTION 3-1: 이중 상장 합산 (merge_dual_class_shares)
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n" + "="*60)
+print("SECTION 3-1: 이중 상장 합산 처리")
+print("="*60)
+
+# 샘플에 GOOG/GOOGL이 없을 수 있으므로 합산 함수의 동작만 검증
+# 테스트용 미니 DataFrame으로 직접 로직 검증
+test_dual = pd.DataFrame([
+    {"ticker": "GOOGL", "gics_sector": "Communication Services", "mcap_estimate": 26.0e9},
+    {"ticker": "GOOG",  "gics_sector": "Communication Services", "mcap_estimate": 25.0e9},
+    {"ticker": "META",  "gics_sector": "Communication Services", "mcap_estimate": 200.0e9},
+])
+merged_test = merge_dual_class_shares(test_dual)
+assert "GOOG" not in merged_test["ticker"].values, "GOOG 제거 실패"
+assert "GOOGL" in merged_test["ticker"].values, "GOOGL 유지 실패"
+googl_mcap = merged_test.loc[merged_test["ticker"] == "GOOGL", "mcap_estimate"].values[0]
+assert abs(googl_mcap - 51.0e9) < 1e6, f"합산 mcap 오류: {googl_mcap:.2e} (기대: ~$51B)"
+assert len(merged_test) == 2, f"행 수 오류: {len(merged_test)}"
+print("  merge_dual_class_shares 단위 검증 PASS")
+print("SECTION 3-1 PASS [OK]")
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4: 섹터별 Top N 선정 (샘플이므로 n=3)
 # ══════════════════════════════════════════════════════════════════════════════
 print("\n" + "="*60)
 print("SECTION 4: 섹터별 Top 3 선정 (샘플 검증)")
 print("="*60)
-universe_sample = top_n_by_sector(df_full, n=3)
+df_merged_sample = merge_dual_class_shares(df_full)
+universe_sample = top_n_by_sector(df_merged_sample, n=3)
 print(f"선정 결과: {len(universe_sample)}개")
 print(universe_sample[["sector_rank","ticker","gics_sector","mcap_estimate"]].to_string(index=False))
 assert len(universe_sample) > 0, "선정 결과 없음"
