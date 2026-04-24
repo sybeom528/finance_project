@@ -1,6 +1,6 @@
 # Phase 1 — LSTM 단독 베이스라인
 
-> **협업 진입점 문서**. 처음 합류한 팀원은 이 README → WORKLOG → 노트북 순으로 읽으십시오.
+> **협업 진입점 문서**. 처음 합류한 팀원은 이 README → 재천_WORKLOG → 노트북 순으로 읽으십시오.
 
 ## 1. 프로젝트 위치 및 목적
 
@@ -24,7 +24,7 @@
 
 ## 2. 핵심 의사결정 요약
 
-자세한 근거는 [WORKLOG.md](WORKLOG.md) 참조.
+자세한 근거는 [재천_WORKLOG.md](재천_WORKLOG.md) 참조.
 
 | 항목 | 결정 |
 |---|---|
@@ -49,7 +49,7 @@
 ```
 Phase1_LSTM/
 ├── README.md                              ← 이 문서
-├── WORKLOG.md                             ← 작업·판단 일지 (모든 결정 누적)
+├── 재천_WORKLOG.md                         ← 작업·판단 일지 (모든 결정 누적, 작성자별 prefix)
 │
 ├── 00_setup_and_utils.ipynb               ← 환경 노트북 (한글 폰트·시드·경로)
 ├── 01_data_download_and_eda.ipynb         ← yfinance 다운로드 + EDA + ACF
@@ -102,7 +102,7 @@ python -m pip install yfinance statsmodels scipy torch pandas numpy matplotlib j
 ### 4.3 노트북 자동 실행 (CLI)
 
 ```bash
-cd "김재천/시계열_Test/Phase1_LSTM"
+cd "시계열_Test/Phase1_LSTM"
 jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipynb \
     --ExecutePreprocessor.timeout=300
 ```
@@ -117,7 +117,7 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 - 즉, "여러 노트북이 import해서 쓸 함수"만 `.py`로, "한 노트북 안에서만 쓰는 흐름"은 노트북 셀로.
 
 ### 5.1 모듈 변경
-- `scripts/X.py`의 public 함수 시그니처를 변경할 때는 **반드시 [WORKLOG.md](WORKLOG.md)에 변경 이유·이전/이후 인터페이스 기록**.
+- `scripts/X.py`의 public 함수 시그니처를 변경할 때는 **반드시 [재천_WORKLOG.md](재천_WORKLOG.md)에 변경 이유·이전/이후 인터페이스 기록**.
 - 모든 public 함수: type hints + Numpy-style docstring.
 
 ### 5.2 누수 방지 (Phase 1 최우선 원칙)
@@ -126,8 +126,9 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 - 자세한 4계층 방어선: plan 파일의 "데이터 누수 방지" 섹션 참조.
 
 ### 5.3 작업 기록
-- 모든 결정·판단은 [WORKLOG.md](WORKLOG.md)에 시간순 누적.
-- 노트북 실행 결과 핵심 수치(메트릭, 이상치 개수, ACF 등)도 WORKLOG에 요약.
+- 모든 결정·판단은 [재천_WORKLOG.md](재천_WORKLOG.md)에 시간순 누적.
+- 노트북 실행 결과 핵심 수치(메트릭, 이상치 개수, ACF 등)도 재천_WORKLOG에 요약.
+- 다른 팀원은 본인 prefix(`<이름>_WORKLOG.md`)로 별도 일지를 둘 수 있습니다.
 
 ### 5.4 코드 스타일
 - 변수명은 영어 (한글 컬럼명은 유지 가능). 한글 변수명 금지.
@@ -155,4 +156,4 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 | Step 3 | `03_setting_B_monthly.ipynb` | ⏸ 대기 |
 | Step 4 | `04_compare_A_vs_B.ipynb` | ⏸ 대기 |
 
-문의는 [WORKLOG.md](WORKLOG.md)의 의사결정 보류 항목 또는 작성자(gorhkdwj@gmail.com)에게 전달 부탁드립니다.
+문의는 [재천_WORKLOG.md](재천_WORKLOG.md)의 의사결정 보류 항목 또는 작성자(gorhkdwj@gmail.com)에게 전달 부탁드립니다.
