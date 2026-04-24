@@ -6,7 +6,8 @@ LSTMDataset                                              — torch.utils.data.Da
 make_sequences(arr, seq_len, horizon)                    → (X, y)
 walk_forward_folds(n, is_len, purge, emb, oos_len, step) → List[(train_idx, test_idx)]
 build_fold_datasets(series, train_idx, test_idx,         → (train_ds, test_ds, scaler)
-                    seq_len, extra_features)
+                    seq_len, extra_features,
+                    target_series)
 """
 from __future__ import annotations
 
@@ -134,6 +135,7 @@ def build_fold_datasets(
     test_idx: np.ndarray,
     seq_len: int,
     extra_features: Optional[np.ndarray] = None,
+    target_series: Optional[np.ndarray] = None,
 ) -> Tuple[LSTMDataset, LSTMDataset, StandardScaler]:
     """Walk-Forward 폴드 하나의 LSTMDataset 쌍을 생성한다.
 
@@ -147,22 +149,34 @@ def build_fold_datasets(
     각 t ∈ test_idx 에 대해::
 
         X_te = scaled[t − seq_len : t]   # (seq_len, n_features)
-        y_te = scaled[t, 0]              # 당일 주 피처 값
+        y_te = target_series[t]          # 외부 타깃 (미리 계산된 누적 수익률 등)
+               또는 scaled[t, 0]         # target_series=None 시 당일 주 피처 값
 
     입력 구간이 purge/embargo 기간과 겹쳐도 레이블이 아닌 입력 피처이므로 허용된다.
     이 설계로 test_idx 내 모든 날짜에 대해 예측 샘플이 생성된다.
 
+    target_series 와 타깃 정렬
+    --------------------------
+    target_series 를 제공할 경우 (Setting A — 21일 누적 수익률 등):
+    - 훈련: y_tr[j] = target_series[train_idx[j + seq_len − 1]]
+              = j 번째 시퀀스의 마지막 날짜 t 의 타깃 (t+1~t+21 누적 수익률)
+    - 테스트: y_te[k] = target_series[test_idx[k]]
+    target_series 는 호출 전에 NaN 처리 및 스케일링을 완료해야 한다.
+
     Parameters
     ----------
     series : np.ndarray, shape (T,)
-        주 피처이자 예측 타깃 (log_return).
+        주 입력 피처 (log_return).
     train_idx, test_idx : np.ndarray
         walk_forward_folds() 반환값.
     seq_len : int
         LSTM 입력 시퀀스 길이.
     extra_features : np.ndarray, shape (T, k), optional
-        추가 피처. series 와 열 결합 후 스케일.
+        추가 입력 피처. series 와 열 결합 후 스케일.
         예: np.column_stack([qqq_lr, volume_norm])
+    target_series : np.ndarray, shape (T,), optional
+        외부 타깃 시계열 (예: build_daily_target_21d() 반환값의 .values).
+        None 이면 기존 동작 유지 — scaled 주 피처를 타깃으로 사용.
 
     Returns
     -------
@@ -171,25 +185,38 @@ def build_fold_datasets(
     test_ds : LSTMDataset
         X.shape = (N_test, seq_len, n_features),   N_test = oos_len
     scaler : StandardScaler
-        역변환 및 재사용을 위해 반환.
+        입력 피처 역변환 및 재사용을 위해 반환.
     """
     data = series[:, np.newaxis]
     if extra_features is not None:
         data = np.column_stack([series, extra_features])
 
     scaler = StandardScaler()
-    scaler.fit(data[train_idx])          # 훈련 구간으로만 fit
+    scaler.fit(data[train_idx])          # 훈련 구간으로만 fit — 누수 방지
     scaled = scaler.transform(data)      # 전체 시계열 transform (테스트 맥락 포함)
 
-    X_tr, y_tr = make_sequences(scaled[train_idx], seq_len)
+    X_tr, y_tr_default = make_sequences(scaled[train_idx], seq_len)
+
+    if target_series is not None:
+        # 외부 타깃 사용: j 번째 시퀀스의 마지막 위치 = train_idx[j + seq_len - 1]
+        n_train = len(X_tr)
+        y_tr = np.array([
+            float(target_series[train_idx[j + seq_len - 1]])
+            for j in range(n_train)
+        ])
+    else:
+        y_tr = y_tr_default
 
     X_te_list: List[np.ndarray] = []
     y_te_list: List[float] = []
-    for t in test_idx:
+    for k, t in enumerate(test_idx):
         if t < seq_len:
             continue  # 충분한 이력 없음 (초반 폴드 방어)
         X_te_list.append(scaled[t - seq_len : t])
-        y_te_list.append(float(scaled[t, 0]))
+        if target_series is not None:
+            y_te_list.append(float(target_series[t]))
+        else:
+            y_te_list.append(float(scaled[t, 0]))
 
     X_te = np.stack(X_te_list)
     y_te = np.array(y_te_list)
