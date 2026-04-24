@@ -54,6 +54,7 @@
 Phase1_LSTM/
 ├── README.md                              ← 이 문서
 ├── PLAN.md                                ← ⭐ 전체 구현 계획 (Claude plan 파일의 팀 공유 사본)
+├── 학습자료_주의사항.md                     ← ⭐ Study/*.md 주의·함정 전수 정리 (노트북 작성 시 참고)
 ├── 재천_WORKLOG.md                         ← 작업·판단 일지 (모든 결정 누적, 작성자별 prefix)
 │
 ├── 00_setup_and_utils.ipynb               ← 환경 노트북 (한글 폰트·시드·경로)
