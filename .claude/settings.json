@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ':*)",
+      "Bash(git pull:*)",
+      "Bash(python3)",
+      "Bash(python3 -c ' *)",
+      "Bash(.venv/bin/python3)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "additionalDirectories": [
+      "/Users/hayeon/finance_project"
+    ]
+  }
+}
