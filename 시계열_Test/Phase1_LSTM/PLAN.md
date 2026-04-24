@@ -333,6 +333,10 @@ plt.rcParams['axes.unicode_minus'] = False
 1. 폴더 구조 생성 ✅ (2026-04-24 완료)
 2. Step 0 환경 노트북·`scripts/setup.py` ✅
 3. Step 1 데이터 다운로드·EDA ✅
-4. Step 2 설정 A — 진행 예정
-5. Step 3 설정 B
-6. Step 4 비교 보고
+4. Step 2-data `scripts/dataset.py` (LSTMDataset / make_sequences / walk_forward_folds / build_fold_datasets + target_series) + `02_tensor_dataset.ipynb` ✅ (다른 팀원)
+5. Step 2-target `scripts/targets.py` (`build_daily_target_21d` · `verify_no_leakage` · `build_leaky_target_for_test` 다른 팀원 + `build_monthly_target_1m` 재천) ✅
+6. Step 2-exec `scripts/models.py` · `scripts/train.py` · `scripts/metrics.py` (재천 신규, 단위 검증 4+4+16 PASS) ✅
+7. Step 2-doc `scripts_정의서.md` (재천 신규, 모듈 API 정의서) ✅
+8. Step 2-run `02_setting_A_daily21.ipynb` §1~§6 실행·검증 완료 (다른 팀원), §7~§9 활성화 대기 🟡
+9. Step 3 설정 B — 대기 (targets.py 에 `build_monthly_target_1m` 준비됨)
+10. Step 4 비교 보고 — 대기
