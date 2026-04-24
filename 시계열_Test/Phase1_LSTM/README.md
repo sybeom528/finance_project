@@ -1,6 +1,10 @@
 # Phase 1 — LSTM 단독 베이스라인
 
-> **협업 진입점 문서**. 처음 합류한 팀원은 이 README → 재천_WORKLOG → 노트북 순으로 읽으십시오.
+> **협업 진입점 문서**. 처음 합류한 팀원은 이 README → [PLAN.md](PLAN.md) → [재천_WORKLOG.md](재천_WORKLOG.md) → 노트북 순으로 읽으십시오.
+>
+> - **PLAN.md**: 전체 구현 계획서 (Claude Code plan 파일의 팀 공유 사본, 진실원과 동기화)
+> - **재천_WORKLOG.md**: 작업·판단 일지 (시간순 누적)
+> - **노트북**: 실제 분석·학습 흐름
 
 ## 1. 프로젝트 위치 및 목적
 
@@ -49,6 +53,7 @@
 ```
 Phase1_LSTM/
 ├── README.md                              ← 이 문서
+├── PLAN.md                                ← ⭐ 전체 구현 계획 (Claude plan 파일의 팀 공유 사본)
 ├── 재천_WORKLOG.md                         ← 작업·판단 일지 (모든 결정 누적, 작성자별 prefix)
 │
 ├── 00_setup_and_utils.ipynb               ← 환경 노트북 (한글 폰트·시드·경로)
@@ -139,7 +144,8 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 
 ## 6. 참고 문서
 
-- **상위 plan**: `C:\Users\gorhk\.claude\plans\c-users-gorhk-finance-project-study-00-m-frolicking-iverson.md`
+- **상위 plan (진실원)**: `C:\Users\gorhk\.claude\plans\c-users-gorhk-finance-project-study-00-m-frolicking-iverson.md`
+- **plan 팀 공유 사본**: [PLAN.md](PLAN.md) (이 폴더 내, 진실원과 동기화)
 - **상위 학습계획**: `김재천/Study/00_학습계획.md`
 - **원 논문**: Su, X., Lu, K., & Yen, J. (2026). *Objective Black-Litterman views through deep learning: A novel hybrid model for enhanced portfolio returns*. **Expert Systems with Applications, 295.**
 - **Walk-Forward 누수 방지**: López de Prado, M. (2018). *Advances in Financial Machine Learning*. Wiley. §7.

@@ -316,6 +316,38 @@ Fold 3: ...
 
 ---
 
+## 2026-04-24 — PLAN.md 팀 공유 사본 생성 + plan 본문 `.py` 사용 방향 갱신
+
+### 사용자 지시
+1. "지금 claude의 플랜 md파일을 복사해서 우리 팀원 모두가 확인할 수 있게 공유 폴더 내에 md파일로 만들어서 넣어줘"
+2. "일단 플랜 파일도 py파일 사용하는 것으로 내용 수정하고"
+
+### 작업 내용
+- **PLAN.md 신규 작성**: Claude Code plan 파일(`.claude/plans/...`)을 `시계열_Test/Phase1_LSTM/PLAN.md` 로 복사. 상단에 진실원 위치·동기화 정책 헤더 추가.
+- **진실원 plan + PLAN.md 동시 수정**: Step 2 본문이 "셀 안에서 직접 정의" 시절 표현이었음 → **`scripts/*.py` 에 정의 + 노트북에서 import** 로 변경.
+- **갱신된 절** (Step 2 / 같은 변경 Step 3에도 일관 반영):
+  - §2 데이터 로드: `scripts.data_io.load_ticker_csv` import
+  - §3 타깃 생성: `scripts.targets.build_daily_target_21d` (B는 `build_monthly_target_1m`)
+  - §4 누수 검증: `scripts.targets.verify_no_leakage` + `build_leaky_target_for_test`
+  - §5 SequenceDataset: `scripts.dataset.SequenceDataset`
+  - §6 Walk-Forward: `scripts.cv_walkforward.generate_folds(n_total, is_len, purge, embargo, oos_len, step)`
+  - §7 LSTMRegressor: `scripts.models.LSTMRegressor`
+  - §8 학습 루프: `scripts.train.train_one_fold(model, train_loader, val_loader, **hp)`
+  - §9 메트릭·시각화: `scripts.metrics.{hit_rate, r2_oos, baseline_metrics}` + `scripts.plot_utils.{plot_learning_curve, ...}`
+- 설정 A·B 가 같은 모듈을 공유 → 비교 공정성 자연 확보 (Step 3 본문에 명시)
+
+### README 동기화
+- 첫 안내문에 PLAN.md → 재천_WORKLOG.md → 노트북 순서로 읽기 가이드 추가
+- 폴더 트리에 `PLAN.md` 한 줄 추가
+- §6 참고 문서에 "plan 팀 공유 사본" 링크 추가
+
+### 동기화 정책
+- 진실원: `C:\Users\gorhk\.claude\plans\c-users-gorhk-finance-project-study-00-m-frolicking-iverson.md`
+- 사본: `시계열_Test/Phase1_LSTM/PLAN.md`
+- Claude가 진실원을 갱신하면 사본도 함께 갱신 (수동 동기화). 팀원은 사본만 보면 됨.
+
+---
+
 ## 산출물 인덱스 (생성 순)
 
 | 파일 | 종류 | 설명 |
