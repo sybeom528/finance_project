@@ -6,6 +6,6 @@
 협업 안정성 원칙
 ----------------
 - 모든 public 함수: type hints + Numpy-style docstring 필수
-- 인터페이스 변경 시 WORKLOG.md 에 변경 사항 기록
+- 인터페이스 변경 시 재천_WORKLOG.md 에 변경 사항 기록
 - 모듈은 책임 단위로 분리 (data/target/cv/dataset/model/train/metrics/plot)
 """

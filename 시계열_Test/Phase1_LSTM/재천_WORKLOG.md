@@ -3,7 +3,7 @@
 > **목적**: Phase 1 구축 과정의 모든 작업·결정·판단 근거를 시간순으로 기록합니다.
 > 사용자가 언제든 진행 상황과 의사결정 흐름을 추적할 수 있게 하기 위함입니다.
 >
-> **위치**: `김재천/시계열_Test/Phase1_LSTM/WORKLOG.md`
+> **위치**: `시계열_Test/Phase1_LSTM/재천_WORKLOG.md`
 > **기록 원칙**:
 > 1. 모든 의사결정은 (a) 결정 내용, (b) 선택지, (c) 판단 근거, (d) 결정 주체(사용자 / 어시스턴트 제안)를 함께 기록
 > 2. 사용자 피드백·지시는 원문 또는 요지를 보존
@@ -31,7 +31,7 @@
 |---|---|---|
 | **자산군** | SPY + QQQ 두 개만 | 목적은 BL Q 형성이 아닌 "수익률 예측 자체의 성능 확인" |
 | **데이터 소스** | yfinance 신규 다운로드 | 일관된 기간·형식 확보 |
-| **결과물 폴더** | `김재천/시계열_Test/Phase1_LSTM/` (신규) | 학습/실전 폴더 분리 |
+| **결과물 폴더** | `시계열_Test/Phase1_LSTM/` (2026-04-24 시계열_Test가 finance_project 직하위로 이동) | 학습/실전 폴더 분리 |
 | **코드 참고 수준** | 패턴/원리만 참고, 코드는 새로 작성 | 사용자 명시 지시 (재사용 X) |
 
 ### 14:?? · 추가 의사결정 (AskUserQuestion 2회차)
@@ -284,11 +284,43 @@ Fold 3: ...
 
 ---
 
+## 2026-04-24 — 폴더 이동 + 협업 개인 일지 prefix 적용
+
+### 사용자 지시
+1. `Phase1_LSTM` 폴더를 `김재천/시계열_Test/` 에서 **`finance_project/시계열_Test/` 직하위**로 이동 (다른 팀원과 공유 작업)
+2. CLAUDE.md 의 "모든 작업물은 김재천 내에서만 작업·생성" 규칙 **삭제**
+3. `WORKLOG.md` → **`재천_WORKLOG.md`** 로 이름 변경 (작성자별 prefix 도입)
+4. 모든 문서·코드의 경로 표기 갱신 (단, 김재천 폴더에 남아있는 학습 자료 `김재천/Study/...` 는 실제 위치 그대로 유지)
+
+### 변경 적용 파일
+| 파일 | 변경 내용 |
+|---|---|
+| `C:\Users\gorhk\최종 프로젝트\finance_project\CLAUDE.md` | 김재천 폴더 작업 규칙 1줄 삭제 |
+| `시계열_Test/Phase1_LSTM/WORKLOG.md` | → `재천_WORKLOG.md` 로 이름 변경 |
+| `재천_WORKLOG.md` (이 파일) | 위치·결과물 폴더·파일명 표기 3곳 갱신 + 본 섹션 추가 |
+| `README.md` | WORKLOG 링크 6곳 → `재천_WORKLOG.md`, 경로 표기 2곳 (`김재천/시계열_Test` → `시계열_Test`, cd 명령어), 협업 prefix 안내 추가 |
+| `scripts/__init__.py` | docstring 안 `WORKLOG.md` → `재천_WORKLOG.md` |
+| `00_setup_and_utils.ipynb` | §3 마크다운 셀 마지막 줄(김재천 폴더 안내) 삭제 |
+| `01_data_download_and_eda.ipynb` | 재실행으로 출력 셀의 BASE_DIR 등이 새 경로(`시계열_Test/Phase1_LSTM`)로 자동 갱신 |
+| `.claude/plans/c-users-gorhk-finance-project-study-00-m-frolicking-iverson.md` | 결과물 위치 표기·폴더 트리·주의사항 5번 갱신 |
+
+### 보존된 것 (의도)
+- `README.md` line 143 `김재천/Study/00_학습계획.md` — 학습 자료는 실제로 김재천 폴더에 그대로 있으므로 정상 참조 유지
+- 데이터 캐시(`results/raw_data/SPY.csv`, `QQQ.csv`) 그대로 보존
+- BASE_DIR 자동 인식: `Path(__file__)` 기반 설계 덕분에 폴더 이동에도 코드 수정 불필요
+
+### 협업 일지 규칙 (신설)
+- 작성자는 본인 이름 prefix 로 별도 일지 파일을 둠 (예: `재천_WORKLOG.md`, `<이름>_WORKLOG.md`)
+- 모든 결정·판단·인터페이스 변경은 본인 일지에 시간순 누적
+- 공통 문서(README, plan)는 모든 팀원이 협의 후 갱신
+
+---
+
 ## 산출물 인덱스 (생성 순)
 
 | 파일 | 종류 | 설명 |
 |---|---|---|
-| `WORKLOG.md` | 문서 | 본 작업 일지 |
+| `재천_WORKLOG.md` | 문서 | 본 작업 일지 (2026-04-24 협업용으로 `WORKLOG.md` → `재천_WORKLOG.md` 이름 변경) |
 | `00_setup_and_utils.ipynb` | 노트북 | 환경 설정·시드·경로·폰트·import |
 
 (이후 진행 시 추가)
