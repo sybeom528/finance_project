@@ -24,7 +24,7 @@
 13. Learning Rate Scheduler — 학습률 스케줄링
 14. Checkpoint 저장/로드
 15. 학습 곡선 모니터링
-16. **경량 학습 반복 패턴 — GA-LSTM을 위한 준비** ⭐
+16. **경량 학습 반복 패턴 — Optuna 최적화를 위한 준비** ⭐
 17. 우리 프로젝트의 표준 학습 루프 템플릿
 18. 흔한 실수 10가지
 19. 부록: 왜 `.item()` / `.detach()`를 써야 하는가
@@ -372,10 +372,16 @@ optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 ### 우리 프로젝트 맥락
 
-현재 XGBoost가 **5분위 확률**(proba[5])을 출력합니다. **CEEMDAN + GA-LSTM + 비선형 앙상블** 구조로 교체할 때도 최종 출력 형식은 동일:
+현재 XGBoost가 **5분위 확률**(proba[5])을 출력합니다. 본 3.4 이론은 **classification 예제를 기준**으로 설명하며, 이때 loss는 다음과 같습니다:
 - 출력: 5개 클래스에 대한 확률 분포
 - Loss: `nn.CrossEntropyLoss()`
-- 각 IMF별 GA-LSTM도, 비선형 앙상블 최종단도 모두 이 loss를 공유 (end-to-end 또는 stage-wise)
+
+> **COL-BL 전환 노트**: 본 프로젝트의 최종 모델 **COL-BL (CEEMDAN + Optuna-LSTM + 비선형 앙상블 + Black-Litterman)** 은 **수익률 회귀**를 수행하므로 최종 출력 형식이 다릅니다:
+> - 출력: 스칼라 수익률 예측 ŷ ∈ ℝ
+> - Loss: `nn.MSELoss()` 또는 `nn.HuberLoss(delta=1.0)` (4.5 실습에서 상세)
+> - 각 IMF별 Optuna-LSTM도, LSTM 비선형 앙상블 meta-learner도 모두 이 회귀 loss를 공유
+>
+> 다만 **학습 루프의 골격(§1~§18)은 분류/회귀 무관하게 동일**하므로, 본 이론은 CrossEntropy 예제로 일관되게 진행합니다. 회귀 전환은 criterion 교체 + 마지막 Linear 층 출력 차원만 바꾸면 되는 기계적 변경입니다.
 
 ### CrossEntropyLoss의 수학
 
@@ -641,25 +647,33 @@ plt.show()
 
 ---
 
-## 16. 경량 학습 반복 패턴 — GA-LSTM을 위한 준비 ⭐
+## 16. 경량 학습 반복 패턴 — Optuna 최적화를 위한 준비 ⭐
 
 ### 왜 이 절을 별도로 다루는가
 
-§1~15까지는 **하나의 모델을 한 번 학습**하는 표준 패턴이었습니다. 하지만 4주차부터 다룰 **GA-LSTM (Genetic Algorithm + LSTM)** 은 이 학습 루프를 **population × generations = 수백 회 반복 호출** 합니다.
+§1~15까지는 **하나의 모델을 한 번 학습**하는 표준 패턴이었습니다. 하지만 4주차부터 다룰 **Optuna-LSTM (Optuna TPE 기반 hyperparameter 최적화)** 은 이 학습 루프를 **n_trials 회 반복 호출** 합니다 (본 프로젝트 기준 IMF당 30~50회, CEEMDAN이 만드는 7~9개 IMF를 합치면 200~450회).
 
-같은 코드를 수백 번 돌리면 **시간 · 메모리 · 재현성** 세 가지가 급격히 나빠지므로, GA 개체 평가용 학습 함수는 **§16의 표준 템플릿과는 다른 설계 원칙**을 따릅니다. 여기서는 그 차이를 사전 정리합니다.
+같은 코드를 수십~수백 번 돌리면 **시간 · 메모리 · 재현성** 세 가지가 급격히 나빠지므로, hyperparameter 탐색용 학습 함수(= Optuna objective 내부)는 **§17의 표준 템플릿과는 다른 설계 원칙**을 따릅니다. 여기서는 그 차이를 사전 정리합니다.
+
+> **참고 — COL-BL은 논문 GA-LSTM의 Optuna 변형**: 본 프로젝트(COL-BL)는 원 논문(Su/Lu/Yen 2026)의 **CGL-BL (GA-LSTM 기반)** 을 **Optuna-LSTM으로 치환한 동등 변형**입니다. GA와 Optuna는 탐색 알고리즘만 다르고 *"한 개체(trial)당 빠른 경량 학습 → scalar 지표 반환"* 라는 인터페이스는 완전히 동일합니다. 따라서 §16에서 정의할 `train_one_individual` 함수는 **GA의 fitness 함수이자 Optuna의 objective 함수로 그대로 재사용**됩니다 (§16.3 말미에 변환 예시).
 
 ### 16.1 계산 예산 설계 — "한 번 학습"을 얼마나 줄일 것인가
 
-GA-LSTM의 총 학습량은 다음 곱으로 결정됩니다:
+Optuna-LSTM의 총 학습량은 다음 곱으로 결정됩니다 (단일 IMF 기준):
 
 ```
-total_train_calls = population_size × generations × epochs_per_individual
-                  = 20 × 10 × (50 ~ 100)    ← §17의 표준 템플릿 그대로면 10,000 ~ 20,000 epoch
-                  = 20 × 10 × (5 ~ 10)       ← 경량화하면       1,000 ~  2,000 epoch
+total_train_calls = n_trials × epochs_per_trial
+                  = 50 × (50 ~ 100)    ← §17의 표준 템플릿 그대로면   2,500 ~ 5,000 epoch
+                  = 50 × (5 ~ 10)       ← 경량화하면                    250 ~   500 epoch
 ```
 
-**10배 차이.** GPU 1장 기준 전자는 며칠, 후자는 몇 시간 수준. 따라서 GA 내부에서는 **epoch를 크게 줄이고 early stopping을 공격적으로** 쓰는 게 표준 관례입니다.
+**10배 차이.** 그리고 CEEMDAN이 보통 7~9개 IMF를 만들어내므로 실제로는 여기에 다시 ×8배(자산당) + ×N_assets(포트폴리오)가 곱해집니다. 따라서 objective 내부에서는 **epoch를 크게 줄이고 early stopping을 공격적으로** 쓰는 게 표준 관례입니다.
+
+> **Optuna가 예산 측면에서 유리한 두 가지 장치**:
+> - **MedianPruner**: 진행 중인 trial이 다른 trial들의 중간값보다 나쁘면 중간 epoch에서 조기 종료(prune). 즉 epoch-level early stopping에 더해 **trial-level pruning** 이 중첩 적용됩니다.
+> - **TPE sampler**: 과거 trial 결과 분포를 학습해 "유망한 영역"을 집중 탐색 — 같은 n_trials 예산으로 Random search보다 훨씬 빨리 수렴합니다.
+>
+> 두 장치가 함께 작동하면 **실제 계산량은 이론치의 1/2 ~ 1/5 수준**으로 떨어지는 게 일반적입니다 (Akiba et al., 2019).
 
 ### 16.2 Early Stopping — 조기종료로 예산 회수
 
@@ -681,16 +695,20 @@ for epoch in range(max_epochs):
             break   # 조기종료 — 남은 epoch 예산 회수
 ```
 
-GA 개체당 최대 10 epoch 예산이어도, 대부분 3~5 epoch에서 조기종료되므로 **평균 실제 학습량은 절반 이하**로 내려갑니다.
+Trial당 최대 10 epoch 예산이어도, 대부분 3~5 epoch에서 조기종료되므로 **평균 실제 학습량은 절반 이하**로 내려갑니다. (Optuna의 MedianPruner는 여기에 trial-level 조기 종료를 한 번 더 얹는 구조입니다 — §16.1 참조.)
 
-### 16.3 Fitness Function — "이 hyperparam이 얼마나 좋은가" 반환
+### 16.3 Fitness / Objective Function — "이 hyperparam이 얼마나 좋은가" 반환
 
-GA는 각 개체(hyperparam 조합)마다 이 함수를 호출해서 **scalar 숫자 하나**를 받습니다:
+GA든 Optuna든 각 개체/trial(= 한 개의 hyperparam 조합)마다 이 함수를 호출해서 **scalar 숫자 하나**를 받습니다. 이 **단일 인터페이스**가 §16 설계의 핵심 — 탐색 알고리즘을 바꿔도 이 함수는 손대지 않습니다:
 
 ```python
 def train_one_individual(params: dict, train_loader, val_loader, device,
                          seed: int = 42) -> float:
-    """GA가 호출하는 함수. 주어진 params로 LSTM을 학습 후 fitness 반환."""
+    """GA·Optuna 공통으로 호출하는 학습 함수. 주어진 params로 LSTM을 학습 후
+    best val_loss(낮을수록 좋음)를 반환. 반환값이 그대로:
+      - GA의 fitness (minimize)
+      - Optuna objective의 반환값 (direction='minimize')
+    """
     # --- 재현성 확보 ---
     torch.manual_seed(seed); np.random.seed(seed)
     if torch.cuda.is_available():
@@ -707,6 +725,10 @@ def train_one_individual(params: dict, train_loader, val_loader, device,
                             lr=params['lr'],
                             weight_decay=params.get('weight_decay', 1e-4))
     criterion = nn.CrossEntropyLoss()
+    # NOTE (COL-BL 회귀 전환): 본 3.4 이론은 classification 예제를 유지합니다.
+    #   실제 COL-BL은 수익률 회귀이므로 4.5 실습부터는
+    #     criterion = nn.MSELoss()   또는   nn.HuberLoss(delta=1.0)
+    #   으로 교체합니다. train/val 루프 구조는 동일.
 
     # --- 경량 학습 + early stopping ---
     best_val_loss = float('inf')
@@ -757,6 +779,46 @@ def train_one_individual(params: dict, train_loader, val_loader, device,
 | Seed 통제 | 같은 hyperparam → 같은 fitness (공정 비교) |
 | 메모리 정리 | 수백 번 호출 사이 누수 방지 |
 
+#### Optuna objective로의 자연스러운 변환
+
+위 `train_one_individual` 함수는 Optuna `objective(trial)` 함수로 **10줄 안팎의 얇은 래퍼만 씌우면** 전환됩니다. 원 함수(§16.3)는 **건드리지 않는 것이 핵심** — 덕분에 GA ↔ Optuna 간 비교 실험도 쉬워집니다.
+
+```python
+import optuna
+
+def objective(trial: optuna.Trial) -> float:
+    # Optuna는 각 trial마다 suggest_* 호출로 hyperparam 조합을 '제안'합니다.
+    # 제안된 값은 params dict로 모아서 기존 학습 함수에 그대로 전달.
+    params = {
+        'input_size':   INPUT_SIZE,                                         # 데이터 고정
+        'hidden_size':  trial.suggest_categorical('hidden_size', [32, 64, 128, 256]),
+        'num_layers':   trial.suggest_int('num_layers', 1, 3),
+        'dropout':      trial.suggest_float('dropout', 0.0, 0.5),
+        'lr':           trial.suggest_float('lr', 1e-4, 5e-3, log=True),
+        'weight_decay': 1e-4,
+        'max_epochs':   10,
+    }
+    # 기존 함수 그대로 재사용 — 반환값(best_val_loss)이 Optuna의 minimize 대상이 됩니다.
+    return train_one_individual(params, train_loader, val_loader, device)
+
+study = optuna.create_study(
+    direction='minimize',                                  # best_val_loss를 낮추는 방향
+    sampler=optuna.samplers.TPESampler(seed=42),           # 재현성 확보된 TPE
+    pruner=optuna.pruners.MedianPruner(n_startup_trials=5) # 가망 없는 trial 조기 종료
+)
+study.optimize(objective, n_trials=50)
+
+best_params = study.best_params      # dict: hyperparam 조합
+best_value  = study.best_value       # float: 최소 val_loss
+```
+
+**핵심 관찰 3가지**:
+1. `train_one_individual` 은 **GA든 Optuna든 그대로 재사용** — 이 호환성이 §16 설계의 본질.
+2. `trial.suggest_*` 종류만 바꾸면 탐색 공간이 자동으로 업데이트. **TPE sampler**가 과거 trial 결과 분포를 보고 다음 trial을 지능적으로 제안하고, **MedianPruner**가 가망 없는 trial을 중간에 종료합니다.
+3. 회귀 예측(COL-BL)으로 넘어갈 때는 §16.3 함수 내부의 `criterion` 만 `nn.MSELoss()` 또는 `nn.HuberLoss(delta=1.0)` 로 교체하면 되고, **objective 쪽은 손대지 않아도 됩니다** (4.5 실습에서 상세).
+
+> **Walk-Forward와 결합 규칙 (중요)**: Optuna 튜닝은 **초기 training 구간에서 1회만** 실행하고, 얻은 `best_params` 를 모든 fold에 재사용해야 합니다. fold마다 재튜닝하면 **look-ahead bias** (미래 validation 정보를 hyperparam 선택에 쓰는 오염)가 발생합니다. 자세한 내용은 6주차 Walk-Forward 섹션에서 다룹니다.
+
 ### 16.4 메모리 관리 — 누적 누수 방지
 
 PyTorch는 GPU 메모리를 **명시적으로 해제하지 않으면 계속 갖고 있습니다.** GA처럼 모델을 수백 번 만들었다 버리는 시나리오에서는 매 개체 끝에 반드시:
@@ -784,7 +846,7 @@ if torch.cuda.is_available():
 
 ### 16.6 캐싱 (선택) — 동일 hyperparam 재평가 방지
 
-GA의 elitism(엘리트 보존) 전략에서는 상위 개체가 여러 세대에 걸쳐 살아남습니다. 같은 hyperparam을 또 학습시키는 건 낭비:
+GA의 elitism(엘리트 보존)에서는 상위 개체가 여러 세대에 걸쳐 살아남고, Optuna의 TPE도 유망 영역을 집중 탐색하다 보면 동일 또는 거의 동일한 hyperparam 조합을 재평가할 수 있습니다. 같은 hyperparam을 또 학습시키는 건 낭비이므로:
 
 ```python
 import hashlib, json
@@ -802,9 +864,9 @@ def train_one_individual_cached(params, **kwargs):
 
 **단 조건**: seed가 개체마다 고정(공유)돼야 안전. 개체별로 seed를 바꾸고 있다면 캐싱 금물 (같은 params여도 다른 결과가 정당).
 
-### 요약 — 표준 템플릿 vs GA 개체 학습 함수
+### 요약 — 표준 템플릿 vs GA/Optuna 공통 trial 학습 함수
 
-| 항목 | §17 표준 템플릿 | §16 GA 개체 학습 함수 |
+| 항목 | §17 표준 템플릿 | §16 Trial용 학습 함수 (GA/Optuna 공통) |
 |---|---|---|
 | Epoch 수 | 50 ~ 100 | **5 ~ 10** |
 | Early stopping | 선택 | **필수** |
@@ -814,7 +876,7 @@ def train_one_individual_cached(params, **kwargs):
 | Checkpoint 저장 | 매 best-val 갱신 시 | **미저장** (수백 개체 중 하나일 뿐) |
 | Learning curve 시각화 | 필수 | **생략** (로그만 반환, 시각화는 GA 종료 후) |
 
-**4주차 4.3에서 이 `train_one_individual` 함수를 그대로 사용합니다.** GA 루프는 이 함수를 20×10 = 200회 호출해서 각 hyperparam 조합의 fitness를 얻고, selection·crossover·mutation으로 세대를 이어갑니다. 여기서 미리 이해하고 넘어가면 GA 코드를 처음 봐도 낯설지 않습니다.
+**4주차 4.3에서 이 `train_one_individual` 함수를 그대로 사용합니다.** Optuna study는 이 함수를 **`n_trials` (본 프로젝트 기준 30~50)** 회 호출해서 각 hyperparam 조합의 `best_val_loss` 를 얻고, **TPE sampler**가 과거 trial 결과를 보고 다음 trial을 지능적으로 제안 + **MedianPruner**가 가망 없는 trial을 조기 종료합니다. 여기서 §16을 미리 이해하고 넘어가면 4.3 Optuna 코드를 처음 봐도 낯설지 않습니다 (그리고 논문 CGL-BL과의 비교 실험을 하고 싶을 때 GA도 같은 함수 하나로 돌릴 수 있습니다 — 인터페이스가 동일하므로).
 
 ---
 
@@ -1001,7 +1063,7 @@ d = loss.detach()                # d는 텐서지만 그래프와 분리
 5. **Learning rate scheduler 비교**: StepLR vs CosineAnnealingLR vs ReduceLROnPlateau
 6. **과적합 시각화**: train_loss↓ vs val_loss↑ 패턴 재현 + weight_decay로 완화
 7. **Checkpoint save/load**: 중간에 끊고 이어 학습하는 시나리오
-8. **경량 학습 반복 실습** (§16 내용): `train_one_individual(params)` 함수를 구현하고 5개 random hyperparam으로 호출해 fitness 비교 — 4주차 GA-LSTM 진입 전 warm-up
+8. **경량 학습 반복 실습** (§16 내용): `train_one_individual(params)` 함수를 구현하고 5개 random hyperparam 조합으로 호출해 `best_val_loss` 를 비교 — 4주차 Optuna-LSTM 진입 전 warm-up (같은 함수가 나중에 Optuna `objective(trial)` 로 그대로 재사용됨을 체감)
 
 ---
 
