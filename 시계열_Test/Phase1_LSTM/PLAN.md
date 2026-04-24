@@ -88,7 +88,7 @@
 
 **모듈 인터페이스 원칙 (협업 안정성)**:
 - 모든 public 함수에 type hints + docstring (Numpy style) 필수
-- `scripts/X.py` 변경 시 docstring·signature 변경 사항을 `재천_WORKLOG.md` 에 기록
+- `scripts/X.py` 변경 시 docstring·signature 변경 사항을 본인 prefix `<이름>_WORKLOG.md` 에 기록
 - 노트북에서 사용하는 모든 함수는 import 경로 명시 (`from scripts.targets import build_daily_target_21d`)
 
 **노트북 셀 작성 원칙 (CLAUDE.md 강화 반영, 변경 없음)**:
