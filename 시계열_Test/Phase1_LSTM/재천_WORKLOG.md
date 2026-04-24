@@ -424,6 +424,135 @@ Fold 3: ...
 
 ---
 
+## 2026-04-25 — 논의사항 폴더화
+
+### 사용자 지시
+"논의사항 md를 날짜별로 다 따로 생성하는게 관리가 편하겠지? 논의사항 폴더를 만들어서 관리할까?" → 진행 승인
+
+### 변경 사항
+
+| 변경 | 내용 |
+|---|---|
+| 단일 파일 | `논의사항.md` → 폴더 `논의사항/` 로 전환 |
+| 파일 이동 | `논의사항.md` → `논의사항/2026-04-25_Run결과분석.md` (내용 동일, 이름만) |
+| 인덱스 신규 | `논의사항/README.md` 작성 — 논의 목록 표 · 상태 색인 · 기록 체크리스트 · 관련 문서 링크 |
+| 메인 README | 폴더 트리에 `논의사항/` 등재 + §6 참고 문서에 인덱스 링크 추가 |
+
+### 파일명 규약 (공유)
+
+`YYYY-MM-DD_주제.md` 형식 — 날짜 prefix 로 시간순 자동 정렬, 주제는 핵심 키워드 2~3개.
+
+### 누적 원칙
+- 기존 논의 문서 수정 금지, 새 파일로 추가 (이력 보존)
+- 논의가 코드·문서에 반영되면 `논의사항/README.md` 의 상태 색인을 "결론·반영 완료" 로 이동
+
+### 효과
+- Phase 2·3 에서 논의 누적 대비 초기 인프라 확보
+- Git diff 가 문서별로 분리 → 팀원 리뷰 편의
+- `논의사항/README.md` 가 Single Entry Point 역할
+
+---
+
+## 2026-04-25 — 인공 누수 대조 (identity leak sanity) 완전 제거
+
+### 사용자 지시
+"완전 제거해줘" — `build_leaky_target_for_test` 함수 + 02 노트북 §4 검증 3 셀 + PLAN/Claude plan/정의서 의 인공 누수 언급 전부 제거.
+
+### 제거 이유 (2개)
+1. **파이프라인 정상성은 이미 다른 방식으로 확인됨**: `scripts/train.py` 작성 시 합성 leak 데이터 단위 테스트 (`target = X 마지막 + noise`) 로 R² = 0.9857 확인 → 학습·예측·평가 경로 검증 완료
+2. **identity leak 이 의미 있게 작동 안 함**: `scripts/dataset.py` 의 train/test 분기 X-y 정렬 차이로 인해
+   - train 에서는 X 마지막 시점 = y 시점 → identity 학습 가능 (best val = 0.000008)
+   - test 에서는 X 마지막 시점 = y 시점 - 1 → X 로부터 y 복원 불가 (R² ≈ 0.06)
+   - 즉 FAIL 이 나오지만 평가 파이프라인 버그는 아님 — sanity check 설계 자체의 한계
+
+### 실제로 발견된 실행 결과 (제거 직전)
+```
+[검증 3] 인공 누수 대조 — leaky target 학습
+  device     : cuda:0
+  학습 epoch : 2 / 5
+  best val   : 0.000008       ← train 쪽은 완벽 학습
+  OOS R²_std : 0.0619  [FAIL]  ← test 쪽은 정렬 차이로 예측 불가
+```
+
+### 제거 범위
+
+| 대상 | 변경 |
+|---|---|
+| `scripts/targets.py` | `build_leaky_target_for_test` 함수 + 모듈 docstring 해당 줄 삭제 |
+| `02_setting_A_daily21.ipynb` | §4 검증 3 셀 (a2000010) 삭제 + §1·§4·§10 마크다운 "3종" → "2종" |
+| `PLAN.md` | "§4 누수 검증" / "누수 검증 의무 3종" / 검증 시나리오 / Step 2-target 언급 갱신 |
+| `scripts_정의서.md` | targets.py 섹션의 공개 인터페이스 제거 + 변경 이력 추가 |
+| Claude plan 파일 (진실원) | 작업 1 명세 / 검증 시나리오 / 작업 4 검증 항목 갱신 |
+| `재천_WORKLOG.md` (본 파일) | 본 섹션 추가 |
+
+### 유지된 것
+- `학습자료_주의사항.md` §1.5 원문 (Study 자료 보존 원칙)
+- 2026-04-24~25 기존 WORKLOG 기록 (시간순 로그 원칙 — 과거 결정 역사 보존)
+
+### 대체 검증 (현 유효한 sanity 수단)
+- `scripts/train.py` 작성 시 수행한 합성 leak 단위 테스트 (R²=0.9857, 임시 스크립트 `_verify_train_tmp.py` — 현재는 삭제됨)
+- `scripts/metrics.py` 단위 테스트 16건 PASS (hit_rate, r2_oos, baseline_metrics, summarize_folds)
+- 02 노트북 §4 의 assert + 육안 표 2종 (타깃 누수 자체 검증)
+
+---
+
+## 2026-04-25 — 02 노트북 §4·§7~§10 활성화
+
+### 사용자 지시 (요지)
+1. "ipynb 코드 삽입해서 기능 구현 활성화" → §4 검증 3 · §7 모델 · §8 학습 루프 · §9 평가·시각화 · §10 결론 갱신
+2. GPU/Mac 환경 대응 논의 — 기존 `get_device('auto')` 이미 지원
+3. 노트북 복사본 분리 여부 논의 → "실행 반복이 많지 않아 분리 불필요, 현 상태 유지"
+4. fold 체크포인트 구조 확인 요청 → **실무 관행대로 수정**
+
+### 활성화된 셀 (NotebookEdit)
+
+| 셀 | cell_id | 내용 |
+|---|---|---|
+| §4 검증 3 | a2000010 | `build_leaky_target_for_test` + `train_one_fold(max_epochs=5)` → R² > 0.9 판정 |
+| §7 | a2000020 | `LSTMRegressor(1, 128, 2, 0.2, batch_first=True)` 생성 + 파라미터 수 + smoke test |
+| §8 | a2000022 | `build_train_val_loaders` + `run_all_folds` helper + SPY·QQQ 106 fold 전체 학습 |
+| §9 | a2000024 | 메트릭 · baseline · 관문 · `metrics.json` 저장 + 시각화 3종 PNG |
+| §10 | a2000025 | 산출물 트리 · 체크리스트 · 다음 단계 갱신 |
+
+### 실무 관행 반영 (핵심 변경)
+
+**변경 전 (plan 원안)**: fold 별 `fold_XXX.pt` (212 개) 저장 — 수백 MB
+
+**변경 후 (실무 관행)**: fold 모델은 일회용으로 취급, `state_dict` 디스크 저장 생략. 재현성은 다음 2축으로 확보:
+- (a) seed=42 고정 (`scripts/setup.py`)
+- (b) fold 별 `y_true`, `y_pred` 배열을 `metrics.json` 에 직렬화
+
+**근거**: Walk-Forward 에서 fold k 모델은 "fold k 의 OOS 예측 생성을 위한 일회용 도구"일 뿐, 이후 재사용 시나리오 없음. 메트릭·플롯 재생산은 y_pred 만 있으면 충분. 디버깅·추론 필요 시 seed 로 재학습 가능 (10분 내외).
+
+**변경 효과**:
+- 디스크 수백 MB 절감
+- git 저장소 비대 방지
+- JSON 1개로 완전 재현 (환경 무관)
+
+### GPU/Mac 호환
+
+- `scripts/train.py` `get_device('auto')` : `cuda > mps > cpu` 자동 감지 (기존 구현)
+- §4 검증 3 : `device='auto'` 로 변경 (GPU 활용)
+- CUDA 환경 : 각 fold 후 `torch.cuda.empty_cache()` 호출 (메모리 파편화 완화)
+- 노트북 복사본 분리 : 불필요 — 실행 반복 적고, 숫자 결과 동일
+
+### 예상 산출물 (Run All 시)
+
+```
+results/setting_A/
+├── SPY/metrics.json, fold0_learning_curve.png
+├── QQQ/metrics.json, fold0_learning_curve.png
+├── pred_vs_actual.png
+└── per_fold_metrics.png
+```
+
+### 실행 시간 추정
+- CPU (Windows 10): 10~30분
+- GPU (CUDA, RTX 급): 2~5분
+- GPU (T4, Colab): 3~7분
+
+---
+
 ## 산출물 인덱스 (생성 순)
 
 | 파일 | 종류 | 설명 |

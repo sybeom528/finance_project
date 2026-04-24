@@ -76,7 +76,7 @@ bootstrap()
 
 ### 2.2 `targets.py` — 타깃 시계열 + 누수 검증
 
-**책임**: 설정 A (21일 누적) / 설정 B (월별 1개월) 타깃 시계열 생성 + 누수 검증 함수 + 인공 누수 sanity check.
+**책임**: 설정 A (21일 누적) / 설정 B (월별 1개월) 타깃 시계열 생성 + 누수 검증.
 
 **공개 인터페이스**:
 ```python
@@ -97,10 +97,6 @@ verify_no_leakage(
     # 검증 1 (Assert): n_checks 개 무작위 시점에서 target[t] == log_ret[t+1:t+22].sum()
     # 검증 2 (육안 표): 첫 5개 유효 행의 (날짜, log_ret, target, 직접계산, 일치 O/X) print
     # 실패 시 AssertionError
-
-build_leaky_target_for_test(adj_close: pd.Series) -> pd.Series
-    # target[t] = log_ret[t]  — 의도적 누수 (입력 마지막 값 = 타깃)
-    # 평가 파이프라인 sanity check 용 (학습 시 R² > 0.9 기대)
 ```
 
 **의존성**: `numpy`, `pandas`
@@ -114,6 +110,8 @@ verify_no_leakage(df['log_return'].dropna(), target, n_checks=3, seed=42)
 ```
 
 **⚠️ Windows 환경 주의**: `verify_no_leakage` 의 print 문에 em-dash(`—`) 가 포함되어 있어, Windows cmd/bash 에서 직접 실행 시 `cp949` 인코딩 에러 발생. 노트북(Jupyter)에서는 정상 동작. CLI 검증 시 `sys.stdout.reconfigure(encoding='utf-8')` 권장.
+
+**이력 메모**: `build_leaky_target_for_test` 함수는 2026-04-25 에 제거되었다. 이유는 변경 이력 참고.
 
 ---
 
@@ -358,6 +356,8 @@ print(f"Hit Rate: {summary['hit_rate']['mean']:.4f} ± {summary['hit_rate']['std
 | 2026-04-24 | `models.py` | 신규 생성 (`LSTMRegressor`, `count_parameters`) — batch_first=True 기본, num_layers=1 dropout 우회 | 재천 |
 | 2026-04-24 | `train.py` | 신규 생성 (`train_one_fold`, `get_device`, `save_checkpoint`, `load_checkpoint`) | 재천 |
 | 2026-04-24 | `metrics.py` | 신규 생성 (Hit Rate, R²_OOS, R² std, MAE, RMSE, baseline_metrics, summarize_folds) | 재천 |
+| 2026-04-25 | `02_setting_A_daily21.ipynb` §4·§7~§10 | 활성화. **실무 관행 반영**: fold 체크포인트(.pt) 저장 제거 → fold 별 y_true/y_pred 배열을 `metrics.json` 에 포함 (seed 고정으로 재학습 복원 가능). GPU/MPS 자동 감지, CUDA 시 `torch.cuda.empty_cache()` 추가 | 재천 |
+| 2026-04-25 | `targets.py` · 02 노트북 §4 · PLAN/정의서 | **인공 누수 대조 (identity leak sanity) 완전 제거**: `build_leaky_target_for_test` 함수 삭제 + 02 노트북 §4 검증 3 셀 삭제 + §1·§4·§10 "3종" → "2종". 이유: (a) scripts/*.py 단위 테스트로 파이프라인 정상성이 이미 확인됨, (b) dataset.py 의 train/test 정렬 차이로 identity leak 이 OOS 에서 의미 있게 작동하지 않음 | 재천 |
 
 ---
 

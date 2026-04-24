@@ -131,7 +131,7 @@ CLAUDE.md 지침에 따라 각 단계 종료 시 사용자에게 결과 보고 +
 - **§4 누수 검증** — `from scripts.targets import verify_no_leakage` 호출 + 노트북 셀에서 육안 검증 표 직접 출력
   - `verify_no_leakage(...)` 내부: 3개 무작위 시점에서 `assert target[t] == log_ret[t+1:t+22].sum()`
   - 첫 5행 시점-타깃 매핑 표 출력 셀 (노트북에서 직접) → 사람이 육안으로 미래 참조 확인
-  - 인공 누수 대조: `from scripts.targets import build_leaky_target_for_test` 로 의도적 누수 시계열 생성 → 동일 모델 1 epoch 학습 → R² > 0.9 나오는지 확인
+  - (2026-04-25 제거) 원 계획의 "인공 누수 대조" sanity check 는 scripts/*.py 단위 테스트로 대체되어 제거됨
 - **§5 SequenceDataset import** — `from scripts.dataset import SequenceDataset`
   - `__getitem__(i)` → `(X[i:i+seq_len], target[i+seq_len-1])`
   - scaler는 외부 주입 패턴 (train fit / val·test transform)
@@ -239,7 +239,7 @@ Fold 3: ...
 
 | # | 지점 | 위험 | 방어책 |
 |---|---|---|---|
-| 1 | **타깃 shift 부호** | `shift(-21)` 대신 `shift(21)` 시 미래값 → 입력에 누설 | §4 누수 검증 셀 (assert + 5행 출력 + 인공 누수 비교) |
+| 1 | **타깃 shift 부호** | `shift(-21)` 대신 `shift(21)` 시 미래값 → 입력에 누설 | §4 누수 검증 셀 (assert + 5행 출력) |
 | 2 | **rolling 윈도우 정렬** | `rolling(21).sum()`은 기본 trailing(과거 21일 합) — 타깃은 forward 합이어야 함 | `.shift(-21)` 명시 + 첫 5행 직접 검증 |
 | 3 | **Scaler fit 범위** | StandardScaler를 전체에 fit 시 val/test 통계 누설 | scaler는 train에만 fit, val·test는 transform만. SequenceDataset은 외부 주입 패턴 강제 |
 | 4 | **train/val/test split 경계** | seq_len=126일 윈도우가 split 경계를 넘으면 과거 데이터 일부가 미래 셋으로 흘러감 | split 사이 `gap = seq_len` 강제 (코드에서 슬라이싱 시 명시) |
@@ -250,11 +250,12 @@ Fold 3: ...
 
 ### 누수 검증 의무 (각 노트북 §4)
 
-설정 A·B 노트북 모두 §4에 다음 3종 검증 셀을 두고, 셀 출력으로 PASS/FAIL 표시합니다.
+설정 A·B 노트북 모두 §4에 다음 2종 검증 셀을 두고, 셀 출력으로 PASS/FAIL 표시합니다.
 
 1. **Assert 단위 테스트**: 3개 무작위 시점 t에 대해 `target[t] == 미래 구간 합`
 2. **육안 검증 표**: 첫 5행 (date, log_ret, target_t, 미래 구간 직접 계산값) 나란히 출력
-3. **인공 누수 대조**: target에 미래값을 의도적으로 누설시킨 가짜 시계열로 동일 모델 1 epoch 학습 → R² > 0.9 나오는지 확인 (나오면 모델·평가 코드는 정상, 안 나오면 평가 코드가 부서져 있음)
+
+> (2026-04-25 변경) 원 계획의 3번 "인공 누수 대조" 는 제거되었습니다. 이유: (a) `scripts/*.py` 단위 테스트로 파이프라인 정상성이 이미 확인됨, (b) `dataset.py` 의 train/test 정렬 차이로 identity leak 이 OOS 에서 의미 있게 작동하지 않음.
 
 ### 코드 작성 규약 (모든 노트북 적용)
 
@@ -298,7 +299,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 ## End-to-End 검증 방안
 
-1. **누수 검증 셀 (각 노트북 §4)**: assert + 육안 표 + 인공 누수 대조 3종 PASS
+1. **누수 검증 셀 (각 노트북 §4)**: assert + 육안 표 2종 PASS
 2. **노트북 Run All 재현성**: `01_*.ipynb` ~ `04_*.ipynb` 위→아래 1회 실행으로 동일 결과
 3. **메트릭 직렬화**: `results/setting_X/{ticker}/metrics.json`에 seed·하이퍼·지표 모두 기록
 4. **시각화 산출물**: 학습 곡선, 예측 vs 실측 산점도, 잔차 시계열, ACF (한글 깨짐 없음 육안 확인)
@@ -334,7 +335,7 @@ plt.rcParams['axes.unicode_minus'] = False
 2. Step 0 환경 노트북·`scripts/setup.py` ✅
 3. Step 1 데이터 다운로드·EDA ✅
 4. Step 2-data `scripts/dataset.py` (LSTMDataset / make_sequences / walk_forward_folds / build_fold_datasets + target_series) + `02_tensor_dataset.ipynb` ✅ (다른 팀원)
-5. Step 2-target `scripts/targets.py` (`build_daily_target_21d` · `verify_no_leakage` · `build_leaky_target_for_test` 다른 팀원 + `build_monthly_target_1m` 재천) ✅
+5. Step 2-target `scripts/targets.py` (`build_daily_target_21d` · `verify_no_leakage` 다른 팀원 + `build_monthly_target_1m` 재천) ✅  *(2026-04-25: `build_leaky_target_for_test` 는 제거)*
 6. Step 2-exec `scripts/models.py` · `scripts/train.py` · `scripts/metrics.py` (재천 신규, 단위 검증 4+4+16 PASS) ✅
 7. Step 2-doc `scripts_정의서.md` (재천 신규, 모듈 API 정의서) ✅
 8. Step 2-run `02_setting_A_daily21.ipynb` §1~§6 실행·검증 완료 (다른 팀원), §7~§9 활성화 대기 🟡

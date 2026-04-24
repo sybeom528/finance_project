@@ -5,7 +5,6 @@
 build_daily_target_21d(adj_close)                       → pd.Series  설정 A 타깃
 build_monthly_target_1m(adj_close)                      → pd.Series  설정 B 타깃
 verify_no_leakage(log_ret, target, n_checks, seed)      → None       assert + 육안 표
-build_leaky_target_for_test(adj_close)                  → pd.Series  인공 누수 (§4 검증 3)
 """
 from __future__ import annotations
 
@@ -169,25 +168,3 @@ def verify_no_leakage(
         )
     print()
     print("[OK] 누수 검증 완료 — 모든 체크포인트 PASS")
-
-
-def build_leaky_target_for_test(adj_close: pd.Series) -> pd.Series:
-    """인공 누수 타깃을 생성한다 — §4 대조 실험 전용.
-
-    당일 log_return 자체를 타깃으로 사용한다.
-    입력 시퀀스의 마지막 값과 타깃이 동일하므로 완전한 미래 누수 상황이다.
-    이 타깃으로 학습한 모델의 R² 가 0.9 를 넘으면 평가 파이프라인이 정상임을 확인한다.
-    R² 가 낮으면 평가 코드 자체에 버그가 있음을 의미한다.
-
-    Parameters
-    ----------
-    adj_close : pd.Series
-        수정 종가 시계열.
-
-    Returns
-    -------
-    pd.Series
-        target_leaky[t] = log_return[t]  (당일 수익률 — 입력과 동일한 값)
-    """
-    log_ret = np.log(adj_close).diff()   # 누수: 의도적 누수 — 실험용
-    return log_ret
