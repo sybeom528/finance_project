@@ -59,6 +59,10 @@ Phase1_LSTM/
 ├── 학습자료_주의사항.md                     ← ⭐ Study/*.md 주의·함정 전수 정리 (노트북 작성 시 참고)
 ├── 재천_WORKLOG.md                         ← 작업·판단 일지 (모든 결정 누적, 작성자별 prefix)
 │
+├── 논의사항/                               ← 날짜별 논의 기록 누적 폴더
+│   ├── README.md                          ← 인덱스 (논의 목록·상태·체크리스트)
+│   └── YYYY-MM-DD_주제.md                  ← 날짜별 논의 파일
+│
 ├── 00_setup_and_utils.ipynb               ← 환경 노트북 (한글 폰트·시드·경로)
 ├── 01_data_download_and_eda.ipynb         ← yfinance 다운로드 + EDA + ACF
 ├── 02_tensor_dataset.ipynb                ← dataset.py 시연·검증 (다른 팀원)
@@ -155,6 +159,7 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 - **상위 plan (진실원)**: `C:\Users\gorhk\.claude\plans\c-users-gorhk-finance-project-study-00-m-frolicking-iverson.md`
 - **plan 팀 공유 사본**: [PLAN.md](PLAN.md) (이 폴더 내, 진실원과 동기화)
 - **scripts API 정의서**: [scripts_정의서.md](scripts_정의서.md) (모듈별 공개 인터페이스·사용 예·변경 이력)
+- **논의사항 인덱스**: [논의사항/README.md](논의사항/README.md) (날짜별 논의 목록·상태·연결 task)
 - **상위 학습계획**: `김재천/Study/00_학습계획.md`
 - **원 논문**: Su, X., Lu, K., & Yen, J. (2026). *Objective Black-Litterman views through deep learning: A novel hybrid model for enhanced portfolio returns*. **Expert Systems with Applications, 295.**
 - **Walk-Forward 누수 방지**: López de Prado, M. (2018). *Advances in Financial Machine Learning*. Wiley. §7.
