@@ -374,11 +374,73 @@ Fold 3: ...
 
 ---
 
+## 2026-04-24 — LSTM 실행 모듈 작성 (재천 담당분 구현)
+
+### 사용자 지시 (요지)
+1. "task 수정. 나는 lstm 실행 py 생성 작업을 맡았음" → 역할 분담 전환
+2. `02_setting_A_daily21.ipynb` 신규 확인 요구 → 호환 검토
+3. "노트북 방식 채택 (권장)" → `scripts/targets.py` 분리 구조로 확정
+4. "권장 순서로 하나씩 진행" → Plan 작업 1~8 순차 진행
+
+### Plan 갱신 (claude plan 파일 전면 재작성)
+- Context: 팀원 분담 전환, 02_setting_A 호환성 발견 내용 포함
+- 이번 task 범위: `targets.py`(일부) + `models.py` + `train.py` + `metrics.py` + `scripts_정의서.md` + `dataset.py` 수정
+- 노트북 불변 원칙 (다른 팀원 환경 출력 보존)
+
+### 호환성 발견 (중요)
+- `02_setting_A_daily21.ipynb` 이 import 하는 `scripts/targets.py` 가 공유 repo 에 미존재였으나, 검토 시점에 이미 다른 팀원이 푸시한 상태
+  - `build_daily_target_21d`, `verify_no_leakage`, `build_leaky_target_for_test` 3 함수 선공 완료
+  - 재천은 설정 B 용 `build_monthly_target_1m` 만 추가 + 모듈 docstring 갱신
+- `scripts/dataset.py` 의 `build_fold_datasets` 도 `target_series` 인자가 이미 추가되어 있음 (하위 호환, `None` 기본값)
+  - 작업 9 불필요 (다른 팀원 완료)
+
+### 작업 결과 (산출 · 검증)
+
+| 모듈 | 신규/수정 | 검증 | 통과 |
+|---|---|---|---|
+| `scripts/targets.py` | `build_monthly_target_1m` 추가 + docstring | Python 스크립트로 02 §3·§4 결과 재현 | ✅ |
+| `scripts/dataset.py` | (다른 팀원이 이미 수정) | 폴드 0 수치 재현 — `scaler.mean_[0]=0.00040364`, `train y mean=0.010401` (02 §6 와 완전 일치) | ✅ |
+| `scripts/models.py` | 신규 작성 | 4건: shape (32,), head_dropout 분기, num_layers=1 warning 0건, batch_first=False 지원 | ✅ |
+| `scripts/train.py` | 신규 작성 | 4건: 인공 누수 R²=0.9857, train_loss 0.008→0.0009, EarlyStop 10/50, ckpt round-trip | ✅ |
+| `scripts/metrics.py` | 신규 작성 | 16건: hit_rate 4 + r2_oos 3 + r2_std 2 + mae/rmse 2 + baseline 4 + summarize 1 | ✅ |
+| `scripts_정의서.md` | 신규 작성 | 6 모듈 상세 + 변경 이력 + 검증 결과 표 | ✅ |
+
+### 핵심 설계 결정
+- **`batch_first=True` 기본값** (02 §5·§7 명시 요구, 학습자료_주의사항 §3.3) — DataLoader 출력 (B,T,F) 호환
+- **num_layers=1 dropout 우회**: LSTM 내부 dropout=0, 별도 `nn.Dropout` 을 head 앞에 적용. 설정 B 대비. warning 0건 확인
+- **Loss/Optimizer/Scheduler**: Huber(δ=0.01) / AdamW(lr=1e-3, wd=1e-4) / ReduceLROnPlateau(patience=5, factor=0.5) — PLAN 확정값
+- **R²_OOS 정의**: Campbell & Thompson (2008) `1 - SSE / sum(y²)`. 0 예측 baseline 대비 개선 척도. 관문 > 0
+- **Trainer 클래스 미도입**: Phase 1 단일 모델에는 함수 스타일 적합
+
+### Windows 환경 이슈 (협업 기록)
+- `targets.py` 의 `verify_no_leakage` print 문이 em-dash(`—`) 포함 → Windows `cp949` 기본 인코딩에서 `UnicodeEncodeError`
+- Jupyter(UTF-8) 에서는 문제없음. CLI 검증 시 `sys.stdout.reconfigure(encoding='utf-8')` 로 우회
+- 모듈 자체는 수정하지 않음 (Mac 환경 타팀원 실행 결과 보존). 향후 한글+특수문자 출력은 ASCII 대체 검토 필요
+
+### 본 task 범위 외 (이후 협의)
+- `02_setting_A_daily21.ipynb` §7~§9 활성화 (실제 106 fold 학습 실행) — 담당자 미정
+- `scripts/plot_utils.py` (학습 곡선·예측 산점도 시각화) — 02 §9 에서 언급
+- `03_setting_B_monthly.ipynb` / `04_compare_A_vs_B.ipynb`
+
+---
+
 ## 산출물 인덱스 (생성 순)
 
 | 파일 | 종류 | 설명 |
 |---|---|---|
 | `재천_WORKLOG.md` | 문서 | 본 작업 일지 (2026-04-24 협업용으로 `WORKLOG.md` → `재천_WORKLOG.md` 이름 변경) |
 | `00_setup_and_utils.ipynb` | 노트북 | 환경 설정·시드·경로·폰트·import |
+| `scripts/setup.py` | 모듈 | 환경 부트스트랩 (setup_korean_font / fix_seed / paths) |
+| `01_data_download_and_eda.ipynb` | 노트북 | yfinance 다운로드 + EDA + ACF |
+| `results/raw_data/{SPY,QQQ}.csv` | 데이터 | 2009-01-02 ~ 2026-03-30, 4336행 |
+| `README.md` | 문서 | 협업 진입점 |
+| `PLAN.md` | 문서 | 전체 Phase 1 plan 사본 |
+| `학습자료_주의사항.md` | 문서 | Study md 주의사항 38개 전수 정리 |
+| `scripts/targets.py` | 모듈 | 타깃 빌더 + 누수 검증 (build_monthly_target_1m 재천 추가) |
+| `scripts/dataset.py` | 모듈 | LSTMDataset / Walk-Forward / build_fold_datasets (target_series 지원) |
+| `scripts/models.py` | 모듈 | LSTMRegressor (batch_first, num_layers=1 dropout 우회) |
+| `scripts/train.py` | 모듈 | train_one_fold / save_checkpoint / get_device |
+| `scripts/metrics.py` | 모듈 | hit_rate / r2_oos / baseline_metrics / summarize_folds |
+| `scripts_정의서.md` | 문서 | scripts/ 모듈 API 정의서 + 변경 이력 |
 
 (이후 진행 시 추가)

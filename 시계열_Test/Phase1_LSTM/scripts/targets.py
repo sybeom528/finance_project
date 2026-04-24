@@ -2,9 +2,10 @@
 
 공개 인터페이스
 --------------
-build_daily_target_21d(adj_close)                       → pd.Series
-verify_no_leakage(log_ret, target, n_checks, seed)      → None  (assert 기반)
-build_leaky_target_for_test(adj_close)                  → pd.Series  (인공 누수용)
+build_daily_target_21d(adj_close)                       → pd.Series  설정 A 타깃
+build_monthly_target_1m(adj_close)                      → pd.Series  설정 B 타깃
+verify_no_leakage(log_ret, target, n_checks, seed)      → None       assert + 육안 표
+build_leaky_target_for_test(adj_close)                  → pd.Series  인공 누수 (§4 검증 3)
 """
 from __future__ import annotations
 
@@ -43,6 +44,48 @@ def build_daily_target_21d(adj_close: pd.Series) -> pd.Series:
     """
     log_ret = np.log(adj_close).diff()                      # 누수: trailing diff
     target = log_ret.rolling(21).sum().shift(-21)            # 누수: forward 21일 합 (예측 목표)
+    return target
+
+
+def build_monthly_target_1m(adj_close: pd.Series) -> pd.Series:
+    """1개월 후 log-return 타깃을 생성한다 (설정 B 용).
+
+    공식
+    ----
+    monthly_close[m] = adj_close.resample('ME').last()[m]   # 월말 종가
+    log_ret_m[m]     = log(monthly_close[m]) - log(monthly_close[m-1])
+    target[m]        = log_ret_m[m+1]   (= log_ret_m.shift(-1)[m])
+
+    즉 위치 m (월말) 의 타깃은 m → m+1 한 달 동안의 log-return.
+
+    누수 주석
+    ---------
+    - ``resample('ME').last()`` : 각 월의 마지막 거래일 종가만 사용 — 미래 참조 없음.
+    - ``diff()``                : 현재·직전 월만 사용 — 안전.
+    - ``.shift(-1)``            : 위치 m 의 값을 m-1 로 당김
+                                  → 위치 m 의 타깃은 m → m+1 수익률이 되어 예측 목표 형성.
+
+    Parameters
+    ----------
+    adj_close : pd.Series
+        수정 종가 시계열 (DatetimeIndex 필수).
+
+    Returns
+    -------
+    pd.Series
+        월말 인덱스 (resample 'ME'). 마지막 1행 NaN (다음 달 데이터 부족).
+
+    Notes
+    -----
+    설정 B (월별 1개월 예측) 의 정식 타깃 빌더.
+    설정 A (일별) 와 달리 누적이 아닌 단일 기간 수익률이므로 purge/embargo 는
+    월 단위 1개월로 축소되어 적용된다 (PLAN.md 설정 B 파라미터 참고).
+    """
+    # 누수: 월말 종가 기준 — look-ahead 없음
+    monthly_close = adj_close.resample('ME').last()
+    log_ret_monthly = np.log(monthly_close).diff()           # 첫 1행 NaN
+    # 누수: shift(-1) 로 위치 m 에 (m → m+1) 다음 달 수익률 배치 (예측 목표)
+    target = log_ret_monthly.shift(-1)
     return target
 
 

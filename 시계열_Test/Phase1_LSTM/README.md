@@ -1,8 +1,9 @@
 # Phase 1 — LSTM 단독 베이스라인
 
-> **협업 진입점 문서**. 처음 합류한 팀원은 이 README → [PLAN.md](PLAN.md) → [재천_WORKLOG.md](재천_WORKLOG.md) → 노트북 순으로 읽으십시오.
+> **협업 진입점 문서**. 처음 합류한 팀원은 이 README → [PLAN.md](PLAN.md) → [scripts_정의서.md](scripts_정의서.md) → [재천_WORKLOG.md](재천_WORKLOG.md) → 노트북 순으로 읽으십시오.
 >
 > - **PLAN.md**: 전체 구현 계획서 (Claude Code plan 파일의 팀 공유 사본, 진실원과 동기화)
+> - **scripts_정의서.md**: `scripts/*.py` 공개 API 정의서 (시그니처·책임·사용 예)
 > - **재천_WORKLOG.md**: 작업·판단 일지 (시간순 누적)
 > - **노트북**: 실제 분석·학습 흐름
 
@@ -54,25 +55,31 @@
 Phase1_LSTM/
 ├── README.md                              ← 이 문서
 ├── PLAN.md                                ← ⭐ 전체 구현 계획 (Claude plan 파일의 팀 공유 사본)
+├── scripts_정의서.md                       ← ⭐ scripts/*.py API 정의서 (시그니처·사용 예·변경 이력)
 ├── 학습자료_주의사항.md                     ← ⭐ Study/*.md 주의·함정 전수 정리 (노트북 작성 시 참고)
 ├── 재천_WORKLOG.md                         ← 작업·판단 일지 (모든 결정 누적, 작성자별 prefix)
 │
 ├── 00_setup_and_utils.ipynb               ← 환경 노트북 (한글 폰트·시드·경로)
 ├── 01_data_download_and_eda.ipynb         ← yfinance 다운로드 + EDA + ACF
-├── 02_setting_A_daily21.ipynb             ← 설정 A 흐름 (예정)
+├── 02_tensor_dataset.ipynb                ← dataset.py 시연·검증 (다른 팀원)
+├── 02_setting_A_daily21.ipynb             ← 설정 A §1~§6 완료, §7~§9 TODO (다른 팀원)
 ├── 03_setting_B_monthly.ipynb             ← 설정 B 흐름 (예정)
 ├── 04_compare_A_vs_B.ipynb                ← A·B 비교·최종 보고 (예정)
 │
 ├── scripts/                               ← 재사용 모듈 (협업용)
-│   ├── __init__.py
-│   ├── setup.py                           ← ✅ 한글 폰트·시드·경로 (Phase 1 전반 공통)
-│   └── (이후 Step 2~3에서 추가될 모듈은 본 README 갱신 시 등재)
+│   ├── __init__.py                        ← 패키지 마커
+│   ├── setup.py                           ← ✅ 환경 부트스트랩 (폰트·시드·경로)
+│   ├── targets.py                         ← ✅ 타깃 빌더 + 누수 검증
+│   ├── dataset.py                         ← ✅ LSTMDataset + Walk-Forward + build_fold_datasets
+│   ├── models.py                          ← ✅ LSTMRegressor (batch_first, 1-layer dropout 우회)
+│   ├── train.py                           ← ✅ train_one_fold + save/load_checkpoint
+│   └── metrics.py                         ← ✅ hit_rate + r2_oos + baseline_metrics
 │
 └── results/                               ← 노트북 실행 결과만 저장 (코드 없음)
     ├── raw_data/                          ← SPY.csv, QQQ.csv (yfinance 원본)
-    ├── setting_A/{SPY,QQQ}/               ← metrics.json, model.pt, *.png
-    ├── setting_B/{SPY,QQQ}/               ← fold별 ckpt
-    └── comparison_report.md               ← 04 노트북에서 자동 생성
+    ├── setting_A/{SPY,QQQ}/               ← metrics.json, model.pt, *.png (추후)
+    ├── setting_B/{SPY,QQQ}/               ← fold별 ckpt (추후)
+    └── comparison_report.md               ← 04 노트북에서 자동 생성 (추후)
 ```
 
 ---
@@ -147,6 +154,7 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 
 - **상위 plan (진실원)**: `C:\Users\gorhk\.claude\plans\c-users-gorhk-finance-project-study-00-m-frolicking-iverson.md`
 - **plan 팀 공유 사본**: [PLAN.md](PLAN.md) (이 폴더 내, 진실원과 동기화)
+- **scripts API 정의서**: [scripts_정의서.md](scripts_정의서.md) (모듈별 공개 인터페이스·사용 예·변경 이력)
 - **상위 학습계획**: `김재천/Study/00_학습계획.md`
 - **원 논문**: Su, X., Lu, K., & Yen, J. (2026). *Objective Black-Litterman views through deep learning: A novel hybrid model for enhanced portfolio returns*. **Expert Systems with Applications, 295.**
 - **Walk-Forward 누수 방지**: López de Prado, M. (2018). *Advances in Financial Machine Learning*. Wiley. §7.
@@ -155,12 +163,15 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 
 ## 7. 진행 상태 (2026-04-24 현재)
 
-| Step | 산출물 | 상태 |
-|---|---|---|
-| Step 0 | `00_setup_and_utils.ipynb` | ✅ 완료 |
-| Step 1 | `01_data_download_and_eda.ipynb` + CSV | ✅ 완료 |
-| Step 2 | `02_setting_A_daily21.ipynb` + scripts/*.py | 🟡 진행 예정 |
-| Step 3 | `03_setting_B_monthly.ipynb` | ⏸ 대기 |
-| Step 4 | `04_compare_A_vs_B.ipynb` | ⏸ 대기 |
+| Step | 산출물 | 담당 | 상태 |
+|---|---|---|---|
+| Step 0 | `00_setup_and_utils.ipynb` + `scripts/setup.py` | 재천 | ✅ 완료 |
+| Step 1 | `01_data_download_and_eda.ipynb` + raw_data CSV | 재천 | ✅ 완료 |
+| Step 2-data | `02_tensor_dataset.ipynb` + `scripts/dataset.py` (LSTMDataset · make_sequences · walk_forward_folds · build_fold_datasets + target_series) | 다른 팀원 | ✅ 완료 |
+| Step 2-target | `scripts/targets.py` (`build_daily_target_21d`, `verify_no_leakage`, `build_leaky_target_for_test` + `build_monthly_target_1m` 재천) | 다른 팀원 + 재천 | ✅ 완료 |
+| Step 2-exec | `scripts/models.py`, `scripts/train.py`, `scripts/metrics.py`, `scripts_정의서.md` | 재천 | ✅ 완료 |
+| Step 2-run | `02_setting_A_daily21.ipynb` §1~§6 실행·검증 | 다른 팀원 | ✅ §1~§6, §7~§9 활성화 대기 |
+| Step 3 | `03_setting_B_monthly.ipynb` | 미정 | ⏸ 대기 |
+| Step 4 | `04_compare_A_vs_B.ipynb` | 미정 | ⏸ 대기 |
 
 문의는 [재천_WORKLOG.md](재천_WORKLOG.md)의 의사결정 보류 항목 또는 작성자(gorhkdwj@gmail.com)에게 전달 부탁드립니다.
