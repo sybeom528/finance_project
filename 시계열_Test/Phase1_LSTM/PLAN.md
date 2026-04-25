@@ -152,14 +152,21 @@ CLAUDE.md 지침에 따라 각 단계 종료 시 사용자에게 결과 보고 +
   - Checkpoint: best val loss 기준 저장 (`results/setting_A/{ticker}/fold_{k}_model.pt`)
   - 노트북은 fold 루프·진행률 표시·결과 집계만 담당. 실제 학습 로직은 `scripts/train.py` 함수 안에.
   - 마크다운: 각 컴포넌트 선택 근거, 가능한 함정 (zero_grad 누락 등)
+  - **(2026-04-25 추가)** fold별 train/val 예측도 `y_true_train`, `y_pred_train`, `y_true_val`, `y_pred_val` 키로 수집. §9.F Train/Val/Test 동일지표 비교를 위해 필요. `VAL_RATIO = 0.2` 상수로 분리.
 - **§9 평가·시각화** — `from scripts.metrics import hit_rate, r2_oos, baseline_metrics` 호출
   - **1차 메트릭 (관문 판정)**:
     - **Hit Rate** = `mean(sign(y_pred) == sign(y_true))` (test 셋, 0 제외 후) — 관문: > 0.55
     - **R²_OOS** = `1 - SSE_model / SSE_zero_baseline` = `1 - sum((y - y_hat)²) / sum(y²)` — Campbell & Thompson(2008) 정의. 0 예측 대비 개선이면 양수. 관문: > 0
   - **2차 메트릭**: MAE, RMSE, 표준 R²(평균 baseline), 직전값 예측 대비 RMSE 개선폭
   - **베이스라인 비교 (필수)**: 직전 값 예측, 0 예측, 학습 평균 — `baseline_metrics(...)` 한 번 호출로 표 산출
-  - 플롯: `from scripts.plot_utils import plot_learning_curve, plot_pred_vs_actual, plot_residuals, plot_sign_confusion` (시각화 함수도 모듈화)
   - 결과 → `results/setting_A/{ticker}/metrics.json` (Hit Rate, R²_OOS, MAE, RMSE, 베이스라인 메트릭 모두 기록)
+  - **(2026-04-25 추가) 과적합 진단 서브섹션 6종**:
+    - **§9.A 학습곡선 갤러리**: 선택 fold(0·25·50·75·마지막) × SPY·QQQ train/val Huber loss 비교 → `learning_curve_gallery.png`
+    - **§9.B best_epoch 분포**: fold별 best epoch 히스토그램 + `best_ep==1` 비율 출력 → `best_epoch_histogram.png`
+    - **§9.C 예측 분포 sanity**: `pred_std/true_std` 비율 0.5 미만이면 mean-collapse 경보. 분포 히스토그램 비교
+    - **§9.D 잔차 시계열 + 부호 혼동행렬**: 잔차 시간 추이(체제 편향 검출) + 2×2 부호 혼동행렬 → `residual_and_confusion.png`
+    - **§9.E 박스플롯**: fold별 R²_OOS / Hit Rate 분포(중앙값·IQR·이상치) → `metric_boxplots.png`
+    - **§9.F Train/Val/Test 동일지표 비교**: train→val→test hit_rate·r²_oos·mae·rmse 변화로 과적합 갭 정량화 → `overfit_gap.png`
 - **§10 결론·메모** — 관문 통과 여부, 의외 발견 기록 (노트북 마크다운 셀)
 
 ### Step 3. 설정 B 전체 (`03_setting_B_monthly.ipynb`) — 02와 동일 모듈 import, 파라미터만 변경
@@ -338,6 +345,6 @@ plt.rcParams['axes.unicode_minus'] = False
 5. Step 2-target `scripts/targets.py` (`build_daily_target_21d` · `verify_no_leakage` 다른 팀원 + `build_monthly_target_1m` 재천) ✅  *(2026-04-25: `build_leaky_target_for_test` 는 제거)*
 6. Step 2-exec `scripts/models.py` · `scripts/train.py` · `scripts/metrics.py` (재천 신규, 단위 검증 4+4+16 PASS) ✅
 7. Step 2-doc `scripts_정의서.md` (재천 신규, 모듈 API 정의서) ✅
-8. Step 2-run `02_setting_A_daily21.ipynb` §1~§6 실행·검증 완료 (다른 팀원), §7~§9 활성화 대기 🟡
+8. Step 2-run `02_setting_A_daily21.ipynb` §1~§9.F 전체 완료 (Run All 준비됨) ✅
 9. Step 3 설정 B — 대기 (targets.py 에 `build_monthly_target_1m` 준비됨)
 10. Step 4 비교 보고 — 대기
