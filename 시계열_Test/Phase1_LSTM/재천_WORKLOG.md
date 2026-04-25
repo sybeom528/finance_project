@@ -591,3 +591,86 @@ results/setting_A/
   - 기존 모듈 호출부와의 하위 호환 영향 (다른 노트북에서 같은 함수 호출 중)
   - SPY·QQQ 외 추가 자산이 들어왔을 때의 일반화 가능성
 - **상태**: 미착수. Phase 1 재 Run 직전 확정 필요.
+
+---
+
+## 2026-04-25 · Forget Gate Bias = 1 초기화 실험 결과
+
+### 실험 배경
+
+학습자료 `김재천/Study/week3_시퀀스모델/02_LSTM_게이트메커니즘.md` §6 권고:
+> 권장: `b_f = 1` 로 초기화 → `f_t = σ(1) ≈ 0.73` → 초기에도 대부분의 정보 유지.
+> 우리 프로젝트 적용: 금융 시계열은 장기 의존성이 중요 → **`b_f=1` 필수**.
+
+→ `scripts/models.py` `LSTMRegressor.__init__` 에 `_init_forget_gate_bias(value=1.0)` 추가.
+
+### Run 결과 비교 (b_f=0 기본 vs b_f=1 적용)
+
+| 지표 | b_f=0 (PyTorch 기본) | b_f=1 (학습자료 권고) | 변화 |
+|------|---------------------|----------------------|------|
+| SPY Hit Rate | 0.6442 ± 0.33 | 0.5894 ± 0.36 | ↓ -0.055 |
+| **SPY R²_OOS** | **-0.1552** ± 0.97 | **-0.8512** ± 2.12 | ↓↓ -0.696 |
+| SPY R²_OOS std | 0.97 | **2.12** | 2.2× 증가 |
+| SPY R²_OOS min | -3.86 | **-12.73** | 3.3× 깊어짐 |
+| QQQ Hit Rate | 0.6006 ± 0.35 | 0.5620 ± 0.37 | ↓ -0.039 |
+| **QQQ R²_OOS** | **-0.5242** ± 1.73 | **-1.2562** ± 3.52 | ↓↓ -0.732 |
+| QQQ R²_OOS std | 1.73 | **3.52** | 2.0× 증가 |
+| QQQ R²_OOS min | -10.80 | **-28.67** | 2.7× 깊어짐 |
+
+**핵심 관찰**:
+- 평균 성능 모두 악화 (Hit Rate, R²_OOS 둘 다)
+- **분산 약 2배 폭증** — 학습 안정성 직접 저하
+- **min 더 깊은 음수** — 일부 fold 가 더 극단적으로 발산
+- 두 ticker 모두 동일 방향 → 우연 아닌 구조적 효과
+
+### 사용자 가설 (2026-04-25, gorhkdwj)
+
+> "근본적인 문제를 해결하려면, Forget gate bias 초기화보다 먼저 **장기 의존성이 존재하는 피쳐 자체가 없어서** 해당 기법이 의도대로 동작하지 않은 것으로 볼 수 있을 것 같음."
+
+**가설 핵심**: forget=1 은 "장기 신호가 있을 때 그것을 보존" 하는 장치다. 장기 신호 자체가 입력에 없으면, 단지 "노이즈를 더 멀리 전파" 하는 결과만 낳는다.
+
+### 가설을 뒷받침하는 데이터
+
+1. **일별 log-return ACF** (논의사항/2026-04-25_Run결과분석.md §3-1)
+   - SPY lag 1 = -0.13, lag 2 이후 |값| < 0.1
+   - → 입력 시퀀스 `(B, 126, 1)` 의 long-tail 정보가 사실상 noise
+
+2. **이번 Run 의 분산 폭증 패턴**
+   - forget=1 적용 후 R²_OOS std 약 2배 → 모델이 noise 를 더 멀리 끌고 다닌 결과로 해석 가능
+   - "정보 73% 유지" 장치가 noise 73% 누적으로 변질
+
+3. **target 의 자기상관은 강하나 (previous baseline hit_rate 0.92), 이는 _input_ 의 장기성이 아닌 _target_ 자체의 윈도우 겹침에서 나옴**
+   - 21일 forward sum 윈도우는 인접 시점이 20일 겹침 → 강한 자기상관
+   - 그러나 input(일별 log-return) 자체는 noise → 모델이 "현재 시점 가까이의 신호" 만 봐도 충분
+
+### 결정
+
+- **b_f=1 초기화 롤백 검토** — 본 환경(univariate daily input + 21일 forward target)에서는 부적절
+- 단, 모델 변경은 **다른 변경과 묶지 말고 독립적으로** 검증 필요 → 롤백 후 단일 변경 Run
+- 학습자료의 일반 권고와 본 데이터 특성 사이 충돌 사례로 기록
+
+### 후속 액션 (확정 시 진행)
+
+1. `scripts/models.py` `_init_forget_gate_bias` 호출 제거 또는 `value=0.0` 으로 변경
+2. 학습자료 §6 의 "필수" 권고가 본 데이터에 적용되지 않는다는 주석을 모델 docstring 에 추가
+3. 다변량 입력(논의사항 §3 — Y_trailing, mean_21, std_21) 적용 후 forget=1 재실험 — 그때는 의도한 효과 가능성
+
+### 결정 (2026-04-25, gorhkdwj 승인)
+
+옵션 A 채택 — `LSTMRegressor.__init__` 에 `forget_gate_bias_init: float | None = None` 인자 추가.
+
+**근거**:
+- Setting A 는 default `None` (= PyTorch 기본 0) → 자동 롤백, 노트북 호출부 변경 불필요
+- Setting B(월별) 또는 다변량 입력 도입 후 재실험 시 인자 한 줄로 켤 수 있어 옵션 보존
+- 가중치 초기화는 모델 클래스 책임이라는 정석 설계 유지
+
+**적용 변경**:
+- `scripts/models.py`
+  - 모듈 docstring §주요 설계 결정 §4: "Forget gate bias 초기화 (옵션)" 으로 변경, 본 프로젝트 부적합 사유 명시
+  - 클래스 `Parameters` 에 `forget_gate_bias_init` 추가 (default None)
+  - `__init__` 끝 forget bias 초기화: `if forget_gate_bias_init is not None:` 가드 적용
+  - `Examples` 에 옵션 인자 사용 예시 1행 추가
+
+**노트북 영향**: 없음. §7/§8 의 `LSTMRegressor(input_size=1, hidden_size=128, num_layers=2, dropout=0.2, batch_first=True)` 호출은 인자 미지정 → default `None` → b_f=0 자동 적용.
+
+**다음 Run 예상**: 본 변경은 forget=1 적용 이전 상태(2026-04-25 첫 Run, R²_OOS SPY -0.1552, QQQ -0.5242) 와 동일 결과로 재현되어야 함. 분산이 다시 절반으로 줄면 가설 확정.

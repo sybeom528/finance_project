@@ -23,13 +23,16 @@ count_parameters(model) → int   — 학습 가능 파라미터 수 집계 (보
    시퀀스를 요약한다. 수익률 예측에서 마지막 시점 정보가 가장 최근·유효한
    신호이므로 ``output[:, -1, :]`` 선택.
 
-4. **Forget gate bias = 1 초기화** (학습자료 02_LSTM_게이트메커니즘.md §6)
-   PyTorch 기본은 모든 bias 를 0 으로 초기화 → ``f_t = sigmoid(0) = 0.5``.
-   매 시점 정보의 절반이 지워져 학습 초기부터 vanishing 이 발생한다.
-   ``b_f = 1`` 로 시작하면 ``f_t = sigmoid(1) ~ 0.73`` 으로 정보 대부분이 유지되며,
-   금융 시계열의 장기 의존성 학습에 유리하다 (Jozefowicz et al., 2015).
-   PyTorch nn.LSTM bias 순서는 ``[i, f, g, o]`` (각 hidden_size) 이므로
-   ``[H : 2H]`` 구간이 forget gate bias 이다.
+4. **Forget gate bias 초기화 (옵션)** — ``forget_gate_bias_init`` 인자
+   학습자료 02_LSTM_게이트메커니즘.md §6 은 ``b_f = 1`` 초기화를 권장하나,
+   본 프로젝트(univariate daily log-return + 21일 forward target)에서는
+   ACF lag 2+ 가 거의 0 으로 입력 자체에 장기 신호가 부재. b_f=1 적용 시
+   오히려 노이즈를 멀리 전파해 분산이 약 2배 폭증함이 실험으로 확인됨
+   (재천_WORKLOG.md 2026-04-25 항목).
+   따라서 default 는 ``None`` (PyTorch 기본 0). Setting B(월별) 등 입력 특성이
+   다른 환경에서 실험하고 싶을 때만 ``forget_gate_bias_init=1.0`` 으로 명시.
+   PyTorch nn.LSTM bias 레이아웃 ``[i, f, g, o]`` 의 ``[H : 2H]`` 구간이
+   forget gate bias 이다.
 """
 from __future__ import annotations
 
@@ -56,6 +59,16 @@ class LSTMRegressor(nn.Module):
     batch_first : bool, default True
         True 면 입력 shape ``(B, T, F)``, False 면 ``(T, B, F)``.
         DataLoader 기본 출력이 ``(B, T, F)`` 이므로 True 권장.
+    forget_gate_bias_init : float or None, default None
+        Forget gate bias 초기값. ``None`` 이면 PyTorch 기본 (0) 사용.
+        ``1.0`` 으로 지정 시 학습자료 §6 권고 (Jozefowicz et al. 2015) 적용.
+
+        **본 프로젝트 Setting A 에서는 ``None`` 권장**:
+        univariate daily log-return 입력은 ACF 가 lag 2+ 에서 거의 0 이라
+        장기 신호 자체가 부재 → ``b_f=1`` 적용 시 노이즈를 더 멀리 전파해
+        오히려 분산 폭증 (재천_WORKLOG.md 2026-04-25 비교 실험 참고).
+
+        Setting B(월별) 또는 다변량 입력 도입 후 재실험 시 ``1.0`` 으로 명시.
 
     Attributes
     ----------
@@ -82,6 +95,10 @@ class LSTMRegressor(nn.Module):
     >>> model_b = LSTMRegressor(1, hidden_size=64, num_layers=1, dropout=0.3)
     >>> isinstance(model_b.head_dropout, nn.Dropout)
     True
+
+    Forget gate bias 옵션 (Setting B 등에서 시험할 때):
+
+    >>> model_c = LSTMRegressor(1, 64, 1, 0.3, forget_gate_bias_init=1.0)
     """
 
     def __init__(
@@ -91,6 +108,7 @@ class LSTMRegressor(nn.Module):
         num_layers: int = 2,
         dropout: float = 0.2,
         batch_first: bool = True,
+        forget_gate_bias_init: float | None = None,
     ) -> None:
         super().__init__()
         self.input_size = input_size
@@ -98,6 +116,7 @@ class LSTMRegressor(nn.Module):
         self.num_layers = num_layers
         self.dropout_p = dropout
         self.batch_first = batch_first
+        self.forget_gate_bias_init = forget_gate_bias_init
 
         # num_layers=1 시 LSTM dropout 인자는 무시됨 → 0.0 넘기고 head_dropout 으로 대체
         lstm_dropout = dropout if num_layers > 1 else 0.0
@@ -114,10 +133,11 @@ class LSTMRegressor(nn.Module):
         )
         self.head = nn.Linear(hidden_size, 1)
 
-        # Forget gate bias = 1 초기화 (학습자료 §6, Jozefowicz et al. 2015)
-        # PyTorch LSTM bias 레이아웃: [b_ii | b_if | b_ig | b_io], 각 길이 hidden_size.
-        # b_ih_l*, b_hh_l* 양쪽 모두 동일 레이아웃이므로 두 bias 모두 forget 구간을 1 로 채움.
-        self._init_forget_gate_bias(value=1.0)
+        # Forget gate bias 초기화 (옵션) — 학습자료 §6, Jozefowicz et al. 2015.
+        # 본 Setting A 에서는 default None (= PyTorch 기본 0). Setting B 등에서만
+        # forget_gate_bias_init=1.0 으로 명시해 시험. 자세한 근거는 클래스 docstring 참고.
+        if forget_gate_bias_init is not None:
+            self._init_forget_gate_bias(value=float(forget_gate_bias_init))
 
     def _init_forget_gate_bias(self, value: float = 1.0) -> None:
         """LSTM forget gate bias 를 ``value`` 로 초기화.
