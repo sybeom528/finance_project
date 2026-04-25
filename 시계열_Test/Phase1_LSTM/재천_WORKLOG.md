@@ -573,3 +573,21 @@ results/setting_A/
 | `scripts_정의서.md` | 문서 | scripts/ 모듈 API 정의서 + 변경 이력 |
 
 (이후 진행 시 추가)
+
+---
+
+## TODO — 차후 수행 태스크 (팀 합의 후 진행)
+
+### [팀 논의 필요] fold 105 NaN 혼입 버그 수정
+- **등록일**: 2026-04-25
+- **항목**: 1순위 B (논의사항/2026-04-25_Run결과분석.md 부록 참고)
+- **현상**: `walk_forward_folds(n_samples=2514, ...)` 호출이 타깃 마지막 21행 NaN 영역까지 fold 를 생성. fold 105 의 test_idx 일부가 NaN → baseline mae/rmse/r² 가 NaN 으로 전파됨.
+- **수정 후보**:
+  - (1) 노트북 §6 호출부: `walk_forward_folds(n_samples=int(targets_dict[ticker].notna().sum()), ...)` 형태로 NaN 제외 길이 사용
+  - (2) `scripts/dataset.py:walk_forward_folds` 내부에서 `target_series` 인자를 받아 NaN 자동 제외
+  - (3) §8 학습 루프 안에서 fold 별로 `np.isnan(y_true).any()` 체크 후 skip
+- **논의 포인트**:
+  - 어느 계층(노트북 vs 모듈)에서 처리하는 게 책임 경계상 적절한지
+  - 기존 모듈 호출부와의 하위 호환 영향 (다른 노트북에서 같은 함수 호출 중)
+  - SPY·QQQ 외 추가 자산이 들어왔을 때의 일반화 가능성
+- **상태**: 미착수. Phase 1 재 Run 직전 확정 필요.
