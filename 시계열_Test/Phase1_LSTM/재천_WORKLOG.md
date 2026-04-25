@@ -674,3 +674,53 @@ results/setting_A/
 **노트북 영향**: 없음. §7/§8 의 `LSTMRegressor(input_size=1, hidden_size=128, num_layers=2, dropout=0.2, batch_first=True)` 호출은 인자 미지정 → default `None` → b_f=0 자동 적용.
 
 **다음 Run 예상**: 본 변경은 forget=1 적용 이전 상태(2026-04-25 첫 Run, R²_OOS SPY -0.1552, QQQ -0.5242) 와 동일 결과로 재현되어야 함. 분산이 다시 절반으로 줄면 가설 확정.
+
+---
+
+## 2026-04-25 · 개선사항 2-1 ~ 2-5 일괄 적용
+
+### 근거 문서
+
+- 논의사항/2026-04-25_02_개선사항_제안.md §2-1 ~ §2-5
+- 사용자 결정: 2-1 ~ 2-5 만 적용. **2-6 입력 피처 확장은 차후 Phase 2 또는 별도 경로에서 진행 예정**.
+
+### 변경 범위 — 노트북 6개 셀 + 산출물 표
+
+| 셀 ID | 위치 | 변경 |
+|---|---|---|
+| `a2000013` | §5 | `SEQ_LEN = 126` → `63`. 안내 메시지 일치 갱신 |
+| `a2000014` | §6 markdown | 예상 폴드 수 `106` → `105`, val 시퀀스 수 음수 경고 → 새 분할(train 134/val 33) 명시로 교체 |
+| `a2000015` | §6 code | NaN 버그 수정 — `n_samples = len(spy_lr)` 를 `min(SPY_valid, QQQ_valid)` 로 변경. 유효 타깃 수 출력 print 추가 |
+| `a2000020` | §7 smoke test | `LSTMRegressor` 인자 `hidden_size=128, num_layers=2, dropout=0.2` → `32, 1, 0.3` |
+| `a2000022` | §8 training | (1) `run_all_folds` default 값 변경 (hidden, num_layers, dropout, max_epochs, patience, weight_decay) (2) `lr_patience` 인자 시그니처 노출 + `train_one_fold` 호출에 전달 추가 (3) SPY/QQQ 호출 사이트에 명시 인자 전달 |
+| `a2000025` | §10 결론 | 표 6행 갱신: seq_len, 폴드 수, 훈련 샘플/폴드, LSTM 구조, 파라미터 수, 학습 구성 |
+
+### 핵심 수치 변화
+
+| 항목 | Before | After | 항목 | Before | After |
+|---|---|---|---|---|---|
+| seq_len | 126 | **63** | hidden_size | 128 | **32** |
+| n_samples | 2514 | **2493** | num_layers | 2 | **1** |
+| 폴드 수 | 106 | **105** | dropout | 0.2 | **0.3** |
+| 훈련 시퀀스/fold | 105 | **168** | weight_decay | 1e-4 | **1e-3** |
+| train/val 분할 | 84/21 | **134/33** | max_epochs | 50 | **30** |
+| 파라미터 수 | 199,297 | **4,513** (1/44) | early_stop_patience | 10 | **5** |
+| | | | lr_patience | 5 (비노출) | **3** (노출) |
+
+### 적용 방법
+
+`_apply_2_1_to_2_5.py` (1회용 스크립트) 작성 → 노트북 JSON 의 6개 셀 source 에 targeted 문자열 치환 → 저장 후 스크립트 삭제. AST 파싱 + 핵심 변경 9건 grep 검증 모두 통과.
+
+### 미적용 항목 (계획)
+
+- **2-6 입력 피처 확장** (Y_trailing, mean_21, std_21 → input_size 1→4): 차후 Phase 2 진입 시 또는 별도 경로에서 구축. 현 시점 노트북에는 일체 미반영.
+
+### 산출물 영향
+
+`scripts/*.py` 파일 변경 없음 — 모든 변경이 노트북 호출 인자에서 흡수됨. `train.py` 의 `lr_patience` 인자는 이미 존재했고, 노트북 `run_all_folds` 시그니처에 노출만 추가.
+
+### 다음 Run 시 산출물 변경 예상
+
+- `results/setting_A/{SPY,QQQ}/metrics.json` 의 `hyperparams` 필드: 새 값으로 갱신
+- §9.A~F PNG 6종: 모두 새 학습 결과 반영해 재생성
+- baseline mae/rmse/r² 가 정상 산출 (NaN 전파 차단)
