@@ -39,10 +39,10 @@
 │   ├── 재천_WORKLOG.md                ← 팀 공통 작업·판단 일지
 │   └── 윤서_WORKLOG.md                ← 윤서 담당 작업·설계 결정 일지
 │
-├── 📓 노트북 파일 (2개 완료, 2개 예정)
+├── 📓 노트북 파일 (3개 완료, 2개 예정)
 │   ├── 00_setup_and_utils.ipynb       ← ✅ 환경 설정 노트북 (%run 호환)
 │   ├── 01_data_download_and_eda.ipynb ← ✅ 데이터 수집 + EDA + ACF
-│   ├── 02_setting_A_daily21.ipynb     ← 🟡 설정 A (§1~§6 완료, §7~§9 활성화 대기)
+│   ├── 02_setting_A_daily21.ipynb     ← ✅ 설정 A 전체 완료 (§1~§10, Run All 준비됨)
 │   ├── 03_setting_B_monthly.ipynb     ← ⏸ 예정 (설정 B)
 │   └── 04_compare_A_vs_B.ipynb        ← ⏸ 예정 (A·B 비교 최종 보고)
 │
@@ -57,7 +57,7 @@
 │
 └── 📁 results/ (실행 결과만 저장)
     ├── raw_data/                      ← SPY.csv, QQQ.csv (yfinance 원본)
-    ├── setting_A/{SPY,QQQ}/           ← metrics.json, model.pt, *.png (추후)
+    ├── setting_A/{SPY,QQQ}/           ← metrics.json, fold0_learning_curve.png 등
     ├── setting_B/{SPY,QQQ}/           ← fold별 ckpt (추후)
     ├── cumulative_return_viz.png      ← 누적 vs 단순 수익률 시각화
     └── comparison_report.md           ← 04 노트북에서 자동 생성 (추후)
@@ -145,9 +145,9 @@ df['log_return'] = np.log(df['Adj Close']).diff()
 | §4 | `verify_no_leakage()` — assert + 육안 표 누수 검증 PASS | ✅ |
 | §5 | LSTMDataset 임포트 + SEQ_LEN=126 설정, (B,T,F) 축 주의사항 명시 | ✅ |
 | §6 | `walk_forward_folds()` — 106개 폴드 생성·검증, `build_fold_datasets()` 호출 | ✅ |
-| §7 | `LSTMRegressor` 임포트 + 모델 구조 확인 | 🟡 활성화 대기 |
-| §8 | `train_one_fold()` — 106폴드 학습 루프 | 🟡 활성화 대기 |
-| §9 | `hit_rate`, `r2_oos` — 평가 + 관문 판정 | 🟡 활성화 대기 |
+| §7 | `LSTMRegressor(1,128,2,0.2)` 임포트 + smoke test (199,297 params) PASS | ✅ |
+| §8 | `build_train_val_loaders` + `run_all_folds` — SPY·QQQ 106폴드 CUDA 학습 | ✅ |
+| §9 | `hit_rate`·`r2_oos` 집계 + 베이스라인 비교 + 관문 판정 + `metrics.json` + 3 PNG | ✅ |
 | §10 | 결론·메모 + 학습자료_주의사항 준수 현황 표 | ✅ |
 
 ---
@@ -233,7 +233,7 @@ target = build_daily_target_21d(adj_close)
 # 내부 구현:
 # log_ret = np.log(adj_close).diff()           # trailing diff (안전)
 # target  = log_ret.rolling(21).sum().shift(-21) # forward 합 (예측 목표)
-# → NaN: 첫 1행 + 마지막 21행 = 총 22행 NaN
+# → NaN: 마지막 21행 (shift(-21)이 첫 1행 NaN을 범위 밖으로 밀어냄)
 
 # 2. 누수 검증 (2단계)
 verify_no_leakage(log_ret, target, n_checks=3, seed=42)
@@ -241,15 +241,6 @@ verify_no_leakage(log_ret, target, n_checks=3, seed=42)
 # 단계 2 — 육안 표: 첫 5행의 (날짜, log_ret, target, 직접계산, 일치여부)
 ```
 
-**인공 누수 sanity check**:
-```python
-from scripts.targets import build_leaky_target_for_test
-
-# 의도적 누수: target[t] = log_ret[t] (입력의 마지막 값 = 타깃)
-leaky_target = build_leaky_target_for_test(adj_close)
-# 이걸로 학습하면 R² > 0.9 → 평가 파이프라인이 정상임을 확인
-# R² < 0.9 → 평가 코드 자체에 버그
-```
 
 ---
 
@@ -560,7 +551,7 @@ target: shape (T,)         folds[k] = (train_idx, test_idx)
 
 | # | 위치 | 위험 | 방어 |
 |---|---|---|---|
-| 1 | 타깃 shift 부호 | `shift(-21)` 대신 `shift(21)` → 미래 누수 | §4 assert + 육안 표 + 인공 누수 대조 |
+| 1 | 타깃 shift 부호 | `shift(-21)` 대신 `shift(21)` → 미래 누수 | §4 assert + 육안 표 (2종 검증) |
 | 2 | rolling 윈도우 정렬 | 기본 trailing이지만 forward 합이어야 함 | `.shift(-21)` 명시 + 첫 5행 검증 |
 | 3 | Scaler fit 범위 | 전체에 fit → val/test 통계 누설 | **train_idx 에만 fit**, 나머지 transform만 |
 | 4 | seq_len 경계 | 126일 윈도우가 split 경계를 넘으면 누수 | purge+embargo 구간 42일로 seq_len 126보다 짧아 엄밀하지 않으나, purge가 타깃 누수, embargo가 autocorrelation을 각각 방어 |
