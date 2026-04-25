@@ -134,9 +134,10 @@ def verify_no_leakage(
             "데이터 기간을 확인하십시오."
         )
 
-    chosen = sorted(rng.choice(valid_pos, size=n_checks, replace=False))
+    chosen = sorted(rng.choice(valid_pos, size=n_checks, replace=False)) # 무작위 시점 세개 고름
 
     print("=== 누수 검증 1 — Assert 단위 테스트 ===")
+    # 직접 계산한 값 (expected) == actual (함수가 만든 타깃값) 인지 검사
     for pos in chosen:
         t = target.index[pos]
         expected = log_ret.iloc[pos + 1 : pos + 22].sum()
