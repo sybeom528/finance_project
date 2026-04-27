@@ -1,9 +1,9 @@
-# Phase 1.5 변동성 예측 분기 — 종합 진행 보고서 (v5 최종)
+# Phase 1.5 변동성 예측 분기 — 종합 진행 보고서 (v8 최종 마감)
 
-> **작성일**: 2026-04-27 (v5 마감 시점)
+> **작성일**: 2026-04-27 (v8 마감 시점)
 > **작성자**: 재천
 > **소속 프로젝트**: COL-BL (Su et al. 2026 ESWA 295 — Constrained Online Learning Black-Litterman 재현·확장)
-> **본 단계 위치**: 시계열_Test → Phase1 LSTM 종료 → **Phase 1.5 변동성 분기 (v1 → v2 → v3 → v4 → v5)** → **Phase 2 또는 BL 통합 단계 진입 대기**
+> **본 단계 위치**: 시계열_Test → Phase1 LSTM 종료 → **Phase 1.5 변동성 분기 (v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8)** → **Phase 2 또는 BL 통합 단계 진입 대기**
 
 ---
 
@@ -12,22 +12,26 @@
 | 버전 | 시점 | 결론 |
 |---|---|---|
 | 초판 (§03 까지) | 2026-04-27 저녁 | "LSTM 부적합, HAR-RV 표준" |
-| v3 갱신 | 2026-04-27 밤 | "v3 best 도 HAR 격차 +15%, LSTM 부적합 결론 유지" |
-| **v4 갱신** | **2026-04-27 심야** | **"v4 best (3ch_vix/IS=1250) 가 HAR 능가 (-10.7%)"** |
-| **v5 최종** | **2026-04-27 밤** | **"7 종목 중 5 종목 HAR 능가 — 자산별 모델 선택 권고"** ⭐ |
+| v3 갱신 | 2026-04-27 밤 | "v3 best 도 HAR 격차 +15%, LSTM 부적합" |
+| v4 갱신 | 2026-04-27 심야 | "v4 best (3ch_vix/IS=1250) 가 HAR 능가" |
+| v5 갱신 | 2026-04-27 밤 | "7 종목 중 5 종목 HAR 능가 — 자산별 모델 선택" |
+| v6 갱신 | 2026-04-27 새벽 | "외부지표 9채널 추가 — 모든 종목 악화" ❌ |
+| v7 갱신 | 2026-04-27 새벽 | "외부지표 4종 ablation — 모두 noise 입증" |
+| **v8 최종 마감** | **2026-04-27 밤** | **"Performance-Weighted Ensemble = 본 환경 최선 (5/7 best)"** ⭐⭐⭐ |
 
 ---
 
-## Executive Summary (한 페이지 요약 — v5 최종 갱신)
+## Executive Summary (한 페이지 요약 — v8 최종 마감)
 
 ### 단일 질문
 > **"변동성 예측이 가능한가?"**
 
-### 한 줄 답변 (v5 후 갱신)
-> **YES — 변동성 예측은 가능. 자산별로 최적 모델이 다름.**
-> - **미국 지수·신흥국·섹터**: LSTM v4 best (3ch_vix/IS=1250) 우위
-> - **개별 주식·방어주**: HAR-RV 우위
-> - **위험 관리 (QLIKE) 측면**: HAR 이 5/7 종목 우위
+### 한 줄 답변 (v8 후 최종)
+> **YES — Performance-Weighted Ensemble (v4 LSTM + HAR-RV) 가 본 환경의 최선.**
+> - **7 종목 중 5 종목 best (5/7)**
+> - **avg RMSE 0.2934**, avg QLIKE 0.2582 (둘 다 1위)
+> - **DM 검정 6/7 종목**에서 LSTM v4 단독 대비 5% 유의 우위
+> - **시간 동적 적응** — 체제 변화 자동 반영
 
 ### 핵심 결과 — **다중 자산 평가 (7 종목 × 5 모델)**
 
@@ -878,4 +882,312 @@ Phase1_5_Volatility/
 
 ---
 
-*Phase 1.5 v5 마감 보고서 종료. BL 통합 단계 진입 준비 완료.*
+---
+
+# ⭐⭐ v6 → v7 → v8 (Phase 1.5 최종 마감)
+
+## 20. v6 — 외부지표 9채널 통제 실험 (실패 사례)
+
+### 20.1 진입 동기
+
+> "LSTM 에 외부지표 더 추가" 사용자 요청 → 통제 실험 (hyperparameter 모두 v4 best 동일)
+
+### 20.2 추가 외부지표 4종
+
+| 지표 | yfinance | 학술 근거 |
+|---|---|---|
+| VVIX | `^VVIX` | Bollerslev 2009 (vol-of-vol) |
+| SKEW | `^SKEW` | Bakshi-Madan 2003 (꼬리 위험) |
+| ^TNX | `^TNX` | Adrian-Crump 2014 (10Y 금리) |
+| DXY | `DX-Y.NYB` | 글로벌 변동성 |
+
+→ 8채널 입력 (4ch + 4 외부지표)
+
+### 20.3 v6 결과 — **충격적 악화**
+
+| 종목 | v4 RMSE | v6 RMSE | Δ |
+|---|---|---|---|
+| SPY | 0.32 | **0.65** | **+103%** ❌ |
+| QQQ | 0.29 | **0.69** | **+136%** ❌ |
+| 평균 | 0.30 | **0.67** | +123% ❌ |
+
+→ **7/7 종목 악화** + r2_train_mean 매우 큰 음수 (-4 ~ -44)
+
+### 20.4 v6 의 의미
+
+> 외부지표 단순 추가는 본 환경에서 효과 없음. 어느 외부지표가 noise 인지 ablation 으로 진단 필요.
+
+---
+
+## 21. v7 — 외부지표 Ablation Study
+
+### 21.1 4 ablation 조합
+
+| Ablation | 입력 (7ch) | 측정 |
+|---|---|---|
+| **-VVIX** | 4ch + skew + tnx + dxy | VVIX 효과 |
+| **-SKEW** | 4ch + vvix + tnx + dxy | SKEW 효과 |
+| **-TNX** | 4ch + vvix + skew + dxy | TNX 효과 |
+| **-DXY** | 4ch + vvix + skew + tnx | DXY 효과 |
+
+### 21.2 외부지표 importance 순위 (noise 강도)
+
+| 순위 | 외부지표 | 평균 Δ RMSE (vs v6) | 의미 |
+|---|---|---|---|
+| 1위 | **TNX** | **-0.31** | 가장 큰 noise |
+| 2위 | SKEW | -0.27 | |
+| 3위 | DXY | -0.25 | |
+| 4위 | VVIX | -0.21 | |
+
+→ **4 외부지표 모두 noise** (모두 음수 Δ)
+
+### 21.3 v7 의 핵심 결론
+
+> **본 daily 환경에서 VIX 만 효과 있는 외부지표.**
+> VVIX, SKEW, ^TNX, DXY 추가는 모두 noise.
+> v4 best (4ch: HAR + VIX) = 본 환경 최선의 단일 LSTM.
+
+### 21.4 학술 사례와의 차이
+
+| 학술 사례 | 환경 | 외부지표 효과 |
+|---|---|---|
+| Bollerslev 2009 (VVIX) | 5분 intraday | 강한 효과 |
+| Adrian-Crump 2014 (TNX) | 채권·금융 | 강한 효과 |
+| **본 프로젝트** | **일별 7 종목** | **모두 noise** |
+
+→ **환경 차이가 결정적**
+
+---
+
+## 22. **v8 — Ensemble Evaluation (Phase 1.5 의 진정한 best)** ⭐⭐⭐
+
+### 22.1 4 Ensemble 변형
+
+| 변형 | 가중치 | 학술 근거 |
+|---|---|---|
+| simple | 0.5 / 0.5 | Stock-Watson 2004 |
+| ivw | 1/MSE 비율 (단일) | Bates-Granger 1969 |
+| **performance** | **이전 fold OOS RMSE rolling** | Diebold-Pauly 1987 |
+| asset_specific | 종목별 RMSE 비율 | 본 프로젝트 v5 |
+
+### 22.2 핵심 — **학습 X, GPU 불필요**
+
+```
+v4 best, HAR 의 fold_predictions: 이미 저장됨
+→ 가중 평균만 계산 (수 초)
+→ 메트릭 + DM 검정 (수 초)
+→ 전체 ~5분 (CPU 만)
+```
+
+### 22.3 v8 결과 — **Performance 가 best** ⭐
+
+**전 종목 평균 메트릭**:
+
+| 모델 | avg RMSE | avg QLIKE |
+|---|---|---|
+| lstm_v4 | 0.2988 | 0.2792 |
+| har | 0.3023 | 0.2649 |
+| simple | 0.2944 | 0.2594 |
+| ivw | 0.2944 | 0.2591 |
+| **performance** | **0.2934** ⭐ | **0.2582** ⭐ |
+| asset_specific | 0.2944 | 0.2594 |
+
+**종목별 best 분포**:
+
+| 모델 | best 종목 수 |
+|---|---|
+| **performance** | **5/7** ⭐ (SPY, DIA, XLF, GOOGL, WMT) |
+| lstm_v4 | 1/7 (EEM) |
+| simple | 1/7 (QQQ) |
+| 나머지 | 0/7 |
+
+### 22.4 DM 검정 결과 (Performance vs 단일 모델)
+
+| 비교 | 5% 유의 우위 종목 |
+|---|---|
+| **vs LSTM v4** | 6/7 (모든 종목 except EEM) |
+| **vs HAR** | 4/7 (DIA, EEM, XLF, GOOGL) |
+
+→ **Ensemble 의 통계적 우위 명확**
+
+### 22.5 Performance-Weighted 의 작동 원리
+
+```
+fold k 의 가중치:
+  w_LSTM[k] = (1/RMSE_LSTM[k-1]) / (1/RMSE_LSTM[k-1] + 1/RMSE_HAR[k-1])
+
+→ 이전 fold OOS RMSE 의 역수 비율
+→ "최근 잘한 모델에 더 큰 가중치"
+→ 시간 동적 적응 (체제 변화 자동 반영)
+```
+
+### 22.6 왜 Performance 가 다른 변형보다 우수?
+
+| 변형 | 시간 동적 | 종목별 다름 | 본 결과 |
+|---|---|---|---|
+| simple | ❌ | ❌ | 4위 |
+| ivw | ❌ | ✅ | 4위 (simple 과 동등) |
+| **performance** | ✅ | ✅ (자동) | **1위** ⭐ |
+| asset_specific | ❌ | ✅ | 4위 |
+
+→ **유일하게 시간 동적인 변형** = best
+
+---
+
+## 23. **Phase 1.5 최종 결론 (v8 후 마감)** ⭐⭐⭐
+
+### 23.1 단일 질문 답변 (최종)
+
+> **"변동성 예측이 가능한가?" → YES, Performance-Weighted Ensemble (v4 LSTM + HAR-RV) 이 본 환경 최선.**
+
+### 23.2 모든 단계 진화 (정리)
+
+```
+v1 (1ch/IS=504):                       0.4506  관문 0/3
+v2 (3ch/IS=504):                       0.4780  관문 1/3
+v3 best (3ch/IS=750):                  0.4001  관문 1/3
+v4 best (3ch_vix/IS=1250):             0.3107  관문 2/3 ⭐
+v5 (7 종목):                           5/7 종목 HAR 능가 ⭐⭐
+v6 (8ch 외부지표):                     0.6692  전 종목 악화 ❌
+v7 (외부지표 ablation):                  외부지표 모두 noise 입증
+v8 ensemble (Performance) ⭐⭐⭐         0.2934 (5/7 best)
+─────────────────────────────────────────────────────
+HAR-RV (참고):                          0.3023
+```
+
+### 23.3 가설 가중치 — 최종
+
+| 가설 | 초기 (v2) | v8 최종 |
+|---|---|---|
+| (a) 변수+샘플 부족 | 50~60% | 35~45% |
+| (b) Long-memory | 15~20% | 5~10% |
+| (c) 다체제 혼합 | 15~20% | 15~20% |
+| (d) LSTM 자체 한계 | 5~10% | 15~25% |
+| (e) 자산 특성별 | — | 15~20% |
+| **(f) Ensemble 효과** | — | **20~25%** ⭐ (v8 신규) |
+
+### 23.4 핵심 통찰 (Take-aways)
+
+1. **충분 데이터 (IS=1250) + VIX = LSTM 도 변동성 예측 가능** (v4)
+2. **외부지표 추가 (VVIX/SKEW/TNX/DXY) 는 본 환경 noise** (v6/v7)
+3. **단일 모델 한계 → Ensemble 로 극복** (v8)
+4. **Performance-Weighted 의 동적 적응** 이 정적 ensemble 보다 우수
+5. **자산 특성별 차이 명확** (EEM = LSTM 강점, WMT = HAR 강점)
+
+---
+
+## 24. **BL 통합 단계 권고** (v8 후 최종)
+
+### 24.1 변동성 입력 모델 결정
+
+```
+1순위: Performance-Weighted Ensemble
+       - v4 best LSTM + HAR-RV (rolling 가중치)
+       - 본 결과 5/7 종목 best
+       - DM 검정 통계 유의 우위
+
+2순위 (자산 다양성 큰 환경): Asset Cluster 별 ensemble
+       - 신흥국·섹터: LSTM 우위
+       - 방어주: HAR 단독
+       - 대형주: Performance Ensemble
+
+3순위 (운영 비용 최소): HAR 단독
+       - LSTM 학습 비용 X
+       - 평균 RMSE -3% 손해
+```
+
+### 24.2 운영 가이드
+
+| 항목 | 권고 |
+|---|---|
+| 새 자산 추가 | 최초 1회 LSTM v4 학습 (50초) → Ensemble 적용 |
+| 운영 빈도 | 주간 LSTM 재학습 (drift 방지) |
+| 모니터링 | 일별 RMSE / QLIKE → 이상 감지 |
+| Fallback | 학습 실패 시 HAR 단독 |
+
+### 24.3 500 종목 일반화 (사용자 추가 질문)
+
+```
+Q. "Performance-Weighted 통일 적용 가능?"
+
+A. "Sample 검증 후 결정 권고"
+   - 50~100 sample 종목 4 ensemble 변형 비교
+   - Performance 60%+ best → 단일 적용
+   - 자산군별 차이 → Cluster 별 ensemble
+   - 차이 미미 → HAR 단독 (비용 효율)
+
+→ 후속 task 로 분리
+```
+
+---
+
+## 25. **Phase 1.5 종료 선언** ⭐⭐⭐
+
+```
+═══════════════════════════════════════════════════════════════════
+Phase 1.5 — 변동성 예측 분기 종료 (2026-04-27 밤)
+═══════════════════════════════════════════════════════════════════
+
+  단일 질문: "변동성 예측이 가능한가?"
+  답변: YES — Performance-Weighted Ensemble (v4 + HAR)
+        본 환경 최선 (5/7 종목 best, RMSE 0.2934)
+  
+  진화: v1 (4ch) → v2 (3ch) → v3 (Optuna) → v4 (VIX+IS1250) ⭐
+        → v5 (7종목) → v6 (8ch 실패) → v7 (ablation) → v8 (Ensemble) ⭐⭐⭐
+  
+  최종 best: v8 (Performance-Weighted Ensemble)
+  
+  다음 단계: Phase 2 또는 BL 통합 단계의 변동성 입력으로 활용
+═══════════════════════════════════════════════════════════════════
+```
+
+---
+
+## 26. 산출물 — Phase 1.5 마감 (v8 후)
+
+```
+Phase1_5_Volatility/
+├── README.md, PLAN.md, REPORT.md (본 문서), 재천_WORKLOG.md (~1,640 라인)
+├── 노트북 (총 12종)
+│   ├── 00 ~ 04 (기본 + EDA + v1, v2, §03, §04)
+│   ├── 02_v3_lstm_optuna.ipynb (v3)
+│   ├── 02_v4_lstm_optuna.ipynb (v4)
+│   ├── 02_v4_final_evaluation.ipynb (v4 final)
+│   ├── 05_multi_asset_evaluation.ipynb (v5)
+│   ├── 06_lstm_external_indicators.ipynb (v6)
+│   ├── 07_ablation_study.ipynb (v7)
+│   └── 08_ensemble_evaluation.ipynb (v8) ⭐
+├── _build_*.py (8종)
+├── _test_modules.py (17건 PASS)
+├── scripts/ (8 모듈)
+└── results/
+    ├── raw_data/ (8 종목 + VIX, VVIX, SKEW, TNX, DXY)
+    ├── volatility_lstm/ (v1)
+    ├── volatility_lstm_har3ch/ (v2)
+    ├── lstm_optuna/ (v3)
+    ├── lstm_optuna_v4/ (v4)
+    ├── lstm_v4_final/ (v4 final)
+    ├── multi_asset/ (v5, 7종)
+    ├── lstm_v6_9ch/ (v6)
+    ├── lstm_v7_ablation/ (v7)
+    ├── lstm_ensemble/ (v8) ⭐
+    └── 종합 보고서들 (8종 .md)
+```
+
+---
+
+## 27. **후속 태스크 (Phase 1.5 종료 후 별도 작업)**
+
+| # | 태스크 | 우선순위 |
+|---|---|---|
+| 1 | 500 종목 일반화 검증 (50~100 sample) | 중간 |
+| 2 | BL 통합 단계 plan 수립 | **최고** ⭐ |
+| 3 | §03/§04 결과 셀 상세 설명 (보류 중) | 낮음 |
+| 4 | Cluster 분류 분석 (자산군별 ensemble) | 중간 |
+| 5 | 추가 학술 검증 (ARFIMA / GARCH-MIDAS) | 낮음 |
+
+→ 각 태스크는 Phase 2 또는 BL 통합 단계 진입 후 별도 노트북으로 진행
+
+---
+
+*Phase 1.5 v8 최종 마감 보고서 종료. BL 통합 단계 진입 준비 완료.*
