@@ -2,14 +2,44 @@
 
 공개 인터페이스
 --------------
-build_daily_target_21d(adj_close)                       → pd.Series  설정 A 타깃
+build_daily_target(adj_close, horizon)                  → pd.Series  horizon일 누적 forward log-return
+build_daily_target_21d(adj_close)                       → pd.Series  설정 A 타깃 (horizon=21)
+build_daily_target_14d(adj_close)                       → pd.Series  설정 A-14 타깃 (horizon=14)
 build_monthly_target_1m(adj_close)                      → pd.Series  설정 B 타깃
-verify_no_leakage(log_ret, target, n_checks, seed)      → None       assert + 육안 표
+verify_no_leakage(log_ret, target, n_checks, seed,
+                  horizon)                              → None       assert + 육안 표
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+
+def build_daily_target(adj_close: pd.Series, horizon: int = 21) -> pd.Series:
+    """horizon일 누적 forward log-return 타깃을 생성한다.
+
+    공식
+    ----
+    log_ret[t] = log(adj_close[t]) - log(adj_close[t-1])
+    target[t]  = log_ret[t+1] + ... + log_ret[t+horizon]
+               = log_ret.rolling(horizon).sum().shift(-horizon)[t]
+
+    Parameters
+    ----------
+    adj_close : pd.Series
+        수정 종가 시계열 (DatetimeIndex).
+    horizon : int, default=21
+        예측 horizon (영업일). Purge 기간과 동일하게 설정해야 누수 없음.
+
+    Returns
+    -------
+    pd.Series
+        target[t] = horizon일 누적 forward log-return.
+        NaN: 첫 1행 (log_ret diff) + 마지막 horizon행 (forward 기간 부족).
+    """
+    log_ret = np.log(adj_close).diff()
+    target = log_ret.rolling(horizon).sum().shift(-horizon)
+    return target
 
 
 def build_daily_target_21d(adj_close: pd.Series) -> pd.Series:
@@ -44,6 +74,15 @@ def build_daily_target_21d(adj_close: pd.Series) -> pd.Series:
     log_ret = np.log(adj_close).diff()                      # 누수: trailing diff
     target = log_ret.rolling(21).sum().shift(-21)            # 누수: forward 21일 합 (예측 목표)
     return target
+
+
+def build_daily_target_14d(adj_close: pd.Series) -> pd.Series:
+    """14일 누적 forward log-return 타깃을 생성한다 (설정 A-14 용).
+
+    ``build_daily_target(adj_close, horizon=14)`` 의 편의 래퍼.
+    NaN: 첫 1행 + 마지막 14행.
+    """
+    return build_daily_target(adj_close, horizon=14)
 
 
 def build_monthly_target_1m(adj_close: pd.Series) -> pd.Series:
@@ -93,12 +132,13 @@ def verify_no_leakage(
     target: pd.Series,
     n_checks: int = 3,
     seed: int = 42,
+    horizon: int = 21,
 ) -> None:
     """타깃 시계열의 데이터 누수를 2단계로 검증한다.
 
     검증 1 — Assert 단위 테스트
         ``n_checks`` 개 무작위 시점 t 에 대해
-        ``target[t] == log_ret[t+1:t+22].sum()`` 을 assert.
+        ``target[t] == log_ret[t+1:t+1+horizon].sum()`` 을 assert.
 
     검증 2 — 육안 확인 표
         첫 5개 유효 행의 (날짜, log_ret, target, 직접계산, 일치 여부) 출력.
@@ -108,11 +148,13 @@ def verify_no_leakage(
     log_ret : pd.Series
         일별 log-return (분석 기간 내, NaN 없음).
     target : pd.Series
-        build_daily_target_21d() 반환값.
+        build_daily_target() 반환값.
     n_checks : int
         무작위 검증 시점 수.
     seed : int
         재현성 시드.
+    horizon : int, default=21
+        타깃 생성 시 사용한 horizon (일). build_daily_target의 horizon과 일치해야 함.
 
     Raises
     ------
@@ -123,10 +165,10 @@ def verify_no_leakage(
     """
     rng = np.random.default_rng(seed)
 
-    # 유효 인덱스: NaN 없고 forward 21일이 확보된 위치
+    # 유효 인덱스: NaN 없고 forward horizon일이 확보된 위치
     valid_pos = [
         i for i in range(len(target))
-        if (not np.isnan(target.iloc[i])) and (i + 21 < len(log_ret))
+        if (not np.isnan(target.iloc[i])) and (i + horizon < len(log_ret))
     ]
     if len(valid_pos) < n_checks:
         raise ValueError(
@@ -134,13 +176,12 @@ def verify_no_leakage(
             "데이터 기간을 확인하십시오."
         )
 
-    chosen = sorted(rng.choice(valid_pos, size=n_checks, replace=False)) # 무작위 시점 세개 고름
+    chosen = sorted(rng.choice(valid_pos, size=n_checks, replace=False))
 
-    print("=== 누수 검증 1 — Assert 단위 테스트 ===")
-    # 직접 계산한 값 (expected) == actual (함수가 만든 타깃값) 인지 검사
+    print(f"=== 누수 검증 1 — Assert 단위 테스트 (horizon={horizon}) ===")
     for pos in chosen:
         t = target.index[pos]
-        expected = log_ret.iloc[pos + 1 : pos + 22].sum()
+        expected = log_ret.iloc[pos + 1 : pos + 1 + horizon].sum()
         actual = float(target.iloc[pos])
         diff = abs(actual - expected)
         status = "PASS" if diff < 1e-10 else "FAIL"
@@ -161,7 +202,7 @@ def verify_no_leakage(
         t = target.index[pos]
         lr = float(log_ret.iloc[pos])
         tgt = float(target.iloc[pos])
-        direct = log_ret.iloc[pos + 1 : pos + 22].sum()
+        direct = log_ret.iloc[pos + 1 : pos + 1 + horizon].sum()
         match = "O" if abs(tgt - direct) < 1e-10 else "X"
         print(
             f"  {str(t.date()):>12}  {lr:>10.6f}  "

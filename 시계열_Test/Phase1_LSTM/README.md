@@ -166,17 +166,24 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 
 ---
 
-## 7. 진행 상태 (2026-04-24 현재)
+## 7. 진행 상태 (2026-04-27 현재)
 
 | Step | 산출물 | 담당 | 상태 |
 |---|---|---|---|
 | Step 0 | `00_setup_and_utils.ipynb` + `scripts/setup.py` | 재천 | ✅ 완료 |
 | Step 1 | `01_data_download_and_eda.ipynb` + raw_data CSV | 재천 | ✅ 완료 |
-| Step 2-data | `02_tensor_dataset.ipynb` + `scripts/dataset.py` (LSTMDataset · make_sequences · walk_forward_folds · build_fold_datasets + target_series) | 다른 팀원 | ✅ 완료 |
-| Step 2-target | `scripts/targets.py` (`build_daily_target_21d`, `verify_no_leakage`, `build_leaky_target_for_test` + `build_monthly_target_1m` 재천) | 다른 팀원 + 재천 | ✅ 완료 |
-| Step 2-exec | `scripts/models.py`, `scripts/train.py`, `scripts/metrics.py`, `scripts_정의서.md` | 재천 | ✅ 완료 |
-| Step 2-run | `02_setting_A_daily21.ipynb` §1~§6 실행·검증 | 다른 팀원 | ✅ §1~§6, §7~§9 활성화 대기 |
+| Step 2-data | `scripts/dataset.py` (LSTMDataset · make_sequences · walk_forward_folds) | 팀 | ✅ 완료 |
+| Step 2-target | `scripts/targets.py` (`build_daily_target`, `verify_no_leakage`) | 팀 | ✅ 완료 |
+| Step 2-exec | `scripts/models.py`, `train.py`, `metrics.py`, `scripts_정의서.md` | 재천 | ✅ 완료 |
+| **Phase 1 Run** | `02_setting_A_daily21.ipynb` (8·9차 Run 완료) | 윤서 | ✅ **PASS (9차: SPY R²=+0.066, QQQ R²=+0.050)** |
+| **Phase 1.5 Run** | `02_setting_A_daily5_ceemdan.ipynb` (12차 CEEMDAN Run 완료) | 윤서 | ✅ **PASS (SPY R²=+0.016, QQQ R²=+0.062, mean collapse 해소)** |
+| **Phase 1.5 Run** | `02_setting_A_daily21_ceemdan.ipynb` (11차 CEEMDAN, QQQ 버그) | 윤서 | ⚠️ SPY PASS, QQQ 버그(재실험 보류) |
 | Step 3 | `03_setting_B_monthly.ipynb` | 미정 | ⏸ 대기 |
-| Step 4 | `04_compare_A_vs_B.ipynb` | 미정 | ⏸ 대기 |
+| Step 4 (BL 연동) | Black-Litterman Q·Ω 산출 + 포트폴리오 최적화 | 미정 | ⏸ 12차 결과로 진행 가능 |
 
-문의는 [재천_WORKLOG.md](재천_WORKLOG.md)의 의사결정 보류 항목 또는 작성자(gorhkdwj@gmail.com)에게 전달 부탁드립니다.
+**Phase 1 핵심 결과 요약**:
+- **채택 결과**: 12차 Run (CEEMDAN 5d) — SPY·QQQ 동시 관문 통과, mean collapse 해소 (pred/true_std=0.83~0.86)
+- **한계**: previous baseline R²(+0.53~0.55) 대비 LSTM R²(+0.016~0.062) 격차 큼. BL 연동 시 높은 Ω(불확실성) 설정 권장
+- **상세**: [윤서_WORKLOG.md](윤서_WORKLOG.md) · [논의사항/README.md](논의사항/README.md)
+
+문의는 [윤서_WORKLOG.md](윤서_WORKLOG.md) 또는 [논의사항/README.md](논의사항/README.md)를 참조하십시오.

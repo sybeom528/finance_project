@@ -12,6 +12,8 @@
 
 | 날짜 | 파일 | 주제 | 핵심 결론 | 후속 task |
 |---|---|---|---|---|
+| 2026-04-27 | [결과분석12](2026-04-27_결과분석12.md) | 12차 Run: CEEMDAN H=5d, IMF 버그 수정 | SPY·QQQ 동시 PASS. **pred_std/true_std=0.83~0.86 — mean collapse 해소** (9차 0.21 대비 4배). best_epoch=1 비율 0%. | H=21 CEEMDAN 버그 수정 재실험(11차) 또는 5d 결과로 BL 연동 진행 |
+| 2026-04-27 | [결과분석11](2026-04-27_결과분석11.md) | 11차 Run: CEEMDAN H=21d, QQQ IMF 수 버그 발견 | SPY R²=+0.127(Phase 1 최고). QQQ는 IMF 수 불일치 버그(10개 고정, 실제 11개)로 R²=-2.789 FAIL | IMF 수 동적 결정으로 버그 수정 → 12차 Run |
 | 2026-04-25 | [Run결과분석](2026-04-25_Run결과분석.md) | §8·§9 Run 결과 FAIL 원인 분석 + 개선 3축 (모델 축소 · seq_len 재조정 · 입력 피처 확장) | SPY·QQQ 모두 R²_OOS 관문 FAIL. previous baseline 이 LSTM 보다 Hit Rate 높음 → 모델이 trivial 규칙보다 못 배움. 파라미터/샘플 비 약 2,372배로 과적합 심각 | 모델 축소 + 정규화 강화 + seq_len 축소 + 다변량 입력 재 Run |
 
 ---
@@ -19,10 +21,11 @@
 ## 상태 색인 (주제별)
 
 ### 🔴 진행 중 논의
-- **Phase 1 Run 결과 개선** (2026-04-25): Run 재시도를 위한 설정 변경 합의 대기
+- **11차 재실험 (H=21 CEEMDAN, QQQ 버그 수정)**: `02_setting_A_daily21_ceemdan.ipynb` QQQ ticker루프 `n_imfs_ticker` 동적 수정 후 재실행 — BL horizon 정합(21d) 달성 목표. 보류 중.
 
 ### 🟢 결론·반영 완료
-- (없음)
+- **Phase 1 Run 결과 개선** (2026-04-25 → 2026-04-27): 12차 Run(CEEMDAN 5d)으로 SPY·QQQ 동시 관문 통과 + mean collapse 해소. 12차 결과로 BL 연동 진행 가능 상태.
+- **12차 Run 실행 완료** (2026-04-27): `02_setting_A_daily5_ceemdan.ipynb` Run All 완료. 수치 재현 확인.
 
 ### ⏸ 장기·보류
 - 데이터 풀링 (멀티 티커 공동 학습) — Phase 1.5 또는 Phase 2 이후

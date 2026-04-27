@@ -13,6 +13,7 @@ dependencies = [
     "catboost>=1.2.10",
     "curl-cffi>=0.14.0",
     "dotenv>=0.9.9",
+    "emd-signal>=1.9.0",
     "fredapi>=0.5.2",
     "gdelt>=0.1.14",
     "google-cloud-bigquery>=3.41.0",
