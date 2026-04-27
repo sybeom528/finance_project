@@ -177,6 +177,7 @@ jupyter nbconvert --to notebook --execute --inplace 01_data_download_and_eda.ipy
 | Step 2-exec | `scripts/models.py`, `train.py`, `metrics.py`, `scripts_정의서.md` | 재천 | ✅ 완료 |
 | **Phase 1 Run** | `02_setting_A_daily21.ipynb` (8·9차 Run 완료) | 윤서 | ✅ **PASS (9차: SPY R²=+0.066, QQQ R²=+0.050)** |
 | **Phase 1.5 Run** | `02_setting_A_daily5_ceemdan.ipynb` (12차 CEEMDAN Run 완료) | 윤서 | ✅ **PASS (SPY R²=+0.016, QQQ R²=+0.062, mean collapse 해소)** |
+| **Phase 1.5 Run** | `02_setting_A_daily1_ceemdan.ipynb` (13차 CEEMDAN 1d, 논문 원설계) | 윤서 | ❌ **FAIL** (SPY R²=-0.919, QQQ R²=-0.787 — 1d 수익률 예측 구조적 불가) |
 | **Phase 1.5 Run** | `02_setting_A_daily21_ceemdan.ipynb` (11차 CEEMDAN, QQQ 버그) | 윤서 | ⚠️ SPY PASS, QQQ 버그(재실험 보류) |
 | Step 3 | `03_setting_B_monthly.ipynb` | 미정 | ⏸ 대기 |
 | Step 4 (BL 연동) | Black-Litterman Q·Ω 산출 + 포트폴리오 최적화 | 미정 | ⏸ 12차 결과로 진행 가능 |
