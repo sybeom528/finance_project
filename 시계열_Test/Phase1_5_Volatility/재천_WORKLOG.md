@@ -149,3 +149,597 @@ cp "$BASE/Phase1_LSTM/results/raw_data/QQQ.csv" "$BASE/Phase1_5_Volatility/resul
 
 - `scripts/train.py` 에 `loss_type: str = 'huber'` 옵션 인자 추가 (기본값 huber 유지, Phase 1 호환)
 - Phase 1.5 노트북에서는 `loss_type='mse'` 명시
+
+---
+
+## 2026-04-26 — Step 1 (`01_volatility_eda.ipynb`) 완료 + Walk-Forward 재조정
+
+### 1. Step 1 노트북 작성·실행
+
+#### 1.1 빌드 방식
+- `_build_01_eda_nb.py` 1회용 스크립트로 nbformat 사용 노트북 빌드
+- 빌드 후 `jupyter nbconvert --execute --inplace` 로 실행
+- 노트북 직접 편집 X — 빌드 스크립트만 수정 후 재빌드 패턴
+
+#### 1.2 §1~§9 + §5-확장 (총 20셀, 968 KB)
+
+| § | 내용 | 핵심 출력 |
+|---|---|---|
+| §1 | 환경 부트스트랩 | Malgun Gothic, BASE_DIR=Phase1_5_Volatility ✓ |
+| §2 | 데이터 로드 | SPY/QQQ n=2514 (10년) |
+| §3 | log_ret · log_ret² · \|log_ret\| 시계열 | 변동성 클러스터링 육안 확인 |
+| §4 | RV 분포 진단 | log 변환 효과 — skew 3.6→0.5, kurt 20→0.7 (✅ Log-RV 채택 정당화) |
+| §5 | ACF/PACF lag 1~30 | SPY lag 1=0.99, lag 21=0.56, lag 30=0.45 (강한 자기상관) |
+| **§5-확장** | **ACF lag 1~252** | **SPY lag 60=0.23, lag 126=0.13, 95% CI 진입 첫 lag=222** (long-memory) |
+| §6 | ADF/KPSS 정상성 | ADF p<0.001 (정상) but KPSS p=0.01 (비정상) — long-memory 시그니처 |
+| §7 | 체제 진단 | 30/70 분위수 기반 저/고변동 영역 |
+| §8 | 누수 검증 | SPY/QQQ 모두 PASS, NaN=21 (마지막 forward 21행만) |
+| §9 | 결론 | 사용자 체크포인트 |
+
+### 2. Walk-Forward 파라미터 재조정 (사용자 우선순위 변경 반영)
+
+#### 2.1 사용자 결정 (2026-04-26)
+> "Phase 1과의 비교보다는 변동성 예측의 정밀도를 최대한 높이는 것이 우선"
+
+→ Phase 1 동일 비교 공정성 원칙 폐기. EDA 결과 기반 정밀도 우선 재조정.
+
+#### 2.2 EDA §5-확장의 정량 근거
+
+| lag | SPY ACF | QQQ ACF |
+|---|---|---|
+| 21 | 0.5566 | 0.5848 |
+| 42 | 0.3695 | 0.3667 |
+| **63** | **0.2075** | **0.1921** |
+| 126 | 0.1292 | 0.1866 |
+| 252 | -0.1188 | -0.1448 |
+| 95% CI 진입 첫 lag | 222 | 208 |
+
+→ Andersen, Bollerslev, Diebold, Labys (2003) 가 보고한 **RV long-memory 시그니처와 일치**. ARFIMA d ≈ 0.4 추정.
+
+#### 2.3 사용자 fold 수 비교 표 검토 후 결정
+
+| 시나리오 | IS | embargo | fold 수 | 사용자 채택 |
+|---|---|---|---|---|
+| 현 PLAN (Phase 1 동일) | 231 | 21 | 105 | — |
+| embargo만 21→42 | 231 | 42 | 104 | — |
+| embargo만 21→63 | 231 | 63 | 103 | — |
+| IS 231→504 (embargo 21) | 504 | 21 | 92 | — |
+| IS 504 + embargo 42 | 504 | 42 | 91 | — |
+| **IS 504 + embargo 63** | **504** | **63** | **90** | ✅ |
+
+#### 2.4 변경 사항 정리
+
+| 항목 | 변경 전 | **변경 후** | 효과 |
+|---|---|---|---|
+| IS | 231일 | **504일** | 훈련 샘플 134→**441/fold** (3.3배) |
+| Embargo | 21일 | **63일** | lag 63 ACF 0.21 까지 차단 |
+| Purge | 21일 | 21 (유지) | 타깃 forward 21일 누수 차단 |
+| OOS | 21일 | 21 (유지) | 1개월 평가 |
+| Step | 21일 | 21 (유지) | rolling sliding |
+| seq_len | 63 | 63 (유지) | PACF lag 22 spike 충분 포함, 변경하면 효과 분리 어려움 |
+| 입력 채널 | log_ret² (1ch) | 1ch (유지, 1차) | HAR 3ch 는 결과 보고 후 추후 시도 |
+| **예상 fold 수** | **105** | **90** (-15) | OOS 총 샘플 2,205 → 1,890 |
+
+#### 2.5 미채택 옵션 (참고 — 사용자 결정 시점에 정리)
+
+- **옵션 B (log(RV).diff() 차분)**: 의미 해석 약화 + persistence 강점 상실 + HAR-RV 비교 불가 → 기각
+- **옵션 C (ARFIMA-GARCH)**: HAR-RV 가 ARFIMA 의 단순 근사이므로 베이스라인 중복. 본 단계 목표 초과 → 기각
+
+→ 정상성 검정 모순(ADF·KPSS 충돌)은 long-memory 시계열의 표준 패턴이며 실무적으로 무시 가능. **A 옵션 (현 상태 진행) 채택**.
+
+### 3. Cosmetic 수정 (§8 NaN 메시지)
+
+이전 빌드의 expected_nan = WINDOW + (WINDOW-1) = 41 계산 오류를 수정.
+
+**정확한 메커니즘**:
+- `log_ret = adj_close.log().diff()` : 첫 1행 NaN
+- `rolling(21).std()` : 첫 21행 NaN (시작 부족)
+- `shift(-21)` : 인덱스를 21만큼 앞으로 당김 → 첫 NaN 사라지고 마지막 21행 NaN
+
+**결과**: 정상 NaN = 마지막 21행만 (= WINDOW). assert 로 자동 검증 추가.
+
+### 4. 산출물 갱신
+
+| 파일 | 변경 |
+|---|---|
+| `C:\Users\gorhk\.claude\plans\sharded-mapping-puffin.md` (진실원) | §7 Walk-Forward 파라미터 갱신 + 정량 근거 + 우선순위 변경 명시 |
+| `Phase1_5_Volatility/PLAN.md` (팀 공유 사본) | 진실원 동기화 (614행) |
+| `Phase1_5_Volatility/_build_01_eda_nb.py` | §8 NaN 메시지 수정 + assert 추가 + §5-확장 셀 추가 |
+| `Phase1_5_Volatility/01_volatility_eda.ipynb` | 재실행 (968 KB, 20셀) |
+| `Phase1_5_Volatility/재천_WORKLOG.md` (본 파일) | 본 섹션 추가 |
+
+### 5. 다음 단계 (Step 2 — 사용자 승인 대기)
+
+**Step 2**: `scripts/targets_volatility.py` · `metrics_volatility.py` · `baselines_volatility.py` + 단위 테스트
+
+| 모듈 | 핵심 함수 | 단위 테스트 항목 |
+|---|---|---|
+| `targets_volatility.py` | `build_daily_target_logrv_21d` · `verify_no_leakage_logrv` | 4건 (assert 누수 / ddof / NaN / log domain) |
+| `metrics_volatility.py` | `rmse` · `qlike` · `r2_train_mean` · `mz_regression` · `baseline_metrics_volatility` · `summarize_folds_volatility` | 8건 (값·shape·edge case) |
+| `baselines_volatility.py` | `fit_har_rv` · `predict_ewma` · `predict_naive` | 4건 (HAR 계수·EWMA recursion·Naive shift·fold 외부 참조 차단) |
+
+`scripts/train.py` 에 `loss_type: str` 옵션 인자도 추가 (기본 huber 유지로 Phase 1 호환, Phase 1.5 는 mse 명시 호출).
+
+---
+
+## 2026-04-26 — Step 2 완료 (신규 3개 모듈 + train.py loss_type + 단위 테스트 17건 PASS)
+
+### 1. 산출물
+
+| 파일 | 종류 | 라인 수 | 비고 |
+|---|---|---|---|
+| `scripts/targets_volatility.py` | 신규 | 145 | Log-RV 타깃 빌더 + 누수 검증 |
+| `scripts/metrics_volatility.py` | 신규 | 280 | RMSE · QLIKE · R²_train_mean · MZ · pred_std_ratio · baseline_metrics · summarize_folds |
+| `scripts/baselines_volatility.py` | 신규 | 230 | HAR-RV (Corsi 2009) · EWMA(λ=0.94, RiskMetrics) · Naive · Train-Mean |
+| `scripts/train.py` | 수정 | +10 | `loss_type: str = 'huber'` 옵션 추가 (default huber, Phase 1.5 는 'mse' 명시 호출) |
+| `_test_modules.py` | 신규 | 332 | 17건 단위 테스트 (보존 — 회귀 검증용) |
+
+### 2. 단위 테스트 결과 — 17건 ALL PASS
+
+```
+======================================================================
+테스트 완료: PASS 17건 / FAIL 0건
+======================================================================
+[OK] 모든 테스트 통과
+```
+
+**상세**:
+- targets_volatility: 4건 (assert 누수 / ddof 일치 / NaN 카운트=21 / log domain finite)
+- metrics_volatility: 8건 (RMSE / QLIKE 비대칭성 / R²_train_mean / MZ α=0 β=1 / baseline shape / summarize NaN 자동 제외 / edge 동일값 / pred_std mean-collapse)
+- baselines_volatility: 4건 (HAR β_sum 합리성 / EWMA recursion finite / Naive shift / HAR fold 외부 참조 차단)
+- train: 1건 (loss_type 분기)
+
+### 3. fit_har_rv 인터페이스 변경 (1회 디버깅)
+
+**1차 시도**: `rv_trailing` (21일 std) 입력 → β_d, β_w, β_m 모두 21일 std 의 변형 → 강한 다중공선성 → β_sum=0.42 (학술 보고치 0.7~1.0 미달).
+
+**원인**: 본 프로젝트 RV 정의가 21일 std 인데, HAR features 도 같은 21일 std 의 lag·smoothing → multi-timescale 효과 약화.
+
+**2차 수정 (채택)**: `log_ret` 입력으로 변경. 학술 표준 HAR-RV (Corsi 2009) 정의 사용:
+- RV_d[t] = `|log_ret[t]|` (1일 variance proxy 의 sqrt)
+- RV_w[t] = `sqrt(mean(log_ret²[t-4 : t+1]))` (5일 평균 variance 의 sqrt)
+- RV_m[t] = `sqrt(mean(log_ret²[t-21 : t+1]))` (22일 평균 variance 의 sqrt)
+- 모두 log 변환 후 OLS
+
+**결과**: β_sum=0.7 정도 (학술 보고치와 일치). r2_train=0.15 (일간 데이터 기반 variance proxy 라 noisy — 학술 일중 데이터 0.4~0.7 대비 낮으나 자연스러움).
+
+### 4. 모듈 인터페이스 정리
+
+```python
+# targets_volatility.py
+build_daily_target_logrv_21d(adj_close, window=21) -> pd.Series
+verify_no_leakage_logrv(adj_close, target, n_checks=3, window=21, seed=42, ddof=1) -> None
+
+# metrics_volatility.py
+rmse(y_true, y_pred) -> float
+mae(y_true, y_pred) -> float
+qlike(y_true_logrv, y_pred_logrv) -> float                      # Patton 2011
+r2_train_mean(y_test, y_pred, y_train) -> float
+mz_regression(y_true, y_pred) -> Dict[alpha, beta, r2]          # Mincer-Zarnowitz
+pred_std_ratio(y_true, y_pred) -> float                          # mean-collapse 진단
+baseline_metrics_volatility(y_test, y_train, naive_pred=, har_pred=, ewma_pred=, ...) -> Dict
+summarize_folds_volatility(per_fold_metrics) -> Dict[metric, Dict[mean, std, min, max, n]]
+
+# baselines_volatility.py
+fit_har_rv(log_ret, train_idx, test_idx, horizon=21, eps=1e-12)  # ⚠️ 변경: rv_trailing → log_ret
+    -> (pred, coefs)
+predict_ewma(log_ret, train_idx, test_idx, horizon=21, lam=0.94) -> np.ndarray
+predict_naive(rv_trailing, train_idx, test_idx) -> np.ndarray
+predict_train_mean(target, train_idx, test_idx) -> np.ndarray
+
+# train.py (수정)
+train_one_fold(..., huber_delta=0.01, loss_type='huber', ...)    # ⚠️ 추가: loss_type
+```
+
+### 5. 다음 단계 (Step 3 — 사용자 승인 대기)
+
+**Step 3**: `02_volatility_lstm.ipynb` 작성 + 90 fold × 2 ticker 학습
+
+| § | 내용 |
+|---|---|
+| §1 환경 | bootstrap |
+| §2 데이터 로드 | raw_data CSV |
+| §3 타깃 생성 | `build_daily_target_logrv_21d` |
+| §4 누수 검증 | `verify_no_leakage_logrv` |
+| §5 SequenceDataset | Phase 1 dataset 그대로 |
+| §6 Walk-Forward | IS=504, embargo=63, 90 fold |
+| §7 모델 | `LSTMRegressor(1, 32, 1, 0.3)` |
+| §8 학습 | `train_one_fold(loss_type='mse')` × 90 fold × 2 ticker |
+| §9.A~F | 진단 시각화 6종 (학습곡선·best_epoch·예측분포·잔차·박스플롯·train/val/test 갭) |
+| §10 결론 | Phase 1.5 LSTM 메트릭 보고 (`results/volatility_lstm/{SPY,QQQ}/metrics.json`) |
+
+**예상 실행 시간** (Phase 1 경험 기준):
+- CPU (Windows): 20~50분
+- GPU (CUDA): 3~7분
+
+---
+
+## 2026-04-27 — Step 3 v1 완료 + v2 (HAR 3ch) 분기 진입 결정
+
+### 1. Step 3 v1 학습 결과
+
+#### 1.1 실행 환경·시간
+- 환경: CPU (GPU 미지원 환경)
+- 학습 시간: **약 1.6분** (예상 30~60분 대비 매우 빠름 — 모델 capacity 작음 + early stop 평균 9 epoch)
+- 산출물: `02_volatility_lstm.ipynb` (33셀, 613KB), `results/volatility_lstm/{SPY,QQQ}_metrics.json` (각 약 2.5MB)
+
+#### 1.2 종합 메트릭 (90 fold mean ± std)
+
+| metric | SPY mean | SPY std | QQQ mean | QQQ std | 관문 |
+|---|---|---|---|---|---|
+| rmse | 0.4688 | 0.2990 | 0.4329 | 0.2727 | (§03 비교) |
+| qlike | 0.9270 | 2.9862 | 0.6726 | 1.7935 | — |
+| **r2_train_mean** | **-2.9250** | 15.2614 | **-2.2580** | 9.5491 | ❌ FAIL (>0) |
+| **pred_std_ratio** | **0.3483** | 1.3657 | **0.3525** | 1.1305 | ❌ FAIL (>0.5) |
+| mz_alpha | -7.8768 | 121.8 | -5.9091 | 94.3 | (편향 진단) |
+| mz_beta | -0.6833 | 25.3 | -0.3137 | 21.5 | (편향 진단) |
+| mz_r2 | 0.1249 | 0.1599 | 0.1145 | 0.1469 | — |
+| best_epoch | 9.6889 | 4.3334 | 9.0889 | 4.6268 | (참고) |
+
+#### 1.3 §9.A~F 6종 진단 시각화 종합
+
+| 진단 | 결과 | 해석 |
+|---|---|---|
+| §9.A 학습곡선 | 정상 (수렴) | ✅ 학습 코드 OK |
+| §9.B best_epoch | 평균 9, max 30 의 32% | ✅ 학습률·patience OK |
+| §9.C 예측 분포 | ratio 0.35 | ❌ Mean-collapse 명확 |
+| §9.D 잔차+MZ | β=-0.68/-0.31, R²=0.12 | ❌ 음의 상관·체제 의존 |
+| §9.E 박스플롯 | std 매우 큼 (r2_TM std=15) | ⚠️ fold 간 결과 불일관 |
+| §9.F 갭 | test - train = -0.04 | ⚠️ 과적합 X — underfit/mean-collapse |
+
+**최종 진단**: "학습 코드는 정상, 모델은 underfit 또는 mean-collapse 상태로 수렴, fold 마다 결과 매우 다름."
+
+### 2. 사용자 단계별 학습 진행 (§1~§10)
+
+사용자 요청에 따라 02_volatility_lstm.ipynb 노트북을 단계별로 풀이:
+- 옵션 A (§1 부터 순차 진행) 채택
+- 비전공자 친화적 설명 + 분량 조절 원칙
+- §1 환경 → §2 데이터 → §3 누수검증 → §4 SequenceDataset → §5 Walk-Forward → §6 LSTMRegressor → §7 run_all_folds → §8 학습 → §9 평가 (§9.A·B / §9.C·D / §9.E·F 2개씩 묶음) → §10 metrics.json 저장
+- 모든 단계 사용자 이해 확인 후 진행 완료
+
+### 3. 핵심 사용자 가설 (2026-04-27)
+
+> 사용자: "lstm 자체의 문제라기 보다, 예측하기 위한 변수가 부족했다라고도 볼 수 있나? 자기상관 하나만 가지고 예측은 어려웠을 수 있다는 가능성은 확인할 수 없었나?"
+
+#### 3.1 가설 가중치 재평가 (이전 4가설 비중 솔직 정정)
+
+| 가설 | 이전 비중 | **재평가 비중** | 근거 |
+|---|---|---|---|
+| (a) 신호 부족 (변수 부족) | 25% | **50~60%** | log_ret² ACF 약함 + 단변량 한계 |
+| (b) Long-memory 잔존 | 25% | 15~20% | embargo 효과 fold-별 차이로 제한 |
+| (c) MSE outlier 민감성 | 25% | 5~10% | log 변환 후 분포 거의 정규 |
+| (d) 체제 의존성 | 25% | 15~20% | 단변량 LSTM 의 한계 |
+
+→ **(a) 변수 부족이 압도적 주범** 일 가능성. 이전 4가설 동등 비중 제시는 부정확했음.
+
+#### 3.2 입력 vs 타깃의 자기상관 비대칭성
+
+| 시계열 | lag 1 ACF | lag 30 ACF | 신호 강도 |
+|---|---|---|---|
+| **입력 `log_ret²`** | 약 0.30 | 약 0.05 | **약함** ⚠️ |
+| **타깃 `log(RV)` (참고)** | 0.99 | 0.45 | 매우 강함 |
+
+LSTM 의 임무: 약한 자기상관 입력을 강한 자기상관 타깃으로 변환 학습 → 매우 어려움.
+
+### 4. v2 분기 진입 결정 — HAR 3ch LSTM
+
+#### 4.1 검증 가설
+> "log_ret² 1ch 의 정보 빈약이 mean-collapse 의 주범인가?"
+
+#### 4.2 v1 ⇄ v2 차이 (단 1가지 변경)
+
+| 항목 | v1 (현재 완료) | **v2 (신규)** |
+|---|---|---|
+| **입력 채널** | `log_ret²` (1ch) | **HAR 3채널 `[\|log_ret\|, RV_w, RV_m]`** |
+| `input_size` | 1 | **3** |
+| 그 외 모든 설정 | Walk-Forward 90 fold, IS 504, embargo 63, MSE loss, LSTM(1,32,1,0.3), max_epochs 30, weight_decay 1e-3 | **동일** |
+
+→ **변수만 변경, 다른 모든 변수 통제** → 변수 부족 가설 a 의 직접 검증.
+
+#### 4.3 v2 입력 정의 (Corsi 2009 학술 표준 일간 적응)
+
+```python
+log_ret = log(adj_close).diff()
+
+# 채널 1: 1일 변동성 (instantaneous)
+RV_d[t] = |log_ret[t]|
+
+# 채널 2: 5일 평균 변동성
+RV_w[t] = sqrt( mean(log_ret²[t-4 : t+1]) )
+
+# 채널 3: 22일 평균 변동성
+RV_m[t] = sqrt( mean(log_ret²[t-21 : t+1]) )
+
+# 시퀀스 입력 shape: (Batch, 63, 3)
+```
+
+#### 4.4 v2 산출물 — 사용자 확정 (2026-04-27)
+
+| 항목 | 확정값 | 비고 |
+|---|---|---|
+| **노트북 파일명** | `02_v2_volatility_lstm_har3ch.ipynb` | 분기·채널수 명시 |
+| **빌드 스크립트** | `_build_02_v2_har_nb.py` | v1 차용 + 입력 변경 |
+| **결과 폴더** | `results/volatility_lstm_har3ch/` | v1 (`volatility_lstm/`) 격리 |
+| **결과 파일** | `{SPY,QQQ}_metrics.json` | v1 동일 구조 |
+| **입력 변수 정의** | Corsi 2009 학술 표준 (§4.3) | 일간 데이터 적응 |
+
+```
+Phase1_5_Volatility/
+├── 02_volatility_lstm.ipynb              ← v1 (보존, 변경 X)
+├── 02_v2_volatility_lstm_har3ch.ipynb    ← v2 신규
+├── _build_02_v2_har_nb.py                ← v2 빌드 스크립트
+└── results/
+    ├── volatility_lstm/                  ← v1 결과 (보존)
+    └── volatility_lstm_har3ch/            ← v2 결과 (신규)
+        ├── SPY_metrics.json
+        └── QQQ_metrics.json
+```
+
+#### 4.5 다음 단계 절차
+
+1. v2 빌드 스크립트 작성 (v1 차용 + 입력 부분만 변경)
+2. 노트북 빌드 + 학습 실행 (예상 1.6~3분)
+3. v1 vs v2 결과 비교 보고
+4. (사용자 결정) 결과 따라 §03 베이스라인 비교 진입 또는 추가 실험
+
+### 5. 미적용 옵션 (참고 — 추후 시도 가능)
+
+#### 5.1 IS 단축 (504 → 252)
+- 이전 답변에서 권장한 1차 시도였으나 사용자가 v2 (변수 변경) 우선 선택
+- v2 결과 따라 추후 시도 여부 결정
+
+#### 5.2 Huber loss fallback (loss_type='huber', δ=0.1)
+- 본 결과의 mean-collapse 가 단순 outlier 영향이 크지 않음으로 판단되어 후순위
+
+#### 5.3 정규화 강화 (dropout 0.3 → 0.5, weight_decay 1e-3 → 1e-2)
+- §9.F 갭 분석에서 과적합 X 확인 → 정규화 강화 효과 제한적
+- v2 결과 따라 검토
+
+---
+
+## 2026-04-27 (오후) — v2 학습 완료 + 가설 a 부분 검증
+
+### 6. v2 학습 결과 (90 fold × 2 ticker)
+
+#### 6.1 핵심 메트릭 비교 (v1 vs v2, 90 fold mean)
+
+| metric | v1 SPY | **v2 SPY** | Δ | v1 QQQ | **v2 QQQ** | Δ |
+|---|---|---|---|---|---|---|
+| rmse | 0.4688 | **0.4798** | +0.0110 | 0.4329 | **0.4385** | +0.0055 |
+| qlike | 0.9270 | 0.9210 | -0.0060 | 0.6726 | 0.6899 | +0.0173 |
+| **r2_train_mean** | -2.93 | **-4.03** | -1.10 | -2.26 | **-2.81** | -0.55 |
+| **pred_std_ratio** | **0.348** | **0.634** | **+0.286** | **0.353** | **0.539** | **+0.187** |
+| mz_alpha | -7.88 | -17.69 | -9.81 | -5.91 | -15.64 | -9.74 |
+| **mz_beta** | -0.68 | **-2.64** | -1.96 | -0.31 | **-2.52** | -2.21 |
+| **mz_r2** | 0.125 | **0.274** | +0.149 | 0.115 | **0.260** | +0.146 |
+| best_epoch | 9.69 | 11.01 | +1.32 | 9.09 | 9.93 | +0.84 |
+
+#### 6.2 관문 판정
+
+| 관문 | v1 SPY | v1 QQQ | **v2 SPY** | **v2 QQQ** |
+|---|---|---|---|---|
+| 관문 2 (r2_train_mean > 0) | ❌ FAIL | ❌ FAIL | ❌ **FAIL (악화)** | ❌ **FAIL (악화)** |
+| 관문 3 (pred_std_ratio > 0.5) | ❌ FAIL | ❌ FAIL | ✅ **PASS (회복)** | ✅ **PASS (회복)** |
+| 관문 1 (LSTM RMSE < HAR-RV) | §03 미수행 | — | §03 미수행 | — |
+
+→ **v2 borderline 판정** (관문 3 PASS, 관문 2 FAIL).
+
+#### 6.3 가설 a 검증 결과 — 부분 확인, 그러나 단독 원인은 아님
+
+**확인된 사실**:
+1. **mean-collapse 가 변수 부족과 부분 관계 있음** ✓
+   - pred_std_ratio: SPY 0.35 → 0.63 (+0.286), QQQ 0.35 → 0.54 (+0.187)
+   - HAR 3채널이 모델에게 더 풍부한 입력 신호 제공 → 예측 분산 회복
+   - 관문 3 PASS 로 mean-collapse 문제는 **상당 부분 해결**
+
+2. **그러나 "예측 정확도" 는 회복 X (오히려 악화)** ✗
+   - r2_train_mean 더 음수로 (악화)
+   - mz_beta 더 음수로 (편향 강화)
+   - mz_r2 두 배 증가 (예측-실제 상관성 자체는 강해짐)
+   - **→ 모델이 더 변동하는 예측을 내지만 그 방향이 실제와 반대 (역상관)**
+
+**해석**:
+- v1: "거의 안 움직이는 예측" (mean-collapse) + 약한 음의 상관
+- v2: "더 많이 움직이는 예측" (분산 회복) + **더 강한 음의 상관** → "활발하게 틀린다"
+
+**핵심 진단**: 변수 부족은 mean-collapse 의 부분 원인이지만, 정밀도 실패의 주범은 아님.
+다른 가설 (b, c, d) — **CV 구조 또는 LSTM 학습 동역학** 의 영향이 더 큼.
+
+#### 6.4 잠재 원인 재추정 (가설 가중치 갱신)
+
+| 가설 | 이전 비중 | **갱신 비중 (v2 후)** | 근거 |
+|---|---|---|---|
+| (a) 변수 부족 | 50~60% | **20~30%** | mean-collapse 만 부분 회복, 정밀도 X |
+| (b) Long-memory ACF 잔존 (embargo 63 불충분) | 15~20% | **30~40%** | mz_beta 음수 강화 → 시간 의존성 누수 가능 |
+| (c) IS 504 의 다체제 혼합 | 15~20% | **20~30%** | 24개월 IS 가 COVID/긴축 등 다체제 평균 → 음의 상관 학습 가능 |
+| (d) LSTM 자체의 일반화 한계 | 5~10% | **10~15%** | HAR-RV (선형) 비교 결과 보고 결정 |
+
+#### 6.5 다음 단계 권고 — §03 베이스라인 비교 우선 진행
+
+**근거**:
+1. v2 가 borderline 이므로 plan 의 분기 결정 표에 따라 **"§03 비교로 HAR-RV 와 비교 후 종합 판정"** 경로
+2. HAR-RV 가 매우 강력한 baseline (Corsi 2009) — 만약 LSTM (v1, v2) 이 모두 HAR-RV 보다 RMSE 가 크면 결론은 "**변동성 예측은 HAR-RV 수준에서 가능, 그러나 LSTM 은 부적합**"
+3. Phase 1.5 의 **유일한 목표** ("변동성 예측이 가능한가?") 에 명확한 답 가능
+
+**대안 (§03 후 추가 실험 검토 가능)**:
+- IS 단축 (504 → 252) — 가설 c 직접 검증
+- Embargo 확대 (63 → 126) — 가설 b 직접 검증
+- Huber loss fallback — outlier 영향 검증
+
+### 7. 산출물 (v2 완료 시점)
+
+```
+Phase1_5_Volatility/
+├── _build_02_v2_har_nb.py                  (700 라인, 신규)
+├── 02_v2_volatility_lstm_har3ch.ipynb      (33셀, 학습 결과 저장)
+└── results/
+    ├── volatility_lstm/                    (v1, 보존)
+    │   ├── SPY_metrics.json (2,546 KB)
+    │   └── QQQ_metrics.json (2,545 KB)
+    └── volatility_lstm_har3ch/             (v2, 신규)
+        ├── SPY_metrics.json (2,556 KB)
+        └── QQQ_metrics.json (2,552 KB)
+```
+
+### 8. 사용자 의사결정 대기
+
+다음 두 옵션 중 사용자 선택 필요:
+- **옵션 A (권고)**: §03 베이스라인 비교 노트북 빌드 → HAR-RV/EWMA/Naive vs LSTM(v1,v2) 통합 비교 → 관문 1 판정
+- **옵션 B**: 추가 실험 (IS 252, embargo 126 등) 먼저 시도
+
+**사용자 결정 (2026-04-27 오후)**: 옵션 A 선택 — §03 베이스라인 비교 진행
+
+---
+
+## 2026-04-27 (저녁) — §03 베이스라인 비교 완료 + Phase 1.5 최종 판정
+
+### 9. §03 작업 흐름
+
+#### 9.1 모듈 검토 (사용자 요청 — "각 파일별로 오류가 있진 않은지 검토")
+
+| 모듈 | 검토 결과 | 핵심 사항 |
+|---|---|---|
+| `scripts/baselines_volatility.py` | ✅ 정상 | HAR-RV (Corsi 2009 std-domain), EWMA (RiskMetrics λ=0.94), Naive, Train-Mean — 누수 방지 충실 (train_idx 한정 적합) |
+| `scripts/metrics_volatility.py` | ✅ 정상 | rmse/qlike/r2_train_mean/mz/pred_std_ratio — Patton 2011 + Mincer-Zarnowitz 표준 |
+| `_test_modules.py` 단위 테스트 | ✅ 17건 PASS / 0 FAIL | HAR 계수·EWMA 재귀·Naive shift·fold 격리 등 전수 검증 |
+
+#### 9.2 §03 빌드 + 실행
+
+- `_build_03_compare_nb.py` 작성 (25셀)
+- `03_baselines_and_compare.ipynb` 빌드
+- 1차 실행 시 §2 assert 임계값 (1e-10) 이 LSTM 의 float32 정밀도 차이 (~7.3e-08) 를 초과하여 FAIL
+- 수정: assert 1e-10 → 1e-5, np.allclose atol=1e-5 명시
+- 재실행 정상 완료
+
+#### 9.3 §03 노트북 산출
+
+- `03_baselines_and_compare.ipynb` (25셀, 학습 결과 포함)
+- `results/comparison_report.md` (3.5 KB → 정리 후 8.0 KB)
+
+### 10. §03 결과 — 통합 비교 표 (90 fold mean ± std)
+
+#### 10.1 SPY
+
+| 모델 | rmse | qlike | r2_train_mean | pred_std_ratio | mae |
+|---|---|---|---|---|---|
+| lstm_v1 | 0.4688 ± 0.299 | 0.9270 ± 2.99 | -3.28 ± 18.3 | 0.348 ± 1.37 | 0.4351 ± 0.285 |
+| lstm_v2 | 0.4798 ± 0.500 | 0.9210 ± 3.10 | -3.78 ± 21.4 | 0.634 ± 1.53 | 0.4444 ± 0.482 |
+| **har** | **0.3646 ± 0.244** | **0.7796 ± 2.84** | **-0.53 ± 2.35** | 0.897 ± 0.66 | **0.3309 ± 0.240** |
+| ewma | 0.3942 ± 0.257 | 0.7122 ± 2.53 | -1.85 ± 5.69 | 0.916 ± 0.72 | 0.3597 ± 0.253 |
+| naive | 0.4109 ± 0.255 | 0.7525 ± 1.93 | -2.26 ± 7.61 | 1.270 ± 0.97 | 0.3698 ± 0.250 |
+| train_mean | 0.4320 ± 0.312 | 1.3578 ± 4.85 | 0.000 | 0.000 | 0.4071 ± 0.313 |
+
+#### 10.2 QQQ
+
+| 모델 | rmse | qlike | r2_train_mean | pred_std_ratio | mae |
+|---|---|---|---|---|---|
+| lstm_v1 | 0.4329 ± 0.273 | 0.6726 ± 1.79 | -2.73 ± 10.7 | 0.353 ± 1.13 | 0.4026 ± 0.258 |
+| lstm_v2 | 0.4385 ± 0.409 | 0.6899 ± 2.16 | -3.65 ± 26.0 | 0.539 ± 0.90 | 0.4112 ± 0.407 |
+| **har** | **0.3308 ± 0.209** | 0.5083 ± 1.53 | **-0.26 ± 1.59** | 0.919 ± 0.61 | **0.2972 ± 0.205** |
+| ewma | 0.3582 ± 0.235 | **0.5037 ± 1.54** | -1.57 ± 4.93 | 0.917 ± 0.65 | 0.3255 ± 0.231 |
+| naive | 0.3699 ± 0.226 | 0.5220 ± 1.25 | -2.11 ± 7.34 | 1.283 ± 0.93 | 0.3313 ± 0.223 |
+| train_mean | 0.4067 ± 0.270 | 0.8707 ± 2.39 | 0.000 | 0.000 | 0.3847 ± 0.273 |
+
+### 11. RMSE 순위 — 모든 모델 비교 (작을수록 좋음)
+
+```
+SPY:  HAR(0.36) < EWMA(0.39) < Naive(0.41) < TrainMean(0.43) < LSTMv1(0.47) < LSTMv2(0.48)
+QQQ:  HAR(0.33) < EWMA(0.36) < Naive(0.37) < TrainMean(0.41) < LSTMv1(0.43) < LSTMv2(0.44)
+```
+
+**충격적 사실**: LSTM 두 모델 모두 가장 단순한 Train-Mean 보다도 RMSE 가 큼.
+- LSTM v1: SPY +8.5%, QQQ +6.4%
+- LSTM v2: SPY +11.1%, QQQ +7.8%
+
+### 12. Phase 1.5 PASS 조건 종합 — 최종 판정
+
+| 모델 | 관문 1 (RMSE < HAR) | 관문 2 (r2_tm > 0) | 관문 3 (psr > 0.5) | 종합 |
+|---|---|---|---|---|
+| v1 SPY | ❌ FAIL (0.47 vs 0.36) | ❌ FAIL (-2.93) | ❌ FAIL (0.35) | **0/3 FAIL** |
+| v1 QQQ | ❌ FAIL (0.43 vs 0.33) | ❌ FAIL (-2.26) | ❌ FAIL (0.35) | **0/3 FAIL** |
+| v2 SPY | ❌ FAIL (0.48 vs 0.36) | ❌ FAIL (-4.03) | ✅ PASS (0.63) | **1/3 FAIL** |
+| v2 QQQ | ❌ FAIL (0.44 vs 0.33) | ❌ FAIL (-2.81) | ✅ PASS (0.54) | **1/3 FAIL** |
+
+→ **모든 LSTM 모델·종목에서 Phase 1.5 PASS 조건 미충족**
+
+### 13. Phase 1.5 최종 결론 — "변동성 예측이 가능한가?"
+
+> **답변: YES (변동성 예측은 가능). 그러나 본 환경에서 LSTM 은 부적합. HAR-RV (Corsi 2009 선형 OLS) 가 학술·실증 표준.**
+
+#### 13.1 명확히 입증된 사실
+
+1. **HAR-RV (4 계수 선형 OLS) 가 LSTM (4,500+ 파라미터 비선형) 능가**
+   - 변동성 예측에는 단순 선형 모델이 최적
+   - Corsi (2009) 학술 결과 재확인
+
+2. **LSTM 이 trivial baseline (Train-Mean) 보다도 못함**
+   - r2_train_mean 음수의 직접 정량 증명
+   - 모든 LSTM 변종 (v1, v2) 에서 동일
+
+3. **변동성에 강한 자기상관**: Naive (직전 RV 유지) 도 LSTM 보다 우위
+   - 변동성의 강한 lag 1 ACF (~0.99) 가 단순 모델에 충분 정보 제공
+   - LSTM 의 비선형 capacity 가 이 단순 패턴에 noise 첨가
+
+#### 13.2 LSTM 이 부적합했던 원인 진단 (사후)
+
+| # | 원인 | 근거 |
+|---|---|---|
+| 1 | Long-memory ACF 잔존 | EDA §5-확장: ACF lag 220+ 까지 잔존, embargo 63 으로 차단 부분 |
+| 2 | 변동성 예측의 선형성 | HAR (선형) > LSTM (비선형) → 비선형 capacity 가 noise |
+| 3 | 체제 변화 (COVID, 긴축) | LSTM sequential 학습이 외생 충격에 부정적 |
+| 4 | 일부 fold 학습 폭주 | val_loss 5~7 outlier (SPY fold 30, 90; QQQ fold 30) |
+
+#### 13.3 Phase 1.5 의 가치
+
+본 단계는 **단일 질문에 명확한 답을 도출**:
+- "변동성 예측이 가능한가?" → YES (HAR-RV 로 가능)
+- "LSTM 으로 가능한가?" → NO (본 환경에서)
+
+이는 "negative result" 가 아닌 **명확한 positive insight**:
+- 추후 단계 (BL 모델 등) 에서 변동성 입력으로 **HAR-RV** 를 사용하면 됨
+- LSTM 을 변동성 예측에 다시 시도하는 것은 우선순위 낮음 (강력한 학술 근거 + 실증 데이터)
+
+### 14. 다음 단계 권고 (사용자 결정 사항)
+
+| 옵션 | 의미 | 우선순위 |
+|---|---|---|
+| 1. Phase 1.5 종료 + 추후 단계 진입 | HAR-RV 결과 활용한 BL 모델 등 별도 작업 | **권고 (높음)** |
+| 2. LSTM 추가 실험 (IS 단축/확장, embargo 확대) | "정말로 LSTM 은 안 되는가?" 추가 검증 | 중간 (학술 가치) |
+| 3. GARCH 등 통계 모델 추가 baseline | HAR-RV vs GARCH 비교 (확장 연구) | 낮음 (Phase 1.5 범위 외) |
+
+### 15. 산출물 (Phase 1.5 마감 시점)
+
+```
+Phase1_5_Volatility/
+├── README.md
+├── PLAN.md                                  (지속 갱신)
+├── 재천_WORKLOG.md                          (~700 라인)
+├── 00_setup_and_utils.ipynb
+├── 01_volatility_eda.ipynb                  (20셀, 학습 결과 포함)
+├── 02_volatility_lstm.ipynb                 (v1, 33셀)
+├── 02_v2_volatility_lstm_har3ch.ipynb       (v2, 33셀)
+├── 03_baselines_and_compare.ipynb           (25셀, §03 신규)
+├── _build_01_eda_nb.py
+├── _build_02_lstm_nb.py
+├── _build_02_v2_har_nb.py
+├── _build_03_compare_nb.py                  (신규)
+├── _test_modules.py                         (17건 PASS)
+├── scripts/
+│   ├── setup.py / dataset.py / models.py / train.py    (Phase 1 복사)
+│   ├── targets_volatility.py                            (신규)
+│   ├── metrics_volatility.py                            (신규)
+│   └── baselines_volatility.py                          (신규)
+└── results/
+    ├── raw_data/  (Phase 1 SPY/QQQ.csv 사본)
+    ├── volatility_lstm/                     (v1)
+    ├── volatility_lstm_har3ch/              (v2)
+    └── comparison_report.md                  (§03 결론 종합 보고서)
+```
+
+### 16. 사용자 의사결정 대기 (Phase 1.5 마감)
+
+다음 중 선택 부탁드립니다:
+
+- **옵션 A**: Phase 1.5 종료 → 추후 단계 (BL 모델 등) 진입
+- **옵션 B**: LSTM 추가 실험 시도 (IS 변경, embargo 확대 등 — Phase 1.5 결과로 우선순위 ↓)
+- **옵션 C**: 다른 통계 모델 (GARCH 등) 추가 baseline 비교

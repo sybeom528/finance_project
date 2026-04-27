@@ -1,0 +1,246 @@
+=== Cell 2 ===
+============================================================
+  Phase 1 — 환경 부트스트랩 완료
+============================================================
+  한글 폰트  : Malgun Gothic
+  시드       : 42
+  결과 경로  : C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase1_5_Volatility\results
+============================================================
+BASE_DIR     = C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase1_5_Volatility
+RAW_DATA_DIR = C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase1_5_Volatility\results\raw_data
+RESULTS_DIR  = C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase1_5_Volatility\results
+
+=== Cell 4 ===
+SPY: n=2514, 유효 타깃=2493 (마지막 21행 NaN)
+QQQ: n=2514, 유효 타깃=2493 (마지막 21행 NaN)
+
+=== Cell 6 ===
+======================================================================
+SPY Log-RV 누수 검증
+======================================================================
+=== Log-RV 누수 검증 1 — Assert 단위 테스트 ===
+  [PASS] 2016-11-17  target=-5.337418  직접계산=-5.337418  Δ=1.78e-15
+  [PASS] 2022-06-27  target=-4.369255  직접계산=-4.369255  Δ=8.88e-16
+  [PASS] 2023-08-31  target=-4.999196  직접계산=-4.999196  Δ=6.22e-15
+
+=== Log-RV 누수 검증 2 — 육안 확인 표 (첫 5개 유효 행) ===
+            날짜     log_ret      target        직접계산    일치
+  ------------------------------------------------------
+    2016-01-04         NaN   -4.220238   -4.220238     O
+    2016-01-05    0.001690   -4.220351   -4.220351     O
+    2016-01-06   -0.012694   -4.200395   -4.200395     O
+    2016-01-07   -0.024284   -4.241430   -4.241430     O
+    2016-01-08   -0.011037   -4.251140   -4.251140     O
+
+[OK] Log-RV 누수 검증 완료 — 모든 체크포인트 PASS
+
+======================================================================
+QQQ Log-RV 누수 검증
+======================================================================
+=== Log-RV 누수 검증 1 — Assert 단위 테스트 ===
+  [PASS] 2016-11-17  target=-4.900030  직접계산=-4.900030  Δ=8.88e-16
+  [PASS] 2022-06-27  target=-4.006628  직접계산=-4.006628  Δ=8.88e-16
+  [PASS] 2023-08-31  target=-4.705041  직접계산=-4.705041  Δ=7.99e-15
+
+=== Log-RV 누수 검증 2 — 육안 확인 표 (첫 5개 유효 행) ===
+            날짜     log_ret      target        직접계산    일치
+  ------------------------------------------------------
+    2016-01-04         NaN   -4.006031   -4.006031     O
+    2016-01-05   -0.001737   -4.005394   -4.005394     O
+    2016-01-06   -0.009652   -3.938716   -3.938716     O
+    2016-01-07   -0.031814   -3.982361   -3.982361     O
+    2016-01-08   -0.008234   -3.983758   -3.983758     O
+
+[OK] Log-RV 누수 검증 완료 — 모든 체크포인트 PASS
+
+
+=== Cell 8 ===
+유효 타깃 수 (min over SPY/QQQ): 2493
+생성된 fold 수: 90
+첫 fold: train_idx=[0 1 2]...[501 502 503], test_idx=[588 589 590]...[606 607 608]
+Smoke (SPY fold 0): train X.shape=torch.Size([441, 63, 1]), y.shape=torch.Size([441])
+                    test  X.shape=torch.Size([21, 63, 1]),  y.shape=torch.Size([21])
+                    scaler.mean_=[4.32624368e-05], scaler.scale_=[0.00010531]
+
+=== Cell 10 ===
+생성된 fold 수: 90 (예상 90)
+fold 당 훈련 샘플: IS(504) - seq_len(63) = 441
+fold 당 OOS 샘플: 21
+전체 OOS 샘플 수: 1890
+
+=== Cell 12 ===
+LSTMRegressor: input_size=1, hidden=32, num_layers=1, dropout=0.3
+학습 가능 파라미터 수: 4,513 (Phase 1 3차 Run 과 동일 4,513 예상)
+Smoke forward: input shape=(4, 63, 1), output shape=(4,)
+
+=== Cell 16 ===
+======================================================================
+SPY 학습 시작
+======================================================================
+  [SPY] device: cpu, n_folds=90
+
+=== Cell 16 ===
+    [SPY] fold 15/90 best_ep= 8, val_loss=0.2049 | elapsed=0.2m, ETA=0.8m
+
+=== Cell 16 ===
+    [SPY] fold 30/90 best_ep= 6, val_loss=0.3042 | elapsed=0.3m, ETA=0.6m
+
+=== Cell 16 ===
+    [SPY] fold 45/90 best_ep= 8, val_loss=0.2757 | elapsed=0.4m, ETA=0.4m
+
+=== Cell 16 ===
+    [SPY] fold 60/90 best_ep= 6, val_loss=0.0393 | elapsed=0.6m, ETA=0.3m
+
+=== Cell 16 ===
+    [SPY] fold 75/90 best_ep= 9, val_loss=0.1349 | elapsed=0.7m, ETA=0.1m
+
+=== Cell 16 ===
+    [SPY] fold 90/90 best_ep= 8, val_loss=0.4877 | elapsed=0.8m, ETA=0.0m
+
+======================================================================
+QQQ 학습 시작
+======================================================================
+  [QQQ] device: cpu, n_folds=90
+
+=== Cell 16 ===
+    [QQQ] fold 15/90 best_ep=11, val_loss=0.2597 | elapsed=0.1m, ETA=0.6m
+
+=== Cell 16 ===
+    [QQQ] fold 30/90 best_ep= 6, val_loss=0.2877 | elapsed=0.3m, ETA=0.5m
+
+=== Cell 16 ===
+    [QQQ] fold 45/90 best_ep= 8, val_loss=0.4119 | elapsed=0.4m, ETA=0.4m
+
+=== Cell 16 ===
+    [QQQ] fold 60/90 best_ep= 8, val_loss=0.0281 | elapsed=0.5m, ETA=0.3m
+
+=== Cell 16 ===
+    [QQQ] fold 75/90 best_ep= 9, val_loss=0.1332 | elapsed=0.6m, ETA=0.1m
+
+=== Cell 16 ===
+    [QQQ] fold 90/90 best_ep= 7, val_loss=0.2960 | elapsed=0.8m, ETA=0.0m
+
+학습 완료: SPY 90 fold, QQQ 90 fold
+
+=== Cell 18 ===
+================================================================================
+Phase 1.5 LSTM 종합 메트릭 (90 fold mean ± std)
+================================================================================
+metric                   SPY mean    SPY std     QQQ mean    QQQ std
+--------------------------------------------------------------------------------
+rmse                       0.4782     0.3073       0.4442     0.2736
+qlike                      0.9029     2.6146       0.7117     1.9367
+r2_train_mean             -2.1901     8.2232      -2.1001    10.5509
+pred_std_ratio             0.4751     1.6365       0.3162     1.0314
+mz_alpha                   9.1776   171.1335     -28.0666   218.3730
+mz_beta                    3.0646    36.8257      -5.6097    50.5756
+mz_r2                      0.1400     0.1766       0.1168     0.1518
+best_epoch                 9.7333     4.2182       9.3111     4.5262
+
+=== Cell 24 ===
+C:\Users\gorhk\AppData\Local\Temp\ipykernel_10608\1047913523.py:15: UserWarning: Glyph 10003 (\N{CHECK MARK}) missing from font(s) Malgun Gothic.
+  plt.tight_layout()
+C:\Users\gorhk\AppData\Roaming\Python\Python310\site-packages\IPython\core\pylabtools.py:170: UserWarning: Glyph 10003 (\N{CHECK MARK}) missing from font(s) Malgun Gothic.
+  fig.canvas.print_figure(bytes_io, **kw)
+
+=== Cell 26 ===
+C:\Users\gorhk\AppData\Local\Temp\ipykernel_10608\3412065645.py:24: UserWarning: Glyph 8722 (\N{MINUS SIGN}) missing from font(s) Malgun Gothic.
+  plt.tight_layout()
+
+=== Cell 26 ===
+C:\Users\gorhk\AppData\Roaming\Python\Python310\site-packages\IPython\core\pylabtools.py:170: UserWarning: Glyph 8722 (\N{MINUS SIGN}) missing from font(s) Malgun Gothic.
+  fig.canvas.print_figure(bytes_io, **kw)
+
+=== Cell 28 ===
+C:\Users\gorhk\AppData\Local\Temp\ipykernel_10608\4006166014.py:11: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+  ax.boxplot(data, labels=labels)
+C:\Users\gorhk\AppData\Local\Temp\ipykernel_10608\4006166014.py:11: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+  ax.boxplot(data, labels=labels)
+C:\Users\gorhk\AppData\Local\Temp\ipykernel_10608\4006166014.py:11: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+  ax.boxplot(data, labels=labels)
+C:\Users\gorhk\AppData\Local\Temp\ipykernel_10608\4006166014.py:11: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+  ax.boxplot(data, labels=labels)
+
+=== Cell 30 ===
+
+RMSE 갭 평균 (test - train, 양수일수록 과적합 신호):
+  SPY: -0.0448
+  QQQ: -0.0360
+
+=== Cell 32 ===
+저장: C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase1_5_Volatility\results\volatility_lstm\SPY_metrics.json  (2546.2 KB)
+저장: C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase1_5_Volatility\results\volatility_lstm\QQQ_metrics.json  (2545.6 KB)
+
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+=
+Phase 1.5 LSTM Step 3 완료 — §03 베이스라인 비교 노트북으로 진행
+======================================================================
+

@@ -119,6 +119,7 @@ def train_one_fold(
     lr: float = 1e-3,
     weight_decay: float = 1e-4,
     huber_delta: float = 0.01,
+    loss_type: str = 'huber',
     grad_clip: float = 1.0,
     early_stop_patience: int = 10,
     lr_patience: int = 5,
@@ -143,6 +144,13 @@ def train_one_fold(
         AdamW L2 정규화 강도.
     huber_delta : float, default 0.01
         HuberLoss delta (L1/L2 전환점). 일별 수익률 ~1% 스케일 기준.
+        ``loss_type='huber'`` 일 때만 의미.
+    loss_type : {'huber', 'mse'}, default 'huber'
+        손실 함수 선택.
+
+        - ``'huber'`` : Huber(delta=huber_delta). 수익률 fat-tail outlier 강건 (Phase 1).
+        - ``'mse'``   : MSELoss. Log-RV 가 거의 정규 분포일 때 적합 (Phase 1.5).
+          Phase 1.5 에서는 ``loss_type='mse'`` 명시 호출 권장 (PLAN §7-2).
     grad_clip : float, default 1.0
         Gradient clipping ``max_norm``. 0 또는 None 이면 clip 건너뜀.
     early_stop_patience : int, default 10
@@ -178,7 +186,13 @@ def train_one_fold(
     dev = get_device(device) if isinstance(device, str) else device
     model.to(dev)
 
-    criterion = nn.HuberLoss(delta=huber_delta)
+    # loss_type 분기 — Phase 1.5 호환 (Phase 1 기본값 'huber' 유지)
+    if loss_type == 'huber':
+        criterion = nn.HuberLoss(delta=huber_delta)
+    elif loss_type == 'mse':
+        criterion = nn.MSELoss()
+    else:
+        raise ValueError(f"loss_type 은 'huber' 또는 'mse' 여야 합니다 (받은 값: {loss_type!r}).")
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = ReduceLROnPlateau(
         optimizer, mode='min', patience=lr_patience, factor=lr_factor,
