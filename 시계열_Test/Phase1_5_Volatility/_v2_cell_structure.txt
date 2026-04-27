@@ -1,0 +1,35 @@
+total cells: 33
+
+cell  0 | markdown | # Phase 1.5 v2 — 변동성 LSTM HAR 3채널 입력 (`02_v2_volatility_lstm_har3ch.ipynb`)
+cell  1 | markdown | ## §1. 환경 부트스트랩
+cell  2 | code     | import sys
+cell  3 | markdown | ## §2. 데이터 로드 + HAR 3채널 입력 + target 생성
+cell  4 | code     | import pandas as pd
+cell  5 | markdown | ## §3. 타깃 누수 검증 (v1 동일)
+cell  6 | code     | from scripts.targets_volatility import verify_no_leakage_logrv
+cell  7 | markdown | ## §4. SequenceDataset 점검 — 3채널 입력 확인
+cell  8 | code     | from scripts.dataset import build_fold_datasets, walk_forward_folds
+cell  9 | markdown | ## §5. Walk-Forward fold 생성 — v1 과 동일 (90 fold)
+cell 10 | code     | IS_LEN = 504
+cell 11 | markdown | ## §6. LSTMRegressor smoke test — input_size=3 (v2 핵심 변경)
+cell 12 | code     | import torch
+cell 13 | markdown | ## §7. run_all_folds helper — `extra_features` 지원 추가
+cell 14 | code     | import time
+cell 15 | markdown | ## §8. SPY · QQQ 90 fold 학습 ⏳ (HAR 3채널)
+cell 16 | code     | print('=' * 70)
+cell 17 | markdown | ## §9. 평가 — 메트릭 산출 + Train-Mean baseline (v1 동일 메트릭)
+cell 18 | code     | from scripts.metrics_volatility import (
+cell 19 | markdown | ### §9.A 학습곡선 갤러리 — fold 0·25·50·75·89 × SPY/QQQ × train/val loss
+cell 20 | code     | import matplotlib.pyplot as plt
+cell 21 | markdown | ### §9.B best_epoch 분포 — EarlyStopping 패턴 진단
+cell 22 | code     | def plot_best_epoch_hist(folds_out_dict):
+cell 23 | markdown | ### §9.C 예측 분포 sanity (PLAN §6 관문 3 — pred_std_ratio > 0.5)
+cell 24 | code     | def plot_pred_distribution(folds_out_dict):
+cell 25 | markdown | ### §9.D 잔차 시계열 + MZ 산점도
+cell 26 | code     | def plot_residual_and_mz(folds_out_dict):
+cell 27 | markdown | ### §9.E 박스플롯 — fold 별 메트릭 분포
+cell 28 | code     | def plot_metric_boxplots(per_fold_dict):
+cell 29 | markdown | ### §9.F train/val/test 갭 — 과적합 정량화
+cell 30 | code     | def compute_train_val_test_gap(folds_out):
+cell 31 | markdown | ## §10. 결론 + metrics.json 저장 + v1 vs v2 비교
+cell 32 | code     | import json

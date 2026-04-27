@@ -281,6 +281,101 @@ acf_qqq, pacf_qqq = acf_pacf_logrv(df_qqq['log_ret'].dropna(), 'QQQ')
 """)
 
 # ============================================================================
+# §5-확장 ACF 1~252 (long-memory 진단)
+# ============================================================================
+md("""## §5-확장. ACF lag 1~252 (1년) — Long-memory 진단 + embargo 적정값 탐색
+
+### 5x-1. 확장 목적
+- Lag 30 까지의 ACF=0.45 는 단기 의존성을 넘어선다 → **lag 60·100·252 까지 보아 long-memory 여부 확정**
+- **Embargo 적정값** 탐색: ACF 가 95% CI 안으로 들어가는 첫 lag 를 권장 embargo 로
+- 주기성 진단: weekly(5), monthly(21·22), quarterly(63), semi-annual(126), annual(252) lag 에서 spike 확인
+
+### 5x-2. 판정 기준
+| ACF(lag=k) | k=60 | k=126 | k=252 |
+|---|---|---|---|
+| < 0.1 | 단기 의존 (일반 시계열) | — | — |
+| **0.1~0.3** | **장기기억** | **장기기억** | **장기기억** |
+| > 0.3 | 매우 강한 장기기억 (near-integrated) | — | — |
+
+### 5x-3. Embargo 권장값 도출
+- ACF 가 95% CI ($\\pm 1.96/\\sqrt{n}$) 안으로 들어가는 첫 lag 를 후보로
+- 그 lag 보다 큰 값을 embargo 로 채택 → 자기상관 잔존 차단
+""")
+code("""def acf_extended_logrv(log_ret: pd.Series, ticker: str, max_lag: int = 252) -> dict:
+    \"\"\"log(RV) ACF lag 1~max_lag — long-memory 진단 + embargo 권장값 탐색.\"\"\"
+    rv = compute_rv(log_ret).dropna()
+    log_rv = np.log(rv).replace([-np.inf, np.inf], np.nan).dropna()
+
+    acf_vals = acf(log_rv, nlags=max_lag, fft=True)
+    n = len(log_rv)
+    ci = 1.96 / np.sqrt(n)
+
+    # 95% CI 안으로 들어가는 첫 lag (embargo 후보)
+    inside_ci = np.abs(acf_vals[1:]) < ci
+    if inside_ci.any():
+        first_inside = int(np.argmax(inside_ci)) + 1
+    else:
+        first_inside = -1  # 끝까지 CI 밖
+
+    print(f'{ticker} — log(RV) ACF lag 1~{max_lag} (n={n}, 95% CI = ±{ci:.4f})')
+    print('-' * 60)
+    fmt = '{:>5} {:>10}'
+    print(fmt.format('lag', 'ACF'))
+    for lag in [1, 5, 10, 21, 22, 30, 42, 60, 63, 100, 126, 200, 252]:
+        if lag <= max_lag:
+            print(fmt.format(lag, f'{acf_vals[lag]:.4f}'))
+    if first_inside > 0:
+        print(f'\\n  → ACF 95% CI 안으로 진입한 첫 lag = {first_inside}')
+        print(f'    (embargo 후보: 이보다 약간 큰 값. 예: {first_inside + 5})')
+    else:
+        print(f'\\n  → ACF 가 lag {max_lag} 까지도 95% CI 밖 — extreme long-memory')
+
+    # 시각화
+    fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
+    lags_arr = np.arange(1, max_lag + 1)
+    axes[0].plot(lags_arr, acf_vals[1:], lw=1.0, color='steelblue')
+    axes[0].axhline(ci, color='red', lw=0.7, ls='--', label=f'95% CI ±{ci:.3f}')
+    axes[0].axhline(-ci, color='red', lw=0.7, ls='--')
+    axes[0].axhline(0, color='gray', lw=0.5)
+    for k, c in [(21, 'orange'), (63, 'purple'), (126, 'green'), (252, 'darkred')]:
+        if k <= max_lag:
+            axes[0].axvline(k, color=c, lw=0.8, ls=':', alpha=0.6, label=f'lag {k}')
+    axes[0].set_title(f'{ticker} — log(RV) ACF lag 1~{max_lag} (long-memory 진단)')
+    axes[0].set_xlabel('lag (영업일)')
+    axes[0].set_ylabel('ACF')
+    axes[0].legend(loc='upper right', fontsize=8)
+    axes[0].set_ylim(-0.1, 1.05)
+
+    # log-log plot — hyperbolic decay 시그니처 확인 (long-memory 면 직선)
+    pos_acf = np.maximum(acf_vals[1:max_lag+1], 1e-6)
+    axes[1].loglog(lags_arr, pos_acf, lw=1.0, color='darkgreen')
+    axes[1].set_title(f'{ticker} — log-log ACF (long-memory 면 직선 감쇠)')
+    axes[1].set_xlabel('log(lag)')
+    axes[1].set_ylabel('log(ACF)')
+    axes[1].grid(True, which='both', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+    return {
+        'ticker': ticker,
+        'first_inside_ci': first_inside,
+        'acf_lag_60': acf_vals[60] if max_lag >= 60 else np.nan,
+        'acf_lag_126': acf_vals[126] if max_lag >= 126 else np.nan,
+        'acf_lag_252': acf_vals[252] if max_lag >= 252 else np.nan,
+    }
+
+ext_spy = acf_extended_logrv(df_spy['log_ret'].dropna(), 'SPY', max_lag=252)
+print()
+ext_qqq = acf_extended_logrv(df_qqq['log_ret'].dropna(), 'QQQ', max_lag=252)
+
+# 종합 표
+print('\\n=== Long-memory 진단 종합 ===')
+print(f"{'ticker':<8} {'first_inside_CI':>16} {'ACF@60':>10} {'ACF@126':>10} {'ACF@252':>10}")
+for r in (ext_spy, ext_qqq):
+    print(f"{r['ticker']:<8} {r['first_inside_ci']:>16} {r['acf_lag_60']:>10.4f} {r['acf_lag_126']:>10.4f} {r['acf_lag_252']:>10.4f}")
+""")
+
+# ============================================================================
 # §6 ADF/KPSS
 # ============================================================================
 md("""## §6. ADF + KPSS 정상성 검정 on log(RV)
@@ -477,12 +572,20 @@ print('=' * 70)
 verify_no_leakage_logrv_inline(df_qqq['Adj Close'], target_qqq_logrv, window=WINDOW)
 
 # 추가 sanity check: log(0)/log(NaN) 진입 차단
-# 정상 NaN 개수 = forward shift(-window) 로 인한 마지막 window 행 + rolling(window) 로 인한 첫 window-1 행
-expected_nan = WINDOW + (WINDOW - 1)
+# 정상 NaN 개수 = WINDOW (forward shift 로 인한 마지막 행)
+# 메커니즘:
+#   - log_ret = adj_close.log().diff() : 첫 1 행 NaN
+#   - rolling(WINDOW).std() : 첫 WINDOW 행 NaN (rolling 시작 부족)
+#   - shift(-WINDOW) : 인덱스를 WINDOW 만큼 앞으로 당김 → 첫 WINDOW 행 NaN 이 사라지고
+#                     마지막 WINDOW 행이 NaN 이 됨
+# 결과: 정상 NaN = 마지막 WINDOW 행만 (= 21)
+expected_nan = WINDOW
 n_nan_spy = target_spy_logrv.isna().sum()
 n_nan_qqq = target_qqq_logrv.isna().sum()
-print(f'\\nNaN 카운트: SPY={n_nan_spy} / QQQ={n_nan_qqq} (예상={expected_nan}: rolling 시작 {WINDOW-1}행 + forward shift 마지막 {WINDOW}행)')
-print(f'  → 예상값과 일치하면 log(0)/log(NaN) 진입 없음 ✓')
+print(f'\\nNaN 카운트: SPY={n_nan_spy} / QQQ={n_nan_qqq} (예상={expected_nan}: forward shift(-{WINDOW}) 으로 인한 마지막 {WINDOW}행)')
+ok = (n_nan_spy == expected_nan) and (n_nan_qqq == expected_nan)
+print(f'  → 예상값과 {"일치 ✓ (log(0)/log(NaN) 진입 없음)" if ok else "불일치 ❌ (rolling NaN 또는 log(0) 진입 발생)"}')
+assert ok, f'NaN 카운트 검증 실패: SPY={n_nan_spy}, QQQ={n_nan_qqq}, 예상={expected_nan}'
 """)
 
 # ============================================================================

@@ -1,7 +1,7 @@
 > **이 문서는 팀 공유용 사본입니다.**
 >
 > - **진실원(원본)**: Claude Code 의 plan 파일 (`C:\Users\gorhk\.claude\plans\sharded-mapping-puffin.md`)
-> - **마지막 동기화**: 2026-04-26
+> - **마지막 동기화**: 2026-04-27 (v2 산출물 명세 확정 반영)
 > - **동기화 정책**: 진실원이 갱신될 때마다 본 사본도 함께 갱신합니다. 본 사본을 직접 수정하지 마시고, 변경 사항은 `재천_WORKLOG.md` 또는 본인 prefix `<이름>_WORKLOG.md` 에 제안 형태로 기록 후 협의하십시오.
 > - **목적**: 팀원이 Claude 의 plan 파일에 직접 접근하지 않고도 같은 계획을 한곳에서 확인하기 위함입니다.
 
@@ -303,13 +303,15 @@ ratio = std(y_pred) / std(y_true)
 
 ---
 
-### 7. 모델·학습·Walk-Forward — Phase 1 동일 (비교 공정성)
+### 7. 모델·학습·Walk-Forward — 정밀도 우선 (2026-04-26 갱신)
+
+> **우선순위 변경 (2026-04-26, 사용자 결정)**: Phase 1 과의 비교 공정성보다 **변동성 예측의 정밀도 최대화** 가 우선. EDA §5-확장에서 lag 60 ACF 0.23, lag 126 ACF 0.13, 95% CI 진입 첫 lag = 220 (long-memory 시그니처) 확인 후 Walk-Forward 파라미터 재조정.
 
 #### 7-1. 모델 구조
 
 ```python
 LSTMRegressor(
-    input_size=1,        # log_ret² 단일 채널
+    input_size=1,        # log_ret² 단일 채널 (1차 시도; HAR 다채널은 추후 별도 검증)
     hidden_size=32,      # LSTM 은닉 차원
     num_layers=1,        # 단일 레이어
     dropout=0.3,         # 출력 직전 dropout
@@ -317,8 +319,8 @@ LSTMRegressor(
 )
 ```
 
-- **파라미터 수**: 4,513개 (Phase 1 3차 Run과 동일)
-- **왜 Phase 1과 동일?**: 비교 공정성. 동일 capacity·동일 walk-forward에서 타깃만 변경하여 "신호의 차이"만 분리 측정.
+- **파라미터 수**: 4,513개 (Phase 1 3차 Run과 동일 capacity 유지)
+- **왜 모델 구조는 그대로?**: Walk-Forward 파라미터 변경만으로 정밀도 향상 효과를 분리 측정. 모델 capacity 도 동시에 키우면 어느 변경이 효과인지 분리 불가.
 
 #### 7-2. 손실 함수 — MSE Loss (Huber에서 변경)
 
@@ -413,19 +415,37 @@ if val_loss가 patience epoch 동안 개선 없음:
 - **목적**: 과적합 방지 + 학습 시간 절약
 - **best 체크포인트**: 학습 중 val_loss 최소 시점의 weights를 최종 사용
 
-#### 7-6. Walk-Forward 구조 — Phase 1 동일
+#### 7-6. Walk-Forward 구조 — 정밀도 우선 재조정 (2026-04-26)
 
-| 구성 | 값 | 근거 |
-|---|---|---|
-| IS (In-Sample) | 231 영업일 (~11개월) | Phase 1 동일 — 비교 공정성 |
-| Purge | 21 영업일 | 타깃 forward 21일 윈도우 (`shift(-21)`) → 21일 누수 차단 필수 |
-| Embargo | 21 영업일 | 자기상관 잔존 차단 |
-| OOS (test) | 21 영업일 | 동일 |
-| Step | 21 영업일 | 동일 (rolling sliding) |
-| 예상 fold 수 | **105** | 동일 |
-| seq_len | 63 | Phase 1 3차 Run 확정값 |
+| 구성 | 변경 전 (Phase 1 동일) | **변경 후 (Phase 1.5)** | 근거 |
+|---|---|---|---|
+| IS (In-Sample) | 231 영업일 (~11개월) | **504 영업일 (~24개월)** | 훈련 샘플 fold 당 134 → **441** (3.3배). Run 4·5 다변량 실패 root cause(샘플 부족) 직접 해결 |
+| Purge | 21 영업일 | **21** (유지) | 타깃 forward 21일 윈도우 → 21일 누수 차단 필수 |
+| Embargo | 21 영업일 | **63 영업일** | log(RV) ACF lag 21=0.55, lag 42=0.37, **lag 63=0.21** (95% CI 0.04 의 5배) → embargo=63 으로 자기상관 잔존 강화 차단 |
+| OOS (test) | 21 영업일 | **21** (유지) | 1개월 단위 평가 |
+| Step | 21 영업일 | **21** (유지) | rolling sliding |
+| 예상 fold 수 | 105 | **90** | 105 → 90 (-15, 약 14% 감소). 통계 신뢰도는 충분 (학술 권장 30+ fold) |
+| OOS 총 샘플 | 2,205 | **1,890** | 90 fold × 21 |
+| seq_len | 63 | **63** (유지) | PACF lag 22 spike (0.34) 충분 포함, 변경 시 추가 변수와 분리 측정 어려움 |
 
-**유의**: log-RV는 Phase 1의 log_ret 대비 자기상관이 훨씬 강함(ACF lag 1 > 0.3). embargo=21 충분성을 ACF 분석으로 §01.5 셀에서 검증.
+#### 7-6-1. 본 변경의 정량 근거 (EDA §5-확장 결과)
+
+**Long-memory 시그니처 확인** (Andersen, Bollerslev, Diebold, Labys 2003 와 일치):
+
+| lag | SPY ACF | QQQ ACF | 95% CI 밖? |
+|---|---|---|---|
+| 21 | 0.5566 | 0.5848 | ✓ (강한 잔존) |
+| 42 | 0.3695 | 0.3667 | ✓ |
+| **63** | **0.2075** | **0.1921** | ✓ |
+| 126 | 0.1292 | 0.1866 | ✓ |
+| 252 | -0.1188 | -0.1448 | ✓ (1년 mean-reversion) |
+| **95% CI 진입 첫 lag** | **222** | **208** | — |
+
+이론적으로 자기상관 완전 차단은 embargo ≥ 200 필요. 그러나 OOS=21, IS=504 환경에서 그렇게 큰 embargo 는 fold 수 급감. **실무적 타협점**: embargo=63 으로 lag 63 ACF 0.21 까지 차단 → 부분적이지만 의미 있는 강화.
+
+#### 7-6-2. 입력 채널 — 1ch 유지 (1차 시도)
+
+`log_ret²` univariate. **이유**: Walk-Forward 파라미터 변경 효과를 먼저 분리 측정. 결과 보고 후 HAR 3ch (`[RV_d, RV_w, RV_m]`) 별도 시도 가능 (PACF lag 22 spike 직접 활용 후보).
 
 ---
 
@@ -454,6 +474,8 @@ if val_loss가 patience epoch 동안 개선 없음:
 - **HAR-RV는 매우 강력한 baseline** — LSTM이 못 이길 가능성 실재. 이 경우 결과는 "변동성 예측은 가능하지만 LSTM은 HAR-RV 수준에 못 미침"으로 명확히 보고. Negative result도 본 단계 목표(질문에 답하기) 달성.
 - **체제 변화** (COVID 2020, 2022 긴축): fold별 metric 분리 보고로 진단 (§9.E 박스플롯).
 - **Log-RV 변환 후 점프 잔존** 시: Huber(δ=0.1) fallback 옵션을 `train.py`에 보존.
+- **Long-memory 잔존 차단 불완전**: embargo=63 으로도 lag 63+ ACF 잔존 (lag 126 ACF 0.13~0.19). 첫 fold 등 일부 fold OOS metric 이 부풀려질 가능성 — §9.E 박스플롯의 IQR 분포와 fold 0~5 의 outlier 여부로 사후 진단.
+- **PACF lag 22 spike (0.34)**: monthly cycle 의 강한 직접 의존성. seq_len=63 은 lag 22 를 충분히 포함하므로 LSTM 이 자연스럽게 학습 가능. 그러나 명시적 활용을 위해 추후 HAR 3ch 입력 시도 가치 ↑.
 
 ---
 
@@ -590,3 +612,87 @@ Markowitz(1952) 평균-분산 최적화의 핵심:
 - BL의 Q/Ω 통합
 
 Phase 1.5 결과가 "변동성 예측 PASS"이면 위 추후 단계의 입력 자료가 되고, "FAIL"이면 변동성 예측을 대체할 다른 신호(VIX 직접 사용, GARCH 등)를 검토하는 단계로 이행.
+
+---
+
+# v2 분기 신설 (2026-04-27, HAR 3ch 입력 검증)
+
+## v1 결과 요약 (2026-04-27 학습 완료)
+
+90 fold 학습 결과 — 관문 2, 3 모두 FAIL:
+
+| metric | SPY | QQQ | 관문 |
+|---|---|---|---|
+| rmse | 0.4688 | 0.4329 | (§03 비교) |
+| **r2_train_mean** | **-2.93** | **-2.26** | ❌ FAIL (>0) |
+| **pred_std_ratio** | **0.35** | **0.35** | ❌ FAIL (>0.5) |
+| mz_beta | -0.68 | -0.31 | (편향 진단 — 음의 상관) |
+| best_epoch | 9.7 | 9.1 | ✅ 학습 자체 수렴 |
+
+**진단**: "학습 코드 정상, 모델은 mean-collapse + underfit 상태로 수렴, fold 마다 결과 매우 다름."
+
+## v2 진입 결정 (사용자 가설 검증)
+
+### 검증 가설
+> "log_ret² 1ch 의 정보 빈약이 mean-collapse 의 주범인가?"
+> (가설 a — 변수 부족, 재평가 비중 50~60%)
+
+### v1 ⇄ v2 차이 (단 1가지 변경 — 통제 실험)
+
+| 항목 | v1 | **v2** |
+|---|---|---|
+| **입력 채널** | `log_ret²` (1ch) | **HAR 3채널 `[\|log_ret\|, RV_w, RV_m]`** |
+| `input_size` | 1 | **3** |
+| Walk-Forward / 모델 / 손실 / 옵티마 / seed / 분석기간 등 | — | **v1 동일** |
+
+→ 변수만 변경 → 가설 a 의 직접 검증 (다른 가설 b, c, d 의 영향 분리).
+
+### v2 입력 정의 (Corsi 2009 학술 표준 일간 적응)
+
+```python
+log_ret = log(adj_close).diff()
+
+# 채널 1: 1일 변동성
+RV_d[t] = |log_ret[t]|
+
+# 채널 2: 5일 평균 변동성
+RV_w[t] = sqrt( mean(log_ret²[t-4 : t+1]) )
+
+# 채널 3: 22일 평균 변동성
+RV_m[t] = sqrt( mean(log_ret²[t-21 : t+1]) )
+
+# 시퀀스 shape: (Batch, 63, 3)
+```
+
+### v2 산출물 (격리 보존) — 사용자 확정 (2026-04-27)
+
+```
+Phase1_5_Volatility/
+├── 02_volatility_lstm.ipynb              ← v1 (보존, 변경 X)
+├── 02_v2_volatility_lstm_har3ch.ipynb    ← v2 신규 ✓
+├── _build_02_v2_har_nb.py                ← v2 빌드 스크립트 ✓
+└── results/
+    ├── volatility_lstm/                  ← v1 결과 (보존)
+    └── volatility_lstm_har3ch/            ← v2 결과 (신규) ✓
+```
+
+**확정 시점**: 2026-04-27 (사용자 권장안 채택). 다음 세션 (compact 후) 에서 빌드·학습 시작 예정.
+
+### v2 결과 → §03 진입 결정 분기
+
+```
+v2 결과    | 해석
+─────────────────────────────────────────────────────
+v2 PASS    | 변수 부족 가설 a 확정 → §03 베이스라인 비교 진행
+v2 FAIL    | LSTM 자체 한계 또는 CV 구조 영향 ↑ → 추가 실험 검토
+v2 borderline | §03 비교로 HAR-RV 와 비교 후 종합 판정
+```
+
+## 미적용 옵션 (v2 결과 따라 추후 검토)
+
+| 옵션 | 동기 | 우선순위 |
+|---|---|---|
+| IS 504→252 | 체제 일관성 ↑ | v2 효과 제한적이면 |
+| Huber(δ=0.1) loss | outlier 강건 | log 변환 효과로 후순위 |
+| dropout 0.3→0.5 | 정규화 강화 | 과적합 X 확인되어 후순위 |
+| seq_len 63→126 | lookback 확장 | 신호 풍부 후 검토 |

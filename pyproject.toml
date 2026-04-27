@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "accelerate>=1.13.0",
+    "arch>=8.0.0",
     "beautifulsoup4>=4.12.0",
     "bertopic>=0.17.4",
     "bitsandbytes>=0.49.2; sys_platform == 'win32'",
