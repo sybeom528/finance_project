@@ -12,6 +12,7 @@
 
 | 날짜 | 파일 | 주제 | 핵심 결론 | 후속 task |
 |---|---|---|---|---|
+| 2026-04-28 | [통계검정해석](2026-04-28_통계검정해석.md) | 01_eda_statistics.ipynb 6종 통계검정 해석 | LSTM 적용 가능(정상성 ✅), 단 성능 제한적(ACF max 0.13, R²≈1.7%). ARCH 효과 강함 → 변동성 피처 추가가 Phase 2 핵심 동기. | Phase 2에서 변동성 피처(vol_20d, ATR) 입력 추가 |
 | 2026-04-28 | [결과분석13](2026-04-28_결과분석13.md) | 13차 Run: CEEMDAN H=1d (논문 원설계 재현) | SPY·QQQ 모두 R²_OOS FAIL (-0.92/-0.79). QQQ train R²=-0.003 — 1일 수익률에 학습 가능 패턴 없음. 5d 대비 구조적으로 더 어려운 문제 확인. | 12차(5d) 결과를 Phase 1 채택 결과로 유지. H=21 재실험 또는 BL Step 4 진행 |
 | 2026-04-27 | [결과분석12](2026-04-27_결과분석12.md) | 12차 Run: CEEMDAN H=5d, IMF 버그 수정 | SPY·QQQ 동시 PASS. **pred_std/true_std=0.83~0.86 — mean collapse 해소** (9차 0.21 대비 4배). best_epoch=1 비율 0%. | H=21 CEEMDAN 버그 수정 재실험(11차) 또는 5d 결과로 BL 연동 진행 |
 | 2026-04-27 | [결과분석11](2026-04-27_결과분석11.md) | 11차 Run: CEEMDAN H=21d, QQQ IMF 수 버그 발견 | SPY R²=+0.127(Phase 1 최고). QQQ는 IMF 수 불일치 버그(10개 고정, 실제 11개)로 R²=-2.789 FAIL | IMF 수 동적 결정으로 버그 수정 → 12차 Run |
@@ -25,6 +26,7 @@
 - **11차 재실험 (H=21 CEEMDAN, QQQ 버그 수정)**: `02_setting_A_daily21_ceemdan.ipynb` QQQ ticker루프 `n_imfs_ticker` 동적 수정 후 재실행 — BL horizon 정합(21d) 달성 목표. 보류 중.
 
 ### 🟢 결론·반영 완료
+- **통계검정 해석 문서화 완료** (2026-04-28): `01_eda_statistics.ipynb` 6종 검정(ADF/KPSS/ACF/Ljung-Box/ARCH-LM/JB/seq_len) 결과를 해석하고 Phase 2 시사점 정리. LSTM 적용 가능성 확인, 성능 한계 사전 확인.
 - **13차 Run 실행 완료 (CEEMDAN 1d)** (2026-04-28): `02_setting_A_daily1_ceemdan.ipynb` Run All 완료. R²_OOS FAIL 확인 — 1d 수익률 예측이 SPY·QQQ ETF에서 구조적으로 불가능함을 검증. Phase 1 채택 결과는 12차(5d) 유지.
 - **Phase 1 Run 결과 개선** (2026-04-25 → 2026-04-27): 12차 Run(CEEMDAN 5d)으로 SPY·QQQ 동시 관문 통과 + mean collapse 해소. 12차 결과로 BL 연동 진행 가능 상태.
 - **12차 Run 실행 완료** (2026-04-27): `02_setting_A_daily5_ceemdan.ipynb` Run All 완료. 수치 재현 확인.
