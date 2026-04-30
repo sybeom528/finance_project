@@ -12,19 +12,21 @@
 02_LowRiskAnomaly        03_VolatilityEDA
 (투자 테제 검증)           (ML 적용 타당성 검증)
       ↓                         ↓
-04_VolatilityPrediction   (통계 근거 확보)
+04_Prior_Universe_Analysis (유니버스·Prior 설계 결정)
+      ↓
+05_VolatilityPrediction   (통계 근거 확보)
       ↓  vol_predicted.csv
 04_5_GARCH_Evaluation           ← GARCH 성능 평가 / 레짐 분석
       ↓
 ┌─────────────────────────────────────────────────────────┐
 │  실험 단계 (파라미터 탐색)                                  │
-│  05_Q_Sensitivity      최적 Q 값 민감도 분석 (GARCH+Baseline)│
-│  06_BL_Q_Comparison   Q 추정 방식 비교 (5종)               │
-│  07_BL_VolQ_Grid      vol 소스 × Q 방식 전체 격자 비교      │
+│  06_Q_Sensitivity      최적 Q 값 민감도 분석 (GARCH+Baseline)│
+│  07_BL_Q_Comparison   Q 추정 방식 비교 (5종)               │
+│  08_BL_VolQ_Grid      vol 소스 × Q 방식 전체 격자 비교      │
 └─────────────────────────────────────────────────────────┘
       ↓  Q_OPTIMAL (05에서 자동 로드)
-08_Regime_Q_Portfolio    ← 레짐 적응형 BL (3단계 이산 Q)
-09_Q_Adaptive_Comparison ← Q 적응 전략 비교 (6종 전략 실험)
+09_Regime_Q_Portfolio    ← 레짐 적응형 BL (3단계 이산 Q)
+10_Q_Adaptive_Comparison ← Q 적응 전략 비교 (6종 전략 실험)
 
 ── 참고용 ──────────────────────────────────────────────────
 98_2006_baseline         금융위기 포함 20년 BL 베이스라인
@@ -99,7 +101,31 @@
 
 ---
 
-### 04_VolatilityPrediction.ipynb
+### 04_Prior_Universe_Analysis.ipynb
+
+**역할**: BL 설계 파라미터 확정 — 유니버스 크기, Prior 타입, PCT_GROUP 결정
+
+**입력**: `data/monthly_panel.csv`
+
+**분석 항목**
+
+| Part | 내용 |
+|------|------|
+| 1 | 커버리지 기준별 유니버스 크기 (50%~100%) |
+| 1-1 | p/T 비율 진단 (Ledoit-Wolf 공분산 추정 품질) |
+| 2 | Prior 비교 — 시가총액 vs 1/N |
+| 3 | 유니버스 규모별 저위험 이상현상 신호 강도 |
+| 4 | Mini Backtest — Prior 선택에 따른 BL 성과 비교 |
+| 5 | P 행렬 가중치 비교 |
+| 6 | 종합 판단 |
+| 7 | 동적 유니버스 실험 (N=50/100/150/200/full) |
+| 8 | PCT_GROUP IC 단조성 분석 (|t|≥2.0 기준 최소 pct 선택) |
+
+**출력**: `outputs/04_*.png` 시각화 파일들, `outputs/04_dynamic_universe_stats.csv`
+
+---
+
+### 05_VolatilityPrediction.ipynb
 
 **역할**: GARCH(1,1) walk-forward 변동성 예측
 
@@ -147,7 +173,7 @@
 
 ---
 
-### 05_Q_Sensitivity.ipynb
+### 06_Q_Sensitivity.ipynb
 
 **역할**: Q_FIXED 민감도 분석 — **GARCH** + **Baseline(vol_21d)** 두 가지 vol 소스에서 최적 Q 탐색
 
@@ -165,27 +191,27 @@
 
 **출력**
 - `Q_CANDIDATES`별 성과 비교표 + 시각화 (GARCH·Baseline 겹쳐서 Sharpe vs Q 곡선)
-- `outputs/05_Q_Sensitivity/q_sensitivity_stats.csv` — GARCH 성과표 (08_Regime_Q_Portfolio에서 자동 로드)
-- `outputs/05_Q_Sensitivity/q_sensitivity_baseline_stats.csv` — Baseline 성과표 (06에서 자동 로드)
+- `outputs/06_Q_Sensitivity/q_sensitivity_stats.csv` — GARCH 성과표 (09_Regime_Q_Portfolio에서 자동 로드)
+- `outputs/06_Q_Sensitivity/q_sensitivity_baseline_stats.csv` — Baseline 성과표 (06에서 자동 로드)
 
-**관련 문서**: `05_Q_Sensitivity_RESULTS.md`
+**관련 문서**: `06_Q_Sensitivity_RESULTS.md`
 
 ---
 
-### 06_BL_Q_Comparison.ipynb
+### 07_BL_Q_Comparison.ipynb
 
 **역할**: Q(뷰 수익률) 추정 방식 5종 비교 — 동일 Baseline 변동성 소스 고정 (`vol_21d`)
 
-> **06과 07의 차이**: 06은 P 구성에 **Baseline vol(vol_21d)**을 사용하여 Q 방식 5종만 비교한다. GARCH vol vs Baseline vol 비교는 07_BL_VolQ_Grid에서 수행한다.
+> **06과 07의 차이**: 06은 P 구성에 **Baseline vol(vol_21d)**을 사용하여 Q 방식 5종만 비교한다. GARCH vol vs Baseline vol 비교는 08_BL_VolQ_Grid에서 수행한다.
 
-**입력**: `data/monthly_panel.csv`, `outputs/05_Q_Sensitivity/q_sensitivity_baseline_stats.csv` (Q_FIXED 자동 로드)  
+**입력**: `data/monthly_panel.csv`, `outputs/06_Q_Sensitivity/q_sensitivity_baseline_stats.csv` (Q_FIXED 자동 로드)  
 **분석 기간**: 2011-01 ~ 2025-12
 
 **비교 대상 Q 방식**
 
 | 방식 | 공식 | 특징 |
 |------|------|------|
-| `Q_FIXED` | 05번 Baseline 최적값 자동 로드 | 05_Q_Sensitivity에서 Sharpe 최대 기준 선택 |
+| `Q_FIXED` | 05번 Baseline 최적값 자동 로드 | 06_Q_Sensitivity에서 Sharpe 최대 기준 선택 |
 | `Q_hist` | mean(저위험 − 고위험) 60M window | 학습 기간 전체 평균 실현수익 — 거의 항상 양수 |
 | `Q_momentum` | mean(저위험 − 고위험) 12M window | 단기 추세 — Q_hist와 동일 공식, 짧은 window → 음수도 가능 |
 | `Q_lambda` | Q_FIXED × (λ_t / λ_mean) | 위험회피계수 λ로 Q 강도 조정 (다른 개념) |
@@ -198,11 +224,11 @@
 - `Q_FIXED` (05 자동 로드) / `MOMENTUM_WINDOW = 12` / `LAM_MEAN = 2.5`
 
 **출력**: 7개 전략(Q 5종 + CAPM + SPY) 성과 비교표 + 시각화, `data/q_comparison_returns.csv`  
-**관련 문서**: `06_BL_Q_Comparison_RESULTS.md`
+**관련 문서**: `07_BL_Q_Comparison_RESULTS.md`
 
 ---
 
-### 07_BL_VolQ_Grid.ipynb
+### 08_BL_VolQ_Grid.ipynb
 
 **역할**: 변동성 소스 × Q 방식 전체 격자 비교 (2 × 5 = 10가지)
 
@@ -221,17 +247,17 @@
 **벤치마크**: CAPM, SPY
 
 **출력**: 12개 전략 성과표 (연환산수익률, 변동성, Sharpe, MDD, 누적수익률) + 3-panel 시각화  
-**관련 문서**: `07_BL_VolQ_Grid_RESULTS.md`
+**관련 문서**: `08_BL_VolQ_Grid_RESULTS.md`
 
 ---
 
-### 08_Regime_Q_Portfolio.ipynb
+### 09_Regime_Q_Portfolio.ipynb
 
 **역할**: 최종 포트폴리오 — 레짐 적응형 BL. 시장 변동성 레짐에 따라 Q를 동적으로 조정하여 고변동성 구간의 GARCH 예측력 저하를 방어.
 
 **동기**: 04_5 평가 결과에서 고변동성 레짐의 GARCH 예측력 저하 확인 (IC -0.006 역전). Q를 레짐별로 다르게 설정해 잘못된 뷰 신호를 억제.
 
-**입력**: `data/monthly_panel.csv`, `data/vol_predicted.csv`, `outputs/05_Q_Sensitivity/q_sensitivity_stats.csv` (Q_OPTIMAL 자동 로드; 없으면 기본값 0.003 사용)  
+**입력**: `data/monthly_panel.csv`, `data/vol_predicted.csv`, `outputs/06_Q_Sensitivity/q_sensitivity_stats.csv` (Q_OPTIMAL 자동 로드; 없으면 기본값 0.003 사용)  
 **분석 기간**: 2011-01 ~ 2025-12
 
 **레짐 정의** (expanding quantile — look-ahead bias 없음)
@@ -257,15 +283,15 @@ q67 = spy_roll_vol.expanding(min_periods=24).quantile(0.67)
 - 4-panel 시각화 (누적수익률, 롤링 Sharpe, 레짐 타임라인, Q 추이)
 - 레짐별 성과 breakdown 표
 - Q_HIGH_VOL 민감도 분석 (0.0 / 0.001 / 0.0015 / 0.002 / Q_OPTIMAL)
-- `outputs/08_Regime_Q_Portfolio/` 저장
+- `outputs/09_Regime_Q_Portfolio/` 저장
 
 ---
 
-### 09_Q_Adaptive_Comparison.ipynb
+### 10_Q_Adaptive_Comparison.ipynb
 
 **역할**: Q 적응 전략 6종 성능 비교 실험. 08의 이산 레짐 방식 외에 연속 스케일링·신뢰도 기반 등 다양한 Q 결정 방법을 동일 walk-forward 루프에서 공정하게 비교.
 
-**입력**: `data/monthly_panel.csv`, `data/vol_predicted.csv`, `outputs/05_Q_Sensitivity/q_sensitivity_stats.csv`  
+**입력**: `data/monthly_panel.csv`, `data/vol_predicted.csv`, `outputs/06_Q_Sensitivity/q_sensitivity_stats.csv`  
 **분석 기간**: 2011-01 ~ 2025-12
 
 **비교 전략**
@@ -286,7 +312,7 @@ q67 = spy_roll_vol.expanding(min_periods=24).quantile(0.67)
 **출력**
 - 4-panel 시각화 (누적수익률, 낙폭, Sharpe 막대, Q 시계열)
 - 레짐별 성과 분해 (전략별 최강 레짐 확인)
-- `outputs/09_Q_Adaptive_Comparison/` 저장
+- `outputs/10_Q_Adaptive_Comparison/` 저장
 
 ---
 
@@ -321,19 +347,20 @@ q67 = spy_roll_vol.expanding(min_periods=24).quantile(0.67)
 monthly_panel.csv              ← 01_DataCollection 출력
       ├── 02_LowRiskAnomaly
       ├── 03_VolatilityEDA
-      ├── 04_VolatilityPrediction
+      ├── 04_Prior_Universe_Analysis
+      ├── 05_VolatilityPrediction
       │         ↓
       │   vol_predicted.csv
       │         ├── 04_5_GARCH_Evaluation
-      │         ├── 05_Q_Sensitivity   (GARCH + Baseline 민감도)
+      │         ├── 06_Q_Sensitivity   (GARCH + Baseline 민감도)
       │         │         ↓
-      │         │   outputs/05_Q_Sensitivity/q_sensitivity_stats.csv          (GARCH)
-      │         │   outputs/05_Q_Sensitivity/q_sensitivity_baseline_stats.csv (Baseline)
-      │         │         ├── 06_BL_Q_Comparison  (Baseline stats → Q_FIXED 자동 로드)
+      │         │   outputs/06_Q_Sensitivity/q_sensitivity_stats.csv          (GARCH)
+      │         │   outputs/06_Q_Sensitivity/q_sensitivity_baseline_stats.csv (Baseline)
+      │         │         ├── 07_BL_Q_Comparison  (Baseline stats → Q_FIXED 자동 로드)
       │         │         │         ↓  q_comparison_returns.csv
-      │         │         │   07_BL_VolQ_Grid    (Baseline 로드 + GARCH × 5Q 계산)
-      │         │         ├── 08_Regime_Q_Portfolio  (GARCH stats → Q_OPTIMAL 자동 로드)
-      │         │         └── 09_Q_Adaptive_Comparison (GARCH stats → Q_OPTIMAL 자동 로드)
+      │         │         │   08_BL_VolQ_Grid    (Baseline 로드 + GARCH × 5Q 계산)
+      │         │         ├── 09_Regime_Q_Portfolio  (GARCH stats → Q_OPTIMAL 자동 로드)
+      │         │         └── 10_Q_Adaptive_Comparison (GARCH stats → Q_OPTIMAL 자동 로드)
       │         └── 99_baseline
       └── 98_2006_baseline
 ```
@@ -358,10 +385,11 @@ monthly_panel.csv              ← 01_DataCollection 출력
 | 번호 | 파일 | 역할 | 성격 |
 |------|------|------|------|
 | 01~03 | DataCollection / LowRiskAnomaly / VolatilityEDA | 데이터 수집 / 검증 | 전처리·탐색 |
-| 04 | VolatilityPrediction | 변동성 예측 | 핵심 모델 |
-| 04_5 | GARCH_Evaluation | 모델 평가 | 진단 |
-| **05** | **Q_Sensitivity** | **최적 Q 탐색 (GARCH + Baseline)** | **실험** |
-| **06** | **BL_Q_Comparison** | **Q 방식 5종 비교 (Baseline vol)** | **실험** |
-| **07** | **BL_VolQ_Grid** | **vol × Q 전체 격자 비교 (2×5)** | **실험** |
-| **08** | **Regime_Q_Portfolio** | **최종 포트폴리오 (레짐 적응형 BL)** | **결과** |
+| **04** | **Prior_Universe_Analysis** | **유니버스·Prior·PCT_GROUP 설계 결정** | **설계** |
+| 05 | VolatilityPrediction | 변동성 예측 | 핵심 모델 |
+| **06** | **Q_Sensitivity** | **최적 Q 탐색 (GARCH + Baseline)** | **실험** |
+| **07** | **BL_Q_Comparison** | **Q 방식 5종 비교 (Baseline vol)** | **실험** |
+| **08** | **BL_VolQ_Grid** | **vol × Q 전체 격자 비교 (2×5)** | **실험** |
+| **09** | **Regime_Q_Portfolio** | **최종 포트폴리오 (레짐 적응형 BL)** | **결과** |
+| 10 | Q_Adaptive_Comparison | Q 적응 전략 비교 (6종) | 실험 |
 | 98~99 | 베이스라인 | 참고·비교 | 참고 |
