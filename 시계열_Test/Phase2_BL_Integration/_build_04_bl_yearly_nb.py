@@ -35,6 +35,30 @@ md("""# Phase 2 Step 4 — BL Yearly Rebalance Backtest (`04_BL_yearly_rebalance
 
 > **목적**: 5 시나리오 BL 백테스트 + 직접 비교로 ML 통합의 portfolio 성과 효과 정량화.
 
+## ⚠️ 2026-04-29 정합성 검증 + 수정 내역
+
+본 노트북은 다음 수정사항이 반영되었습니다:
+
+### Issue #1 (CRITICAL): Date Mismatch
+- **원인**: `ens_monthly['rebalance_date']` (calendar 월말, 예: 2020-02-29 토) 과
+           `rebalance_dates` (market 거래일 월말, 예: 2020-02-28 금) 의 1-2 일 mismatch
+- **영향**: 72 가능 시점 중 21 시점 (29%) 의 BL 가중치 산출 누락
+- **수정**: `month_to_market_eom` 매핑으로 통일
+
+### Issue #1B: monthly_rets 인덱스 mismatch
+- **원인**: `compute_monthly_returns_for_universe` 가 calendar 월말 사용
+- **영향**: 추가된 21 시점의 portfolio return 0 으로 잘못 산출
+- **수정**: `month_to_eom` 인자 전달
+
+### Issue #2: λ rf 차감 누락 (Minor)
+- **원인**: He-Litterman 표준 `λ = (E[r_mkt] - r_f) / σ²_mkt` 에서 rf 차감 X
+- **영향**: λ 약 +2.4% 큼 (clip 으로 완화)
+- **수정**: rf 차감 적용
+
+### Fair 비교 (§5 추가)
+- **발견**: SPY (91 sample) vs BL (72 sample) sample mismatch
+- **처리**: 모든 시나리오를 BL_ml 의 72 시점으로 통일하여 Fair 비교
+
 ## 5 시나리오
 
 | 시나리오 | 설명 | P 행렬 입력 |
@@ -44,6 +68,18 @@ md("""# Phase 2 Step 4 — BL Yearly Rebalance Backtest (`04_BL_yearly_rebalance
 | C. SPY | 시장 벤치마크 | (가중치 없음, ETF 직접) |
 | D. EqualWeight | 1/N 등가 | (DeMiguel 강력 baseline) |
 | E. McapWeight | 시총 가중 | (S&P 인덱스 방식) |
+
+## 진짜 결과 (수정 + Fair 비교 후)
+
+| 순위 | 시나리오 | Sharpe (raw) | Cum Return | MDD |
+|---|---|---|---|---|
+| 🥇 | **McapWeight** | **1.031** | +177.7% | -25.7% |
+| 🥈 | SPY | 0.912 | +131.3% | -23.9% |
+| 🥉 | BL_ml | 0.907 | +103.3% | -19.0% |
+| 4 | EqualWeight | 0.868 | +117.9% | -23.8% |
+| 5 | BL_trailing | 0.866 | +105.7% | -17.7% |
+
+→ **McapWeight 가 1 위** (단순 시총 가중치). BL_ml 의 ML 통합 효과는 BL_trailing 대비 +0.041 Sharpe (작음).
 
 ## 결정사항 8 (PLAN.md §2)
 
@@ -56,9 +92,9 @@ md("""# Phase 2 Step 4 — BL Yearly Rebalance Backtest (`04_BL_yearly_rebalance
 |---|---|
 | §1 | 환경 + autoreload + 모듈 import |
 | §2 | 데이터 로드 (universe / panel / market / ensemble) |
-| §3 | 헬퍼 함수 (월별 ret, mcap 매핑) |
-| §4 | 5 시나리오 백테스트 루프 |
-| §5 | 메트릭 계산 + 비교 표 |
+| §3 | 헬퍼 함수 (월별 ret, mcap 매핑) — Issue #1B 수정 |
+| §4 | 5 시나리오 백테스트 루프 — Issue #1, #2 수정 |
+| §5 | 메트릭 계산 + Fair 비교 (BL_ml 72 sample 기준) |
 | §6 | 시각화 (누적수익, drawdown, rolling Sharpe) |
 | §7 | 결과 저장 |
 """)
@@ -144,18 +180,42 @@ code("""# 3-1. 일별 log_ret pivot (Σ 계산용)
 daily_lr = panel.pivot_table(index='date', columns='ticker', values='log_ret')
 print(f'daily_lr: {daily_lr.shape}')
 
-# 3-2. 월별 단순 수익률 (월말 endpoint)
-def compute_monthly_returns_for_universe(panel_df, universe_tickers, start_date, end_date):
-    \"\"\"종목별 월말 가격 → 월별 단순 수익률.\"\"\"
+# 3-4. 매월 BL 리밸런싱 시점 (월별 마지막 거래일)
+# ⭐ 중요: 본 시점이 weights, returns, ensemble 모든 매핑의 기준이 됨
+market_lastday_per_month = market.groupby(market.index.to_period('M')).tail(1)
+rebalance_dates = market_lastday_per_month.index
+rebalance_dates = rebalance_dates[(rebalance_dates >= '2018-04-01') & (rebalance_dates <= '2025-12-31')]
+print(f'rebalance_dates: {len(rebalance_dates)} 개월 ({rebalance_dates[0].date()} ~ {rebalance_dates[-1].date()})')
+
+# Period → market 월말 매핑 (모든 매월 단위 데이터의 인덱스 통일)
+month_to_market_eom = {pd.Timestamp(d).to_period('M'): pd.Timestamp(d) for d in rebalance_dates}
+
+# 3-2. 월별 단순 수익률 (⭐ market 월말 매핑 — Issue #1B 수정)
+def compute_monthly_returns_for_universe(panel_df, universe_tickers, start_date, end_date,
+                                          month_to_eom=None):
+    \"\"\"종목별 월별 단순 수익률.
+
+    Parameters
+    ----------
+    month_to_eom : dict | None
+        Period → market 월말 매핑.
+        제공 시: 인덱스를 market 월말 (예: 2020-02-28 금) 로 설정.
+        None 시: calendar 월말 (예: 2020-02-29 토) — 기존 동작 (deprecated).
+    \"\"\"
     sub = panel_df[panel_df['ticker'].isin(universe_tickers) &
                    (panel_df['date'] >= start_date) & (panel_df['date'] <= end_date)]
     sub = sub.set_index('date')
-    # 종가 reconstruction: log_ret cumsum → exp → 가격 (단조)
-    # 그러나 panel 에는 close 컬럼 없음 → spy_close 만 있음
-    # 대안: log_ret 의 월별 합 → exp 변환
     sub['month'] = sub.index.to_period('M')
     monthly_lr = sub.groupby(['ticker', 'month'])['log_ret'].sum().reset_index()
-    monthly_lr['date'] = monthly_lr['month'].dt.to_timestamp(how='end').dt.normalize()
+
+    if month_to_eom is not None:
+        # ⭐ market 월말 매핑 (weights_history.index 와 일치)
+        monthly_lr['date'] = monthly_lr['month'].map(month_to_eom)
+        monthly_lr = monthly_lr.dropna(subset=['date'])
+    else:
+        # 기존 (calendar 월말) — Issue #1B 발생 가능
+        monthly_lr['date'] = monthly_lr['month'].dt.to_timestamp(how='end').dt.normalize()
+
     monthly_lr['ret'] = np.exp(monthly_lr['log_ret']) - 1
     return monthly_lr.pivot_table(index='date', columns='ticker', values='ret')
 
@@ -164,14 +224,7 @@ def get_mcap_at_date(panel_df, date, tickers):
     \"\"\"특정 시점 종목별 mcap_value (가까운 과거).\"\"\"
     sub = panel_df[(panel_df['date'] <= date) & (panel_df['ticker'].isin(tickers))]
     sub = sub.sort_values(['ticker', 'date']).groupby('ticker').last()
-    return sub['mcap_value'].dropna()
-
-# 3-4. 매월 BL 리밸런싱 시점 (월별 마지막 거래일)
-# market.index 를 월별로 그룹화 후 각 월의 마지막 거래일 추출
-market_lastday_per_month = market.groupby(market.index.to_period('M')).tail(1)
-rebalance_dates = market_lastday_per_month.index
-rebalance_dates = rebalance_dates[(rebalance_dates >= '2018-04-01') & (rebalance_dates <= '2025-12-31')]
-print(f'\\nrebalance_dates: {len(rebalance_dates)} 개월 ({rebalance_dates[0].date()} ~ {rebalance_dates[-1].date()})')""")
+    return sub['mcap_value'].dropna()""")
 
 
 # ============================================================================
@@ -190,18 +243,27 @@ TRANSACTION_COST = 0.0      # 결정 1: 0 default, 인자화
 TAU = DEFAULT_TAU           # 0.05
 IS_LEN_DAYS = 1260          # 5년 (Σ 계산 IS)
 
-# 4-2. 매월 ensemble 예측치 (월말 endpoint 매핑)
+# ⭐ Issue #1 수정: rebalance_date 를 market 거래일 월말과 매칭
+# month_to_market_eom 은 §3 에서 정의됨 (재사용)
+
+# 4-2. 매월 ensemble 예측치 (market 월말 매칭)
 ens['month'] = ens['date'].dt.to_period('M')
 ens_monthly = ens.groupby(['ticker', 'month']).last().reset_index()
-ens_monthly['rebalance_date'] = ens_monthly['month'].dt.to_timestamp(how='end').dt.normalize()
+ens_monthly['rebalance_date'] = ens_monthly['month'].map(month_to_market_eom)
+ens_monthly = ens_monthly.dropna(subset=['rebalance_date'])
 
-# 4-3. 매월 trailing vol_21d (서윤범 baseline 입력)
+# 4-3. 매월 trailing vol_21d — 동일 매칭
 panel['month'] = panel['date'].dt.to_period('M')
 panel_monthly = panel.groupby(['ticker', 'month']).last().reset_index()
-panel_monthly['rebalance_date'] = panel_monthly['month'].dt.to_timestamp(how='end').dt.normalize()
+panel_monthly['rebalance_date'] = panel_monthly['month'].map(month_to_market_eom)
+panel_monthly = panel_monthly.dropna(subset=['rebalance_date'])
 
-print(f'ens_monthly: {ens_monthly.shape}')
-print(f'panel_monthly: {panel_monthly.shape}')""")
+# ⭐ Issue #2 수정 사전 준비: rf 차감용
+rf_daily_for_lambda = panel.drop_duplicates('date').set_index('date')['rf_daily']
+
+print(f'ens_monthly: {ens_monthly.shape}  (Issue #1 수정 적용)')
+print(f'panel_monthly: {panel_monthly.shape}')
+print(f'month_to_market_eom mapping: {len(month_to_market_eom)} 개월')""")
 
 code("""# 4-4. 백테스트 메인 루프
 weights_history = {
@@ -247,7 +309,12 @@ for i, t in enumerate(rebalance_dates):
     # ─── 시장 데이터 (π 계산) ───
     spy_excess_t = market.loc[is_start:is_end, 'SPY']
     spy_lr = np.log(spy_excess_t / spy_excess_t.shift(1)).dropna()
-    spy_excess_monthly = float(spy_lr.mean() * DAYS_PER_MONTH)  # 월별 환산
+
+    # ⭐ Issue #2 수정: λ 계산 시 rf 차감 (He-Litterman 표준 공식)
+    # 이전: λ = E[r_mkt] / σ²_mkt (rf 누락)
+    # 수정: λ = (E[r_mkt] - r_f) / σ²_mkt
+    rf_lr = rf_daily_for_lambda.reindex(spy_lr.index).fillna(0.0)
+    spy_excess_monthly = float((spy_lr - rf_lr).mean() * DAYS_PER_MONTH)
     sigma2_mkt = float(spy_lr.var() * DAYS_PER_MONTH)
 
     # 시장 가중치 = mcap 비례
@@ -320,13 +387,15 @@ for k, v in weights_history.items():
 md("""## §5. 메트릭 계산 + 시나리오 비교 표""")
 
 code("""# 5-1. 월별 수익률 매트릭스 (전 universe)
+# ⭐ Issue #1B 수정: month_to_eom 전달 → market 월말 매핑
 all_universe_tickers = sorted(universe['ticker'].unique().tolist())
 monthly_rets = compute_monthly_returns_for_universe(
     panel, all_universe_tickers,
     rebalance_dates[0] - pd.DateOffset(years=1),
     rebalance_dates[-1] + pd.DateOffset(months=1),
+    month_to_eom=month_to_market_eom,   # ⭐ 인덱스 = market 월말
 )
-print(f'monthly_rets: {monthly_rets.shape}')
+print(f'monthly_rets: {monthly_rets.shape}  (Issue #1B 수정: market 월말 매핑)')
 
 # 5-2. SPY 월별 수익률
 spy_monthly_ret = spy_returns(market, rebalance_dates, return_type='monthly').dropna()
@@ -370,19 +439,44 @@ print('=== 시나리오별 월별 수익률 시계열 (look-ahead 수정 후) ==
 for k, v in portfolio_returns_dict.items():
     print(f'  {k}: {len(v)} 개월, mean={v.mean()*100:+.3f}%/월, std={v.std()*100:.3f}%')""")
 
-code("""# 5-5. 메트릭 계산 (각 시나리오)
+code("""# ============================================================
+# 5-5. 메트릭 계산 — ⭐ Fair 비교 (모든 시나리오 같은 sample)
+# ============================================================
+# 발견: SPY 는 별도 산출되어 91 sample, BL 들은 universe 제약으로 72 sample
+# → 직접 비교 시 mismatch 위험
+# → Fair 비교: BL_ml 의 valid 시점 (72 개월) 으로 모든 시나리오 통일
+
+# 공통 시점 (BL_ml 의 valid sample 기준)
+common_dates = portfolio_returns_dict['BL_ml'].dropna().index
+print(f'⭐ Fair 비교 기준 시점: {len(common_dates)} 개월 ({common_dates[0].date()} ~ {common_dates[-1].date()})')
+
 metrics_summary = {}
+metrics_summary_full = {}   # SPY 의 full sample 도 별도 보관 (참고용)
+
 for scenario, port_rets in portfolio_returns_dict.items():
     benchmark = portfolio_returns_dict.get('SPY')
+
+    # ⭐ Fair 비교: 같은 72 sample 만 사용
+    port_rets_fair = port_rets.reindex(common_dates).dropna()
+    bench_fair = benchmark.reindex(common_dates).dropna()
     metrics = compute_portfolio_metrics(
-        port_rets, benchmark_returns=benchmark, rf_returns=rf_monthly,
+        port_rets_fair, benchmark_returns=bench_fair, rf_returns=rf_monthly,
         periods_per_year=12,
     )
     metrics_summary[scenario] = metrics
 
+    # 참고용: full sample (SPY 만 유의미 차이)
+    metrics_full = compute_portfolio_metrics(
+        port_rets, benchmark_returns=benchmark, rf_returns=rf_monthly,
+        periods_per_year=12,
+    )
+    metrics_summary_full[scenario] = metrics_full
+
 metrics_df = pd.DataFrame(metrics_summary).T
+metrics_df_full = pd.DataFrame(metrics_summary_full).T
+
 print('=' * 80)
-print('🎯 5 시나리오 메트릭 비교')
+print('🎯 5 시나리오 메트릭 — ⭐ Fair 비교 (모든 시나리오 72 sample)')
 print('=' * 80)
 print(metrics_df[['cum_return', 'annualized_return', 'annualized_vol',
                   'sharpe', 'max_drawdown', 'calmar']].round(4).to_string())
@@ -390,7 +484,35 @@ print(metrics_df[['cum_return', 'annualized_return', 'annualized_vol',
 # alpha / beta (벤치마크 있는 경우만)
 if 'alpha' in metrics_df.columns:
     print('\\n=== Alpha / Beta (vs SPY) ===')
-    print(metrics_df[['alpha', 'beta']].round(4).to_string())""")
+    print(metrics_df[['alpha', 'beta']].round(4).to_string())
+
+# 참고용 — Full sample (SPY 만 차이)
+print('\\n' + '=' * 80)
+print('📌 참고 — Full sample (SPY=91, BL=72)')
+print('=' * 80)
+print(metrics_df_full[['cum_return', 'sharpe', 'max_drawdown', 'n_periods']].round(4).to_string())
+
+# Sharpe 순위 명시
+print('\\n' + '=' * 80)
+print('🏆 Sharpe 순위 (Fair 비교, 72 sample)')
+print('=' * 80)
+sharpe_rank = metrics_df.sort_values('sharpe', ascending=False)
+for i, (scenario, row) in enumerate(sharpe_rank.iterrows(), 1):
+    print(f'  {i}. {scenario:15s}  Sharpe={row[\"sharpe\"]:.4f}  CumRet={row[\"cum_return\"]*100:+.1f}%  Alpha={row.get(\"alpha\", 0)*100:+.2f}%')
+
+# ⭐ 핵심 발견 명시
+print('\\n' + '=' * 80)
+print('⭐ 핵심 발견 (수정 + Fair 비교 후)')
+print('=' * 80)
+ml = metrics_df.loc['BL_ml']
+tr = metrics_df.loc['BL_trailing']
+spy = metrics_df.loc['SPY']
+mc = metrics_df.loc['McapWeight']
+print(f'1. McapWeight 가 1 위 (Sharpe {mc[\"sharpe\"]:.3f}) — 단순 시총 가중치가 ML 통합 BL 능가')
+print(f'2. BL_ml ({ml[\"sharpe\"]:.3f}) > BL_trailing ({tr[\"sharpe\"]:.3f}): diff = +{ml[\"sharpe\"]-tr[\"sharpe\"]:.3f} (작음)')
+print(f'3. BL_ml < SPY: diff = {ml[\"sharpe\"]-spy[\"sharpe\"]:+.3f}')
+print(f'4. BL_ml < McapWeight: diff = {ml[\"sharpe\"]-mc[\"sharpe\"]:+.3f}')
+print(f'5. ML 통합 효과는 BL_trailing 대비만 미미한 우위')""")
 
 
 # ============================================================================
@@ -398,7 +520,15 @@ if 'alpha' in metrics_df.columns:
 # ============================================================================
 md("""## §6. 시각화 (누적수익 / drawdown / rolling Sharpe)""")
 
-code("""fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+code("""# ⭐ Fair 비교: 모든 시나리오를 같은 72 sample 로 통일
+# 발견된 문제: SPY 만 91 sample → 누적 수익 곡선/drawdown 에서 다른 시기 그려짐
+# 해결: common_dates (BL_ml 의 valid 시점) 으로 모든 시나리오 reindex
+fair_returns = {
+    s: port_rets.reindex(common_dates).dropna()
+    for s, port_rets in portfolio_returns_dict.items()
+}
+
+fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 
 colors = {
     'BL_trailing': 'coral',
@@ -408,57 +538,61 @@ colors = {
     'McapWeight': 'purple',
 }
 
-# 6-1. 누적 수익 곡선
+# 6-1. 누적 수익 곡선 — Fair 비교 (모든 시나리오 같은 72 시점)
 ax = axes[0, 0]
-for scenario, port_rets in portfolio_returns_dict.items():
+for scenario, port_rets in fair_returns.items():
     cum = compute_cumulative_curve(port_rets)
     ax.plot(cum.index, cum.values, label=scenario, color=colors.get(scenario, 'gray'),
             lw=2 if scenario == 'BL_ml' else 1.2,
             alpha=0.9 if scenario == 'BL_ml' else 0.7)
-ax.set_title('누적 수익 곡선 (initial = 1.0)')
+ax.set_title('누적 수익 곡선 (initial = 1.0) — ⭐ Fair 비교 72 sample')
 ax.set_ylabel('Cumulative Value')
 ax.legend(loc='upper left')
 ax.grid(alpha=0.3)
 ax.axvspan(pd.Timestamp('2020-02'), pd.Timestamp('2020-06'), alpha=0.1, color='red', label='COVID')
 ax.axvspan(pd.Timestamp('2022-01'), pd.Timestamp('2022-12'), alpha=0.1, color='orange', label='긴축')
 
-# 6-2. Drawdown
+# 6-2. Drawdown — Fair 비교
 ax = axes[0, 1]
-for scenario, port_rets in portfolio_returns_dict.items():
+for scenario, port_rets in fair_returns.items():
     dd = compute_drawdown_curve(port_rets)
     ax.fill_between(dd.index, dd.values, 0, alpha=0.3, color=colors.get(scenario, 'gray'))
     ax.plot(dd.index, dd.values, label=scenario, color=colors.get(scenario, 'gray'), lw=1)
-ax.set_title('Drawdown')
+ax.set_title('Drawdown — ⭐ Fair 비교 72 sample')
 ax.set_ylabel('% drop from peak')
 ax.legend(loc='lower left', fontsize=8)
 ax.grid(alpha=0.3)
 
-# 6-3. Rolling 12개월 Sharpe
+# 6-3. Rolling 12개월 Sharpe — Fair 비교
 ax = axes[1, 0]
-for scenario, port_rets in portfolio_returns_dict.items():
+for scenario, port_rets in fair_returns.items():
     rolling_sharpe = (port_rets.rolling(12).mean() / port_rets.rolling(12).std() * np.sqrt(12))
     ax.plot(rolling_sharpe.index, rolling_sharpe.values, label=scenario,
             color=colors.get(scenario, 'gray'),
             lw=2 if scenario == 'BL_ml' else 1.2,
             alpha=0.9 if scenario == 'BL_ml' else 0.7)
 ax.axhline(0, color='black', ls='-', lw=0.5)
-ax.set_title('Rolling 12-month Sharpe')
+ax.set_title('Rolling 12-month Sharpe — ⭐ Fair 비교 72 sample')
 ax.set_ylabel('Sharpe')
 ax.legend(loc='upper left')
 ax.grid(alpha=0.3)
 
-# 6-4. Sharpe / Alpha 막대그래프
+# 6-4. Sharpe Ratio bar chart (Fair 비교 결과)
 ax = axes[1, 1]
 scenarios_sorted = metrics_df.sort_values('sharpe', ascending=False).index.tolist()
 sharpe_vals = [metrics_summary[s]['sharpe'] for s in scenarios_sorted]
-ax.bar(scenarios_sorted, sharpe_vals, color=[colors.get(s, 'gray') for s in scenarios_sorted])
+bar_colors = [colors.get(s, 'gray') for s in scenarios_sorted]
+ax.bar(scenarios_sorted, sharpe_vals, color=bar_colors)
 ax.set_ylabel('Sharpe Ratio')
-ax.set_title('Sharpe Ratio 비교 (annualized)')
+ax.set_title('Sharpe Ratio 비교 (annualized, Fair 72 sample)')
 for i, v in enumerate(sharpe_vals):
     ax.text(i, v + 0.02, f'{v:.2f}', ha='center', fontsize=11)
 ax.grid(alpha=0.3, axis='y')
+ax.set_xticks(range(len(scenarios_sorted)))
 ax.set_xticklabels(scenarios_sorted, rotation=15, ha='right')
 
+plt.suptitle('Phase 2 — 5 시나리오 비교 (모든 시나리오 같은 72 sample)',
+             fontsize=14, fontweight='bold', y=1.005)
 plt.tight_layout()
 plt.savefig(OUT_DIR / 'bl_yearly_comparison.png', dpi=120, bbox_inches='tight')
 plt.show()""")

@@ -41,6 +41,27 @@ md("""# Phase 2 Step 5 — Sensitivity + REPORT (`05_sensitivity_and_report.ipyn
 
 > **목적**: Step 4 결과의 robustness 다차원 검증 + Phase 2 학술 종합 보고서 자동 생성.
 
+## ⚠️ 2026-04-29 정합성 검증 + 수정 내역
+
+본 노트북은 Step 4 의 수정사항 (Issue #1, #1B, #2) 을 반영하며 다음을 포함:
+
+1. **Issue #1**: Date Mismatch (calendar vs market 월말) 수정
+2. **Issue #1B**: monthly_rets 인덱스 mismatch 수정
+3. **Issue #2**: λ rf 차감 적용
+4. **Fair 비교**: 모든 시나리오를 BL_ml 의 72 sample 로 통일
+
+## 진짜 결과 (수정 + Fair 비교 후)
+
+```
+McapWeight Sharpe 1.031 ⭐ 1 위
+SPY        Sharpe 0.912
+BL_ml      Sharpe 0.907 (3 위)
+EqualWeight Sharpe 0.868
+BL_trailing Sharpe 0.866
+```
+
+→ McapWeight 가 단순 시총 가중치만으로 1 위. ML 통합 BL 의 우위는 BL_trailing 대비만 +0.041.
+
 ## 5 분석 차원
 
 | § | 분석 | 내용 | 학습 비용 |
@@ -52,7 +73,7 @@ md("""# Phase 2 Step 5 — Sensitivity + REPORT (`05_sensitivity_and_report.ipyn
 | §7 | **REPORT.md** | Phase 2 학술 종합 보고서 자동 생성 | 즉시 |
 
 ⭐ default 값 (Step 4): τ = 0.05, tc = 0.0
-⭐ 핵심 검증: τ/tc 변화에도 BL_ml > BL_trailing 우위 유지하는가?
+⭐ 핵심 검증: 가정 변경에도 BL_ml > BL_trailing 우위 유지하는가? (효과 크기 작음 — Phase 3 의 분석 기간 확장 + 다른 sensitivity 필요)
 
 ## 셀 구성
 
@@ -167,14 +188,19 @@ code("""def get_mcap_at_date(panel_df, date, tickers):
     return sub['mcap_value'].dropna()
 
 
-def compute_monthly_returns_for_universe(panel_df, universe_tickers, start_date, end_date):
-    \"\"\"종목별 월별 단순 수익률 (월말 endpoint).\"\"\"
+def compute_monthly_returns_for_universe(panel_df, universe_tickers, start_date, end_date,
+                                          month_to_eom=None):
+    \"\"\"종목별 월별 단순 수익률 (⭐ market 월말 매핑 옵션).\"\"\"
     sub = panel_df[panel_df['ticker'].isin(universe_tickers) &
                    (panel_df['date'] >= start_date) & (panel_df['date'] <= end_date)]
     sub = sub.set_index('date')
     sub['month'] = sub.index.to_period('M')
     monthly_lr = sub.groupby(['ticker', 'month'])['log_ret'].sum().reset_index()
-    monthly_lr['date'] = monthly_lr['month'].dt.to_timestamp(how='end').dt.normalize()
+    if month_to_eom is not None:
+        monthly_lr['date'] = monthly_lr['month'].map(month_to_eom)
+        monthly_lr = monthly_lr.dropna(subset=['date'])
+    else:
+        monthly_lr['date'] = monthly_lr['month'].dt.to_timestamp(how='end').dt.normalize()
     monthly_lr['ret'] = np.exp(monthly_lr['log_ret']) - 1
     return monthly_lr.pivot_table(index='date', columns='ticker', values='ret')
 
@@ -194,17 +220,22 @@ def run_bl_backtest_for_tau(tau_value, scenario='BL_ml', verbose=False):
         (rebalance_dates_local >= '2018-04-01') & (rebalance_dates_local <= '2025-12-31')
     ]
 
+    # ⭐ Issue #1 수정: month → market 월말 매핑
+    month_to_market_eom_local = {pd.Timestamp(d).to_period('M'): pd.Timestamp(d) for d in rebalance_dates_local}
+
     # 매월 ensemble 예측 (BL_ml 용) / vol_21d (BL_trailing 용)
     if scenario == 'BL_ml':
         ens_local = ens.copy()
         ens_local['month'] = ens_local['date'].dt.to_period('M')
         ens_monthly = ens_local.groupby(['ticker', 'month']).last().reset_index()
-        ens_monthly['rebalance_date'] = ens_monthly['month'].dt.to_timestamp(how='end').dt.normalize()
+        ens_monthly['rebalance_date'] = ens_monthly['month'].map(month_to_market_eom_local)
+        ens_monthly = ens_monthly.dropna(subset=['rebalance_date'])
     else:
         panel_local = panel.copy()
         panel_local['month'] = panel_local['date'].dt.to_period('M')
         panel_monthly = panel_local.groupby(['ticker', 'month']).last().reset_index()
-        panel_monthly['rebalance_date'] = panel_monthly['month'].dt.to_timestamp(how='end').dt.normalize()
+        panel_monthly['rebalance_date'] = panel_monthly['month'].map(month_to_market_eom_local)
+        panel_monthly = panel_monthly.dropna(subset=['rebalance_date'])
 
     # === 메인 루프 ===
     weights_dict = {}
@@ -235,7 +266,10 @@ def run_bl_backtest_for_tau(tau_value, scenario='BL_ml', verbose=False):
 
         spy_excess_t = market.loc[is_start:is_end, 'SPY']
         spy_lr = np.log(spy_excess_t / spy_excess_t.shift(1)).dropna()
-        spy_excess_monthly = float(spy_lr.mean() * DAYS_PER_MONTH)
+        # ⭐ Issue #2 수정: rf 차감
+        rf_daily_for_lambda = panel.drop_duplicates('date').set_index('date')['rf_daily']
+        rf_lr = rf_daily_for_lambda.reindex(spy_lr.index).fillna(0.0)
+        spy_excess_monthly = float((spy_lr - rf_lr).mean() * DAYS_PER_MONTH)
         sigma2_mkt = float(spy_lr.var() * DAYS_PER_MONTH)
 
         w_mkt = mcaps_filt / mcaps_filt.sum()
@@ -278,7 +312,7 @@ def run_bl_backtest_for_tau(tau_value, scenario='BL_ml', verbose=False):
 print('헬퍼 함수 정의 완료')""")
 
 
-code("""# === forward returns 계산 (look-ahead bias 방지) ===
+code("""# === forward returns 계산 (look-ahead bias 방지 + Issue #1B 수정) ===
 all_universe_tickers = sorted(universe['ticker'].unique().tolist())
 
 # rebalance dates 재구성
@@ -286,10 +320,14 @@ market_lastday_per_month = market.groupby(market.index.to_period('M')).tail(1)
 rebalance_dates = market_lastday_per_month.index
 rebalance_dates = rebalance_dates[(rebalance_dates >= '2018-04-01') & (rebalance_dates <= '2025-12-31')]
 
+# ⭐ Issue #1B 수정: market 월말 매핑
+month_to_market_eom = {pd.Timestamp(d).to_period('M'): pd.Timestamp(d) for d in rebalance_dates}
+
 monthly_rets = compute_monthly_returns_for_universe(
     panel, all_universe_tickers,
     rebalance_dates[0] - pd.DateOffset(years=1),
     rebalance_dates[-1] + pd.DateOffset(months=1),
+    month_to_eom=month_to_market_eom,   # ⭐ market 월말
 )
 forward_rets = monthly_rets.shift(-1)  # ⭐ look-ahead bias 방지
 
@@ -939,10 +977,19 @@ def generate_report():
     bs_p = bs_BL_ml_vs_trailing['p_value']
     bs_sig = '***' if bs_p < 0.001 else '**' if bs_p < 0.01 else '*' if bs_p < 0.05 else 'ns'
 
+    sr_diff_ml_tr = sr_BL_ml - sr_BL_tr
+    sr_diff_ml_spy = sr_BL_ml - sr_SPY
+    sr_diff_ml_mc = sr_BL_ml - sr_Mc
+
     report = f\"\"\"# Phase 2 — Black-Litterman + ML Volatility Integration 종합 보고서
 
 > **생성 시각**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 > **저자**: 재천 (자동 생성, Phase 2 Step 5 노트북 산출)
+
+> **⚠️ 2026-04-29 정합성 검증 + 수정 적용**:
+> - Issue #1, #1B, #2 수정 (date mismatch + monthly_rets + λ rf 차감)
+> - Fair 비교 (모든 시나리오 72 sample 통일)
+> - 수정 전 결과 (Sharpe 0.949, +15% 향상) 는 sampling bias 였음 → 정정
 
 ---
 
@@ -953,28 +1000,48 @@ def generate_report():
 
 ### 답변
 
-**✅ YES** — 미국 시장 (S&P 500 top 50, 2018-04 ~ 2025-12) 에서 Phase 1.5 ensemble (LSTM v4 + HAR-RV) 통합 BL 이 서윤범 baseline (vol_21d trailing) 대비:
+**⚠️ PARTIAL** — 미국 시장 (S&P 500 top 50, 2020-01 ~ 2025-12, **72 개월 OOS**) 에서 Phase 1.5 ensemble (LSTM v4 + HAR-RV) 통합 BL 의 효과는 **제한적**:
 
-| 차원 | BL_ml (Phase 2) | BL_trailing (서윤범) | 차이 | 평가 |
+| 차원 | BL_ml | BL_trailing | 차이 | 평가 |
 |---|---|---|---|---|
-| **Sharpe** | **{sr_BL_ml:.3f}** | {sr_BL_tr:.3f} | **+{sr_BL_ml - sr_BL_tr:+.3f} ({(sr_BL_ml/sr_BL_tr - 1)*100:+.1f}%)** | ⭐⭐⭐ |
-| **Annual Alpha (vs SPY)** | **{alpha_BL_ml*100:+.2f}%** | {alpha_BL_tr*100:+.2f}% | **+{(alpha_BL_ml - alpha_BL_tr)*100:+.2f}%p** | ⭐⭐⭐ |
-| **Cum Return** | {cum_BL_ml*100:+.1f}% | {cum_BL_tr*100:+.1f}% | +{(cum_BL_ml - cum_BL_tr)*100:+.1f}%p | ⭐ |
+| **Sharpe** | **{sr_BL_ml:.3f}** | {sr_BL_tr:.3f} | **{sr_diff_ml_tr:+.3f} ({(sr_BL_ml/sr_BL_tr - 1)*100:+.1f}%)** | ⭐ 작음 |
+| **Annual Alpha (vs SPY)** | {alpha_BL_ml*100:+.2f}% | {alpha_BL_tr*100:+.2f}% | {(alpha_BL_ml - alpha_BL_tr)*100:+.2f}%p | ⭐ 작음 |
+| **Cum Return** | {cum_BL_ml*100:+.1f}% | {cum_BL_tr*100:+.1f}% | {(cum_BL_ml - cum_BL_tr)*100:+.1f}%p | (BL_trailing 약간 우위) |
 | **MDD** | {mdd_BL_ml*100:.2f}% | {mdd_BL_tr*100:.2f}% | {(mdd_BL_ml - mdd_BL_tr)*100:+.2f}%p | (BL_trailing 약간 우위) |
 
-**Sharpe +{(sr_BL_ml/sr_BL_tr - 1)*100:.1f}% 향상 = Pyo & Lee (2018) KOSPI 결과 (+19%) 와 일관**.
+**Sharpe +{(sr_BL_ml/sr_BL_tr - 1)*100:.1f}% 향상 (작음, BL_trailing 대비만)**
+**Pyo & Lee (2018) KOSPI 결과 (+19%) 와 큰 차이** — 미국 시장에서 효과 약함.
+
+### ⚠️ 추가 발견: 시장 vs ML 통합 BL
+
+| 비교 | Sharpe diff | 해석 |
+|---|---|---|
+| BL_ml vs SPY | {sr_diff_ml_spy:+.3f} | {'BL_ml 약간 우위' if sr_diff_ml_spy > 0 else 'SPY 우위'} |
+| BL_ml vs McapWeight | {sr_diff_ml_mc:+.3f} | **McapWeight 가 사실 1 위** ⭐ |
+
+→ **단순 시총 가중치 (McapWeight) 가 ML 통합 BL 보다 우위** (Sharpe {sr_Mc:.3f} > {sr_BL_ml:.3f})
+→ Mega cap (AAPL, NVDA 등) 의 강세장 수익을 직접 흡수하는 것이 ML 변동성 view 보다 효과적인 시기였음
 
 ---
 
-## 2. 5 시나리오 비교 (Step 4 default: τ=0.05, tc=0.0)
+## 2. 5 시나리오 비교 (Step 4 default: τ=0.05, tc=0.0, Fair 72 sample)
 
 | 순위 | 시나리오 | Sharpe | Cum Return | MDD | Alpha (연) |
 |---|---|---|---|---|---|
-| 🥇 | **BL_ml** ⭐ | **{sr_BL_ml:.3f}** | {cum_BL_ml*100:+.1f}% | {mdd_BL_ml*100:.1f}% | **{alpha_BL_ml*100:+.2f}%** |
-| 🥈 | BL_trailing | {sr_BL_tr:.3f} | {cum_BL_tr*100:+.1f}% | {mdd_BL_tr*100:.1f}% | {alpha_BL_tr*100:+.2f}% |
-| 🥉 | McapWeight | {sr_Mc:.3f} | {metrics_df.loc['McapWeight', 'cum_return']*100:+.1f}% | {metrics_df.loc['McapWeight', 'max_drawdown']*100:.1f}% | {metrics_df.loc['McapWeight', 'alpha']*100:+.2f}% |
-| 4 | SPY (벤치마크) | {sr_SPY:.3f} | {metrics_df.loc['SPY', 'cum_return']*100:+.1f}% | {metrics_df.loc['SPY', 'max_drawdown']*100:.1f}% | (기준) |
-| 5 | EqualWeight | {sr_Eq:.3f} | {metrics_df.loc['EqualWeight', 'cum_return']*100:+.1f}% | {metrics_df.loc['EqualWeight', 'max_drawdown']*100:.1f}% | {metrics_df.loc['EqualWeight', 'alpha']*100:+.2f}% |
+\"\"\"
+    # Sharpe 순위 정렬 후 markdown 표 생성
+    rank_df = metrics_df.sort_values('sharpe', ascending=False)
+    medals = ['🥇', '🥈', '🥉', '4', '5']
+    for i, (scenario, row) in enumerate(rank_df.iterrows()):
+        medal = medals[i] if i < len(medals) else str(i+1)
+        alpha_val = row.get('alpha', 0)
+        marker = ' ⭐' if scenario == 'McapWeight' else ''
+        report += f\"| {medal} | **{scenario}**{marker} | **{row['sharpe']:.3f}** | {row['cum_return']*100:+.1f}% | {row['max_drawdown']*100:.1f}% | {alpha_val*100:+.2f}% |\\n\"
+    report += f\"\"\"
+**핵심 발견**:
+- **McapWeight 가 1 위** ({sr_Mc:.3f}) — ML 통합 BL 능가
+- BL_ml ({sr_BL_ml:.3f}) 은 BL_trailing ({sr_BL_tr:.3f}) 대비 +{sr_diff_ml_tr:.3f} (작음)
+- BL_ml 은 SPY ({sr_SPY:.3f}) 와 거의 동등
 
 ---
 
@@ -1035,24 +1102,32 @@ VIX (CBOE Volatility Index) 기준 시기별 분해:
 
 ---
 
-## 4. 학술적 기여
+## 4. 학술적 기여 + 한계
 
-본 연구의 차별점:
+### 4-1. 본 연구의 의의
 
-1. **Pyo & Lee (2018) 의 미국 시장 재현**: KOSPI Sharpe +19% ↔ US +{(sr_BL_ml/sr_BL_tr - 1)*100:.1f}% 의 일관성 입증
+1. **Pyo & Lee (2018) 의 미국 시장 부분 재현**:
+   - KOSPI Sharpe +19% ↔ **US +{(sr_BL_ml/sr_BL_tr - 1)*100:.1f}%** (작음)
+   - 미국 강세장에서 mega cap 추종 (McapWeight) 이 ML 통합 BL 능가
 2. **단일 ANN → LSTM/HAR Performance Ensemble 업그레이드**: 변동성 예측 정확도 +8.1% (RMSE 기준)
 3. **외부지표 (VIX) 통합**: regime 기반 robustness 검증 가능
 4. **5 벤치마크 동시 비교**: 1/N (DeMiguel et al. 2009) + Mcap + SPY 포함
 5. **τ + tc + Bootstrap + VIX = 4 차원 robustness 검증**: 단일 결과의 우연성 배제
+
+### 4-2. 정합성 검증 (2026-04-29)
+- Issue #1, #1B, #2 발견 + 수정
+- 이전 51m 결과는 sampling bias 였음 → 진짜 72m 결과로 정정
+- McapWeight 1 위 발견 (이전에 누락된 사실)
 
 ---
 
 ## 5. 한계 및 후속 연구
 
 ### 5-1. 데이터 한계
-- 2018-04 ~ 2025-12 = **51 개월** OOS portfolio return → Bootstrap n=5000 보강했으나 51 개월 자체가 짧음
+- 2020-01 ~ 2025-12 = **72 개월** OOS portfolio return → Bootstrap n=5000 보강했으나 72 개월 자체가 짧음
+- universe_top50_history 가 2020 부터 시작 → 2018-2019 시기 미포함
 - COVID (2020) 단일 사건이 큰 영향
-- S&P 500 universe 한정 → small-cap 미반영
+- 강세장 + AI 호황 위주 시기 → mega cap 우위 시기와 일치
 
 ### 5-2. 모델 한계
 - BL Q_FIXED = 0.003 (월 0.3%) 고정값 사용 → q 도 ML 예측 가능
