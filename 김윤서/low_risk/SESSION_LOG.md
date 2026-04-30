@@ -6,7 +6,7 @@
 
 ## 1. 오늘 반영된 사항
 
-### 1-1. 09_Q_Adaptive_Comparison.ipynb — 신규 생성
+### 1-1. 10_Q_Adaptive_Comparison.ipynb — 신규 생성
 
 6종 BL 전략 + 벤치마크 2종을 단일 walk-forward 루프에서 비교하는 노트북.
 
@@ -21,7 +21,7 @@
 | CAPM | BL 없음, π로만 최적화 |
 | SPY | S&P 500 지수 |
 
-**의존성**: `05_Q_Sensitivity → Q_OPTIMAL 자동 로드`, `04_VolatilityPrediction → vol_predicted.csv`
+**의존성**: `06_Q_Sensitivity → Q_OPTIMAL 자동 로드`, `05_VolatilityPrediction → vol_predicted.csv`
 
 **Look-ahead bias 방지 처리**:
 - 레짐 분위수: expanding quantile (미래 데이터 미사용)
@@ -34,14 +34,14 @@
 
 | 분석 | 결정된 위치 | 이유 |
 |------|------------|------|
-| 레짐 혼동행렬 | 08_Regime_Q_Portfolio | 레짐 설계·검증 노트북 |
-| MSE / QLIKE | 04_VolatilityPrediction | GARCH 모델 검증 노트북 |
+| 레짐 혼동행렬 | 09_Regime_Q_Portfolio | 레짐 설계·검증 노트북 |
+| MSE / QLIKE | 05_VolatilityPrediction | GARCH 모델 검증 노트북 |
 
 09는 Q 전략 포트폴리오 성능 비교가 목적이므로, 두 분석 모두 제외.
 
 ---
 
-### 1-3. 04_VolatilityPrediction.ipynb — MSE/QLIKE 셀 추가
+### 1-3. 05_VolatilityPrediction.ipynb — MSE/QLIKE 셀 추가
 
 Rank IC 시각화(cell-04) 이후에 2개 셀 추가:
 
@@ -96,11 +96,11 @@ w_mkt = pd.Series(1.0 / len(valid_tix), index=valid_tix)
 
 | 파일 | 변경 위치 수 |
 |------|------------|
-| 05_Q_Sensitivity | 2곳 |
-| 06_BL_Q_Comparison | 1곳 |
-| 07_BL_VolQ_Grid | 1곳 |
-| 08_Regime_Q_Portfolio | 2곳 |
-| 09_Q_Adaptive_Comparison | 1곳 |
+| 06_Q_Sensitivity | 2곳 |
+| 07_BL_Q_Comparison | 1곳 |
+| 08_BL_VolQ_Grid | 1곳 |
+| 09_Regime_Q_Portfolio | 2곳 |
+| 10_Q_Adaptive_Comparison | 1곳 |
 | 99_baseline | 2곳 |
 
 **별도 결정 필요** — `build_P` 내부 가중치:
@@ -162,11 +162,11 @@ w = res.x if res.success else np.ones(n)/n
 
 | 파일 | Cell |
 |------|------|
-| 05_Q_Sensitivity | 3 |
-| 06_BL_Q_Comparison | 3 |
-| 07_BL_VolQ_Grid | 3 |
-| 08_Regime_Q_Portfolio | 3 |
-| 09_Q_Adaptive_Comparison | 3 |
+| 06_Q_Sensitivity | 3 |
+| 07_BL_Q_Comparison | 3 |
+| 08_BL_VolQ_Grid | 3 |
+| 09_Regime_Q_Portfolio | 3 |
+| 10_Q_Adaptive_Comparison | 3 |
 | 99_baseline | 3 |
 | 98_2006_baseline | 2 |
 
@@ -203,16 +203,16 @@ actual_ret = (ret_pivot.loc[next_date].reindex(valid_tix).fillna(0)
 
 | 파일 | Cell | 처리 유형 |
 |------|------|----------|
-| 05_Q_Sensitivity | 5 | next_date 기존 존재 |
-| 05_Q_Sensitivity | 7 | next_date 신규 삽입 |
-| 06_BL_Q_Comparison | 4 | next_date 순서 재배치 |
-| 07_BL_VolQ_Grid | 4 | next_date 신규 삽입 |
-| 08_Regime_Q_Portfolio | 7 | next_date 기존 존재 |
-| 08_Regime_Q_Portfolio | 15 | next_date 신규 삽입 |
+| 06_Q_Sensitivity | 5 | next_date 기존 존재 |
+| 06_Q_Sensitivity | 7 | next_date 신규 삽입 |
+| 07_BL_Q_Comparison | 4 | next_date 순서 재배치 |
+| 08_BL_VolQ_Grid | 4 | next_date 신규 삽입 |
+| 09_Regime_Q_Portfolio | 7 | next_date 기존 존재 |
+| 09_Regime_Q_Portfolio | 15 | next_date 신규 삽입 |
 | 99_baseline | 4 | next_date 순서 재배치 |
 | 99_baseline | 7 | next_date 순서 재배치 |
 | 98_2006_baseline | 3 | next_date 순서 재배치 |
-| 09_Q_Adaptive_Comparison | 7 | next_date 기존 존재 |
+| 10_Q_Adaptive_Comparison | 7 | next_date 기존 존재 |
 
 > ⚠️ **재실행 필요**: 수정된 노트북(05, 06, 07, 08, 09, 99, 98) 전부 walk-forward 재실행 및 기존 출력 CSV 갱신 필요.
 
@@ -226,7 +226,7 @@ actual_ret = (ret_pivot.loc[next_date].reindex(valid_tix).fillna(0)
 
 ### [즉시] A. 혼동행렬 — 레짐/변동성 그룹 오분류 확인
 
-**위치**: 08_Regime_Q_Portfolio에 셀 추가
+**위치**: 09_Regime_Q_Portfolio에 셀 추가
 
 **내용**: 예측 시점 t의 레짐 분류 vs 다음 달(t+1) 실현 레짐 비교
 
@@ -297,7 +297,7 @@ P[low_risk] = inv_vol / inv_vol.sum()
 - 저·중변동성: `Q_lambda` (시장 위험회피계수 반영)
 - 고변동성: `Q = 0` (하드스탑)
 
-09_Q_Adaptive_Comparison 결과 확인 후 08에 반영.
+10_Q_Adaptive_Comparison 결과 확인 후 08에 반영.
 
 ---
 
@@ -322,20 +322,81 @@ P[low_risk] = inv_vol / inv_vol.sum()
 
 ---
 
+---
+
+## 추가 작업 (2026-04-29 오후)
+
+### A-1. 04 + 04_5 노트북 병합
+
+`05_VolatilityPrediction.ipynb`와 `04_5_GARCH_Evaluation.ipynb` 통합. 두 파일이 동일한 유니버스·동일 기간에 대해 중복 평가를 수행하고 있었음.
+
+- 04: Walk-forward GARCH 예측 + QLIKE/MSE 저장 담당
+- 04_5: Rank IC 비교, P 행렬 일치율, Precision, 분리도, 레짐별 분석 담당
+
+병합 후: 04 하나에 전체 평가 완료. `04_5_GARCH_Evaluation.ipynb` 및 `04_5_GARCH_Evaluation_RESULTS.md` 삭제.
+
+---
+
+### A-2. SW 종목 데이터 결함 발견 및 수정
+
+**발견 경위**: QLIKE 이상치(2011: 15,224 / 2016: 1,266) 원인 분석 중 SW 종목 vol_21d=0 확인.
+
+**원인**: yfinance fill-forward → 거래 정지 구간 주가 고정 → pct_change()=0 → vol_21d=0. NaN이 아닌 0.0이라 기존 NaN 필터 통과.
+
+**수정 위치**: `01_DataCollection.ipynb` 셀 `43e97300` (4-1 섹션 신규 추가):
+```python
+ZERO_BOTH_MASK = (monthly_df['ret_1m'] == 0.0) & (monthly_df['vol_21d'] == 0.0)
+monthly_df.loc[ZERO_BOTH_MASK, fix_cols] = np.nan
+monthly_df.reset_index().to_csv(PANEL_PATH, index=False)
+```
+
+**수정 효과 (1~4 전체 재실행 후)**:
+
+| 지표 | 수정 전 | 수정 후 |
+|------|------|------|
+| QLIKE 평균 | 1099.73 | **0.44** |
+| 2011 연간 QLIKE | 15,224.03 | **0.4105** |
+| 2016 연간 QLIKE | 1,266.35 | **0.3434** |
+| QLIKE 중앙값 | 0.3805 | **0.3804** (거의 동일) |
+
+---
+
+### A-3. 05_VolatilityPrediction.ipynb 코드 정리
+
+SW 수정 후 이상치가 소멸하여 관련 설명 print·markdown 정리:
+
+| 셀 | 변경 내용 |
+|----|----------|
+| `b53b1957` | 코드 주석 "극단값에 크게 끌린다" 제거, QLIKE print 라벨 "← 이상치 포함" 제거, QLIKE 차트 상한 50→5, 차트 주석 텍스트 수정 |
+| `d6977148` | 마크다운: "QLIKE 이상치 진단" → "데이터 품질 검증 — vol_21d = 0 탐색" |
+| `35c8ecf6` | 결론 분기 추가: ✅(결함없음+이상치없음) / ⚠️(잔존) 명시 |
+
+---
+
+### A-4. 05_VolatilityPrediction_RESULTS.md 전면 업데이트
+
+재실행 결과 반영:
+- QLIKE 평균: 1099.73 → 0.44
+- 연도별 수치 전체 갱신 (2011·2016 이상치 소멸)
+- 이상치 원인 분석 ①②: 수정 이력 문서로 전환 (before/after 수치 포함)
+- Part 2 비교 분석 추가: P 일치율·분리도·팩터 수익·레짐별 IC 전체 수치 포함
+
+---
+
 ## 3. 현재 상태 요약
 
 | 노트북 | 상태 |
 |--------|------|
-| 01_DataCollection | 완료 |
+| 01_DataCollection | ✅ SW 데이터 수정 셀 추가 완료 |
 | 02_LowRiskAnomaly | 완료 (EDA B 추가 예정) |
 | 03_VolatilityEDA | 완료 |
-| 04_VolatilityPrediction | ✅ MSE/QLIKE 추가 완료 (재실행 필요) |
-| 04_5_GARCH_Evaluation | 완료 |
-| 05_Q_Sensitivity | ⚠️ actual_ret 수정 → 재실행 필요 |
-| 06_BL_Q_Comparison | ⚠️ actual_ret 수정 → 재실행 필요 |
-| 07_BL_VolQ_Grid | ⚠️ actual_ret 수정 → 재실행 필요 |
-| 08_Regime_Q_Portfolio | ⚠️ actual_ret 수정 → 재실행 필요 / 혼동행렬 추가 예정 (액션 A) |
-| 09_Q_Adaptive_Comparison | ✅ 신규 생성 / ⚠️ actual_ret 수정 → 재실행 필요 |
+| 05_VolatilityPrediction | ✅ SW 수정 후 재실행 완료, RESULTS.md 반영 |
+| 04_5_GARCH_Evaluation | 삭제 (04에 통합) |
+| 06_Q_Sensitivity | ⚠️ actual_ret 수정 → 재실행 필요 |
+| 07_BL_Q_Comparison | ⚠️ actual_ret 수정 → 재실행 필요 |
+| 08_BL_VolQ_Grid | ⚠️ actual_ret 수정 → 재실행 필요 |
+| 09_Regime_Q_Portfolio | ⚠️ actual_ret 수정 → 재실행 필요 / 혼동행렬 추가 예정 (액션 A) |
+| 10_Q_Adaptive_Comparison | ✅ 신규 생성 / ⚠️ actual_ret 수정 → 재실행 필요 |
 | 99_baseline | ⚠️ actual_ret 수정 → 재실행 필요 |
 | 98_2006_baseline | ⚠️ actual_ret 수정 → 재실행 필요 |
 
