@@ -1,0 +1,42 @@
+{
+  "model_name": "02b Cross-Sectional",
+  "layer1_overall": {
+    "rmse": 0.4116576410899871,
+    "qlike": 1.9882309964422467,
+    "r2_train_mean": 0.47639718337231773,
+    "mz_alpha": -0.25291504866599057,
+    "mz_beta": 0.9332654867372913,
+    "mz_r2": 0.48001830523045896,
+    "pred_std_ratio": 0.7423756084519157,
+    "spearman": 0.6667238840585462,
+    "dm_stat_vs_har": -61.48373722790112,
+    "dm_pvalue_vs_har": 0.0,
+    "n_pairs": 2635610
+  },
+  "layer2_metrics": {
+    "sharpe": 1.094224769214904,
+    "cagr": 12.346832447238288,
+    "ann_vol": 11.267951633742861,
+    "mdd": -17.548988147311984,
+    "capm_alpha": 17.359760833030112,
+    "capm_beta": -0.15665055918635692,
+    "capm_t": 0.20730274285745728,
+    "information_ratio": 0.09841147673687244,
+    "sortino": 1.6937651368813897,
+    "calmar": 0.7035637806348098,
+    "hit_rate": 64.58333333333334,
+    "skew": -0.3653773517602828,
+    "kurt": 0.538611054744067,
+    "cvar_5": -6.553305797761114,
+    "var_5": -4.564665577489386,
+    "turnover": null,
+    "top10_concentration": null,
+    "n_months": 192
+  },
+  "layer3_metrics": {
+    "low_vol_hit_rate": 0.6952096880740095,
+    "high_vol_hit_rate": 0.7162526732755646,
+    "rank_consistency_mean": 0.7652208667196373,
+    "p_matrix_turnover_mean": 0.09095375414359569
+  }
+}
