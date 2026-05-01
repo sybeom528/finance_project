@@ -123,19 +123,46 @@ print(f'\\n=== CS_V4_BEST_CONFIG ===')
 for k, v in CS_V4_BEST_CONFIG.items():
     print(f'  {k}: {v}')""")
 
-code("""# CrossSectionalLSTMRegressor 파라미터 수 확인
+code("""# CrossSectionalLSTMRegressor 파라미터 수 확인 (전체 S&P 500: ~624 종목)
 dummy_model = CrossSectionalLSTMRegressor(
     input_size=CS_V4_BEST_CONFIG['input_size'],
     hidden_size=CS_V4_BEST_CONFIG['hidden_size'],
     num_layers=CS_V4_BEST_CONFIG['num_layers'],
     dropout=CS_V4_BEST_CONFIG['dropout'],
-    n_tickers=200,    # 최대 종목 수
+    n_tickers=700,    # ⭐ 전체 S&P 500 (실측 624 + 안전 마진)
     embedding_dim=CS_V4_BEST_CONFIG['embedding_dim'],
 )
-n_params = sum(p.numel() for p in dummy_model.parameters())
-print(f'CS LSTM 파라미터 수: {n_params:,} (기대: 54,913)')
-assert n_params > 50000, f'파라미터 수 이상: {n_params}'
-print('✅ 모델 구조 검증 완료')""")
+
+# 컴포넌트별 파라미터 분리
+n_total = sum(p.numel() for p in dummy_model.parameters())
+n_emb = sum(p.numel() for n, p in dummy_model.named_parameters() if 'embedding' in n)
+n_lstm = sum(p.numel() for n, p in dummy_model.named_parameters() if 'lstm' in n.lower())
+n_fc = sum(p.numel() for n, p in dummy_model.named_parameters() if 'fc' in n.lower())
+
+print(f'=== CrossSectionalLSTMRegressor 파라미터 ===')
+print(f'  hidden_size: {CS_V4_BEST_CONFIG["hidden_size"]} (02a 일관)')
+print(f'  num_layers:  {CS_V4_BEST_CONFIG["num_layers"]} (02a 일관)')
+print(f'  embedding_dim: {CS_V4_BEST_CONFIG["embedding_dim"]}')
+print(f'  n_tickers (안전): 700')
+print()
+print(f'  LSTM 파라미터:      {n_lstm:>8,}')
+print(f'  Embedding (700x{CS_V4_BEST_CONFIG["embedding_dim"]}): {n_emb:>8,}')
+print(f'  FC 파라미터:         {n_fc:>8,}')
+print(f'  ---------------------------')
+print(f'  Total:              {n_total:>8,}')
+
+# ⭐ 검증: 모델이 모든 종목 학습할 만큼의 capacity 보유
+# hidden=32, layers=1 환경에서 약 5,888 LSTM + 5,600 emb + 33 FC ≈ 11,500
+# hidden=64, layers=2 환경에서 약 50,000+ (예전 default)
+MIN_PARAMS = 5_000   # ⭐ hidden=32 환경 임계값
+assert n_total >= MIN_PARAMS, f'파라미터 수 이상: {n_total} (최소 {MIN_PARAMS})'
+
+# 02a 와 fair 비교 가능 여부 (capacity 정합성)
+assert dummy_model.hidden_size == 32, f'hidden_size 불일치: {dummy_model.hidden_size}'
+assert dummy_model.num_layers == 1, f'num_layers 불일치: {dummy_model.num_layers}'
+
+print()
+print('✅ 모델 구조 검증 완료 (02a 와 fair 비교 가능)')""")
 
 
 # ============================================================================

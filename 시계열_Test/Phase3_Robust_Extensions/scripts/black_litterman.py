@@ -97,8 +97,9 @@ def build_P(
     vol_series: pd.Series,
     mcap_series: pd.Series,
     pct: float = 0.30,
+    weighting: str = 'mcap',
 ) -> pd.Series:
-    """변동성 정렬 기반 양극단 30% long/short P 행렬 (시총 가중).
+    """변동성 정렬 기반 양극단 30% long/short P 행렬 (가중치 방식 선택).
 
     Parameters
     ----------
@@ -106,22 +107,27 @@ def build_P(
         자산별 변동성 (예측 또는 실현).
         ⭐ 본 Phase 2 에서는 ML ensemble 의 예측 변동성 사용.
     mcap_series : pd.Series (n,)
-        자산별 시가총액 (시총 가중치 계산용).
+        자산별 시가총액 (weighting='mcap' 시 가중치 계산용).
     pct : float, default 0.30
         양극단 비율 (Pyo & Lee 2018 일관 = 30%).
+    weighting : {'mcap', 'eq', 'rp'}, default 'mcap'
+        그룹 내 가중치 방식 (Phase 3-2 추가, 2026-04-30):
+        - 'mcap': 시총 비례 (기존, Pyo & Lee 2018, He-Litterman 2002 표준)
+        - 'eq':   1/N 균등 (DeMiguel et al. 2009)
+        - 'rp':   1/σ 비례 단순 Risk Parity (Maillard et al. 2010 inverse-vol)
 
     Returns
     -------
     P : pd.Series (n,)
         BL view 포트폴리오. 저위험 그룹 양수 (long), 고위험 그룹 음수 (short).
-        relative view: P.sum() ≈ 0 (수학적 검증 — Step 3 코드 Y 에서 1.34e-16 확인).
+        relative view: P.sum() ≈ 0 (모든 weighting 에서 보장).
 
     Notes
     -----
-    - 저위험 (long): 변동성 하위 30% 종목, 시총 비례 양수
-    - 고위험 (short): 변동성 상위 30% 종목, 시총 비례 음수
+    - 저위험 (long): 변동성 하위 30% 종목 양수
+    - 고위험 (short): 변동성 상위 30% 종목 음수
     - 중간 40%: P=0 (view 영향 없음)
-    - 시총 가중: BL P 행렬의 표준 (Pyo & Lee 2018, He-Litterman 2002 등)
+    - Backward 호환: weighting 인자 미전달 시 default 'mcap' → 기존 호출 영향 0
     """
     n_group = max(1, int(len(vol_series) * pct))
     sorted_idx = vol_series.sort_values().index
@@ -129,10 +135,29 @@ def build_P(
     high_risk = sorted_idx[-n_group:]
 
     P = pd.Series(0.0, index=vol_series.index)
-    low_m = mcap_series[low_risk]
-    high_m = mcap_series[high_risk]
-    P[low_risk] = low_m / low_m.sum()
-    P[high_risk] = -high_m / high_m.sum()
+
+    if weighting == 'mcap':
+        # 시총 비례 (기존)
+        low_m = mcap_series[low_risk]
+        high_m = mcap_series[high_risk]
+        P[low_risk] = low_m / low_m.sum()
+        P[high_risk] = -high_m / high_m.sum()
+    elif weighting == 'eq':
+        # 1/N 균등 — DeMiguel et al. (2009)
+        P[low_risk] = 1.0 / n_group
+        P[high_risk] = -1.0 / n_group
+    elif weighting == 'rp':
+        # 1/σ 비례 단순 Risk Parity — Maillard et al. (2010) inverse-vol
+        # 0 division 방지 (vol > 0 보장 — LedoitWolf 적용된 결과는 양수)
+        inv_low = 1.0 / vol_series[low_risk]
+        inv_high = 1.0 / vol_series[high_risk]
+        P[low_risk] = inv_low / inv_low.sum()
+        P[high_risk] = -inv_high / inv_high.sum()
+    else:
+        raise ValueError(
+            f"weighting={weighting!r} 미지원. 'mcap'/'eq'/'rp' 중 선택"
+        )
+
     return P
 
 

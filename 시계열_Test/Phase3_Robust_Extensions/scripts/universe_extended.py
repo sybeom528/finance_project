@@ -481,3 +481,288 @@ def split_universe_by_period(
         (universe_df['oos_year'] >= post_start) & (universe_df['oos_year'] <= post_end)
     ].copy()
     return pre_df, post_df
+
+
+# =============================================================================
+# Panel forward 확장 (2026-05-01 추가)
+# =============================================================================
+def extend_panel_forward(
+    end_date: str = '2026-04-30',
+    cache_dir: Optional[Path] = None,
+    panel_name: str = 'daily_panel.csv',
+    market_name: str = 'market_data.csv',
+    vix_name: str = 'vix_daily.csv',
+    backup: bool = True,
+    verbose: bool = True,
+) -> dict:
+    """기존 panel 데이터를 forward 방향으로 확장 (yfinance 다운로드).
+
+    Walk-forward CV 의 마지막 fold y_true 부재 문제 해결용.
+    - LSTM 의 y_true = 다음 21일 변동성 → panel 끝점 직전 시점부터 NaN
+    - panel 을 21일 + buffer 만큼 forward 확장 → 마지막 fold 학습 가능
+    - 신규 fold 도 추가 가능 (panel 끝점 sliding)
+
+    Parameters
+    ----------
+    end_date : str, default '2026-04-30'
+        확장 대상 끝점 (yyyy-mm-dd).
+    cache_dir : Path, optional
+        데이터 디렉토리. None 시 setup.DATA_DIR 사용.
+    panel_name : str, default 'daily_panel.csv'
+    market_name : str, default 'market_data.csv'
+    vix_name : str, default 'vix_daily.csv'
+    backup : bool, default True
+        기존 파일을 .bak 으로 백업.
+    verbose : bool
+
+    Returns
+    -------
+    dict
+        {'panel_old_max', 'panel_new_max', 'n_added_rows', ...} 통계.
+
+    Notes
+    -----
+    - yfinance 다운로드: 종목 수 × 추가 일수에 비례 (~10-30분).
+    - 신규 일자만 다운로드 (기존 데이터는 보존).
+    - panel schema 유지 (columns: date, ticker, log_ret, vol_21d, mcap_value, rf_daily 등).
+    - 사용 후 LSTM incremental 재학습 + ensemble 결합 + BL 백테스트 재실행 필요.
+
+    Example
+    -------
+    >>> from scripts.universe_extended import extend_panel_forward
+    >>> stats = extend_panel_forward(end_date='2026-04-30')
+    >>> print(f"Panel: {stats['panel_old_max']} → {stats['panel_new_max']}")
+    """
+    import shutil
+    import yfinance as yf
+
+    if cache_dir is None:
+        from .setup import DATA_DIR
+        cache_dir = DATA_DIR
+    cache_dir = Path(cache_dir)
+
+    panel_path = cache_dir / panel_name
+    market_path = cache_dir / market_name
+    vix_path = cache_dir / vix_name
+
+    end_ts = pd.Timestamp(end_date)
+    stats = {}
+
+    if verbose:
+        print('=' * 70)
+        print(f'  Panel Forward 확장: end_date = {end_date}')
+        print('=' * 70)
+
+    # ────────────────────────────────────────────────────────────────────
+    # 1. 기존 panel 로드 + 마지막 일자 확인
+    # ────────────────────────────────────────────────────────────────────
+    if not panel_path.exists():
+        raise FileNotFoundError(f'{panel_name} 부재: {panel_path}')
+
+    panel_old = pd.read_csv(panel_path, parse_dates=['date'])
+    panel_old_max = panel_old['date'].max()
+    stats['panel_old_max'] = panel_old_max
+    stats['panel_old_rows'] = len(panel_old)
+
+    if verbose:
+        print(f'  기존 panel: {len(panel_old):,} rows, max date = {panel_old_max.date()}')
+
+    if panel_old_max >= end_ts:
+        if verbose:
+            print(f'  ⚡ Panel 이 이미 {panel_old_max.date()} 까지 → 확장 불필요 (end={end_date})')
+        stats['panel_new_max'] = panel_old_max
+        stats['n_added_rows'] = 0
+        return stats
+
+    # ────────────────────────────────────────────────────────────────────
+    # 2. 백업
+    # ────────────────────────────────────────────────────────────────────
+    if backup:
+        for p in [panel_path, market_path, vix_path]:
+            if p.exists():
+                bak = p.with_suffix(p.suffix + '.bak')
+                shutil.copy2(p, bak)
+                if verbose:
+                    print(f'  💾 백업: {p.name} → {bak.name}')
+
+    # ────────────────────────────────────────────────────────────────────
+    # 3. yfinance 다운로드 — 신규 일자 (panel_old_max + 1day ~ end_date)
+    # ────────────────────────────────────────────────────────────────────
+    download_start = (panel_old_max + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+    download_end = (end_ts + pd.Timedelta(days=1)).strftime('%Y-%m-%d')   # yfinance end exclusive
+
+    tickers = sorted(panel_old['ticker'].unique().tolist())
+    if verbose:
+        print(f'\n  [download] yfinance: {len(tickers)} 종목, {download_start} ~ {end_date}')
+
+    # 종목별 다운로드 (chunked)
+    chunk_size = 50
+    new_panel_rows = []
+    n_chunks = (len(tickers) + chunk_size - 1) // chunk_size
+
+    for chunk_idx in range(n_chunks):
+        chunk = tickers[chunk_idx * chunk_size : (chunk_idx + 1) * chunk_size]
+        try:
+            df_chunk = yf.download(
+                chunk, start=download_start, end=download_end,
+                progress=False, group_by='ticker', auto_adjust=False,
+                threads=True,
+            )
+        except Exception as e:
+            if verbose:
+                print(f'    chunk {chunk_idx+1}/{n_chunks} 다운로드 실패: {type(e).__name__}: {e}')
+            continue
+
+        if df_chunk.empty:
+            continue
+
+        # MultiIndex columns 처리
+        if isinstance(df_chunk.columns, pd.MultiIndex):
+            for ticker in chunk:
+                if ticker not in df_chunk.columns.get_level_values(0):
+                    continue
+                df_t = df_chunk[ticker].dropna(subset=['Close']).reset_index()
+                if df_t.empty:
+                    continue
+                df_t['ticker'] = ticker
+                df_t['date'] = pd.to_datetime(df_t['Date'])
+                df_t = df_t.rename(columns={
+                    'Open': 'open', 'High': 'high', 'Low': 'low',
+                    'Close': 'close', 'Adj Close': 'adj_close', 'Volume': 'volume',
+                })
+                # log_ret 계산 (chunk 내에서, 단 첫 일자는 기존 panel 의 마지막 close 와 연결 필요)
+                old_t = panel_old[panel_old['ticker'] == ticker].sort_values('date')
+                if len(old_t) > 0 and 'close' in old_t.columns:
+                    last_close = old_t['close'].iloc[-1]
+                    df_t = df_t.sort_values('date').reset_index(drop=True)
+                    df_t['log_ret'] = np.log(df_t['close'] / df_t['close'].shift(1))
+                    df_t.loc[0, 'log_ret'] = np.log(df_t['close'].iloc[0] / last_close)
+                else:
+                    df_t['log_ret'] = np.log(df_t['close'] / df_t['close'].shift(1))
+
+                new_panel_rows.append(df_t[['date', 'ticker', 'open', 'high', 'low', 'close', 'adj_close', 'volume', 'log_ret']])
+        else:
+            # Single ticker
+            df_t = df_chunk.dropna(subset=['Close']).reset_index()
+            df_t['ticker'] = chunk[0]
+            df_t['date'] = pd.to_datetime(df_t['Date'])
+            df_t = df_t.rename(columns={
+                'Open': 'open', 'High': 'high', 'Low': 'low',
+                'Close': 'close', 'Adj Close': 'adj_close', 'Volume': 'volume',
+            })
+            df_t['log_ret'] = np.log(df_t['close'] / df_t['close'].shift(1))
+            new_panel_rows.append(df_t[['date', 'ticker', 'open', 'high', 'low', 'close', 'adj_close', 'volume', 'log_ret']])
+
+        if verbose and (chunk_idx + 1) % 5 == 0:
+            print(f'    chunk {chunk_idx+1}/{n_chunks} 완료 ({len(new_panel_rows)} ticker rows so far)')
+
+    if not new_panel_rows:
+        raise RuntimeError('yfinance 다운로드 결과 없음. 네트워크 또는 API 제한 확인.')
+
+    new_panel = pd.concat(new_panel_rows, ignore_index=True)
+    if verbose:
+        print(f'\n  [download] 완료: {len(new_panel):,} rows, {new_panel["ticker"].nunique()} 종목')
+
+    # ────────────────────────────────────────────────────────────────────
+    # 4. vol_21d, mcap_value, rf_daily 등 추가 컬럼 계산
+    # ────────────────────────────────────────────────────────────────────
+    # vol_21d: 21일 rolling std of log_ret (기존 panel + new merge 후 ticker별 재계산)
+    panel_ext = pd.concat([panel_old, new_panel], ignore_index=True, sort=False)
+    panel_ext = panel_ext.sort_values(['ticker', 'date']).reset_index(drop=True)
+
+    if 'vol_21d' in panel_old.columns:
+        panel_ext['vol_21d'] = (
+            panel_ext.groupby('ticker')['log_ret']
+            .transform(lambda x: x.rolling(window=21, min_periods=10).std())
+        )
+
+    # mcap_value: 추가 종목의 mcap 부재 시 close × shares (shares 정보 필요, 추정 불가시 NaN)
+    # → 단순화: 기존 panel 의 마지막 mcap 값을 forward fill
+    if 'mcap_value' in panel_old.columns:
+        panel_ext['mcap_value'] = panel_ext.groupby('ticker')['mcap_value'].transform(lambda x: x.ffill())
+
+    # rf_daily: 단순화 — 마지막 값 forward fill
+    if 'rf_daily' in panel_old.columns:
+        panel_ext['rf_daily'] = panel_ext.groupby('ticker')['rf_daily'].transform(lambda x: x.ffill())
+
+    panel_ext.to_csv(panel_path, index=False)
+    panel_new_max = panel_ext['date'].max()
+    stats['panel_new_max'] = panel_new_max
+    stats['panel_new_rows'] = len(panel_ext)
+    stats['n_added_rows'] = len(panel_ext) - len(panel_old)
+
+    if verbose:
+        print(f'  ✅ panel 저장: {len(panel_old):,} → {len(panel_ext):,} rows '
+              f'({stats["n_added_rows"]:+,d}), max {panel_old_max.date()} → {panel_new_max.date()}')
+
+    # ────────────────────────────────────────────────────────────────────
+    # 5. market_data 확장 (SPY 등 시장 지표)
+    # ────────────────────────────────────────────────────────────────────
+    if market_path.exists():
+        if verbose:
+            print(f'\n  [download] market_data: SPY')
+        market_old = pd.read_csv(market_path, index_col='date', parse_dates=True)
+        market_old_max = market_old.index.max()
+        if market_old_max < end_ts:
+            spy_dl_start = (market_old_max + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            try:
+                spy_new = yf.download('SPY', start=spy_dl_start, end=download_end,
+                                      progress=False, auto_adjust=False)
+                if not spy_new.empty:
+                    if isinstance(spy_new.columns, pd.MultiIndex):
+                        spy_close = spy_new['Close']['SPY']
+                    else:
+                        spy_close = spy_new['Close']
+                    spy_close.name = 'SPY'
+                    spy_close.index.name = 'date'
+                    market_ext = pd.concat([market_old, spy_close.to_frame('SPY').rename(columns={'SPY': market_old.columns[0]})], axis=0)
+                    # 단순화: SPY 컬럼만 처리 (다른 시장 컬럼 있으면 추가 다운로드 필요)
+                    market_ext = market_ext[~market_ext.index.duplicated(keep='last')].sort_index()
+                    market_ext.to_csv(market_path)
+                    if verbose:
+                        print(f'  ✅ market_data: {len(market_old)} → {len(market_ext)} rows')
+            except Exception as e:
+                if verbose:
+                    print(f'  ⚠️ market_data 다운로드 실패: {e}')
+
+    # ────────────────────────────────────────────────────────────────────
+    # 6. VIX 확장
+    # ────────────────────────────────────────────────────────────────────
+    if vix_path.exists():
+        if verbose:
+            print(f'\n  [download] vix_daily: ^VIX')
+        vix_old = pd.read_csv(vix_path, index_col='date', parse_dates=True)
+        vix_old_max = vix_old.index.max()
+        if vix_old_max < end_ts:
+            vix_dl_start = (vix_old_max + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            try:
+                vix_new = yf.download('^VIX', start=vix_dl_start, end=download_end,
+                                      progress=False, auto_adjust=False)
+                if not vix_new.empty:
+                    if isinstance(vix_new.columns, pd.MultiIndex):
+                        vix_close = vix_new['Close']['^VIX']
+                    else:
+                        vix_close = vix_new['Close']
+                    vix_close.name = 'VIX'
+                    vix_close.index.name = 'date'
+                    vix_ext = pd.concat([vix_old, vix_close.to_frame('VIX')], axis=0)
+                    vix_ext = vix_ext[~vix_ext.index.duplicated(keep='last')].sort_index()
+                    vix_ext.to_csv(vix_path)
+                    if verbose:
+                        print(f'  ✅ vix_daily: {len(vix_old)} → {len(vix_ext)} rows')
+            except Exception as e:
+                if verbose:
+                    print(f'  ⚠️ vix 다운로드 실패: {e}')
+
+    if verbose:
+        print('\n' + '=' * 70)
+        print(f'  Panel Forward 확장 완료')
+        print('=' * 70)
+        print(f'  추가된 행 수: {stats["n_added_rows"]:+,d}')
+        print(f'  Panel 끝점: {panel_old_max.date()} → {panel_new_max.date()}')
+        print(f'\n  다음 단계:')
+        print(f'    1. LSTM incremental 재학습 (02a_v2 / 02b 노트북 학습 셀, INCREMENTAL_TRAIN=True)')
+        print(f'    2. ensemble 재결합 (자동, run_ensemble_for_universe_parallel 안에서 처리)')
+        print(f'    3. BL 백테스트 재실행 (standalone scripts/_run_02a_v2_sec6.py)')
+
+    return stats

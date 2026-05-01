@@ -1303,6 +1303,837 @@ LS spread 가 음수임에도 BL_trailing Sharpe 1.222 가 SPY 1.05 능가:
 
 ---
 
+## §13.6. 02a 단독 깊이 분석 — 02b 학습 중 사전 준비 (2026-04-30)
+
+02b cross-sectional 학습이 ~22h 진행 중인 상태에서 02a 결과를 깊이 분석하기 위한 작업.
+**02b 학습 영향 0** 보장 원칙 (사용자 결정) 하에 진행.
+
+### 사용자 핵심 지적
+
+> "05a 마무리하려면 BL_ml_sw 포트폴리오 결과 로드해야 되는데, 이게 03 에서 02b 가 완료되지 않으면 생성할 수가 없음."
+
+→ 05a 의 Cell 5 가 `outputs/03_bl_backtest/returns_BL_ml_sw.csv` 만 시도 → 03 미실행 시 §3 Layer 2 분석 막힘.
+→ **02a §6 sanity check 캐시 (`bl_weights_sanity_check.pkl`) 활용** 으로 해결.
+
+### Step 1. 05a Cell 5 캐시 fallback 추가 (완료 ✅)
+
+| 항목 | 변경 |
+|---|---|
+| 우선순위 1 | `outputs/03_bl_backtest/returns_BL_ml_sw.csv` (03 정식 결과) |
+| 우선순위 2 (⭐) | `data/bl_weights_sanity_check.pkl` (02a §6 캐시) |
+| weights → returns | `make_returns_manual` 함수 노트북 안에서 정의 (scripts/ 변경 X) |
+
+**효과**: 03 미실행 (02b 학습 중) 상태에서도 BL_ml_sw 단독 분석 가능.
+
+### Step 4. 05a §7 신규 섹션 추가 — 누락 163 종목 시기별 영향 분석 (완료 ✅)
+
+**§7 셀 6 개 추가** (Cell 22~27):
+- 7-1: 누락 163 종목 4 카테고리 분류 (파산 14 / M&A ~80 / 분할 / Private)
+- 7-2: OOS 시기별 누락 카운트 + BL_ml_sw Sharpe overlay (5 시기)
+- 7-3: Sector imbalance proxy (Panel 646 vs 학습 613)
+- 7-4: 시기별 Sharpe vs 누락 영향 회귀 분석 + 4 panel 시각화
+- 7-5: 결론 + 학술 정직성 (Limitations 입력)
+
+**산출 시각화 (예정)**: `outputs/05a_eval_stockwise/sec7_missing_impact.png` (4 panel)
+
+### 02b 학습 영향 0 보장 (절대 원칙)
+
+| 원칙 | 검증 방법 |
+|---|---|
+| `scripts/` 절대 수정 X | git diff scripts/ → 변경 없음 (오늘 학습 시작 후) |
+| `02b_phase15_cross_sectional.ipynb` 수정 X | git diff → 변경 없음 (오늘 학습 시작 후) |
+| 별도 커널 사용 | VS Code 노트북별 독립 Python 프로세스 |
+| GPU 자원 비경쟁 | 05a 분석은 CPU/RAM only (PyTorch X) |
+| `make_returns_manual` 함수 모듈 X | 05a 노트북 내부에 inline 정의 |
+
+**검증 시각**:
+- scripts/models_cs.py: 01:12:46 (학습 시작 전)
+- scripts/volatility_ensemble.py: 02:54:04 (학습 시작 전)
+- 02b 노트북: 03:03:23 (학습 시작 전)
+- 05a 노트북: 09:38:58 (Step 1+4, 02b 학습 시작 후 — 02b 와 무관)
+- _build_05a_eval_sw_nb.py: 09:39:52 (Step 1, 02b 와 무관)
+
+→ 학습 시작 후 변경된 파일은 **05a + 빌드 스크립트만** = 02b 영향 0 ✅
+
+### 사용자 액션 — 노트북 직접 실행 (Step 2~3)
+
+VS Code 에서 05a 노트북:
+1. **Use Disk Version** (디스크 변경 반영)
+2. **별도 커널** 시작 (.venv, 02b 와 분리)
+3. 셀 순차 실행: §1 → §2 → §3 → §4 → §5 → §6 → **§7 (신규)**
+
+**기대 출력**:
+- §3 Layer 2: Sharpe 1.108, MDD -18.56%, CAPM α 등
+- §5 Layer 4: 5 시기 분해 (GFC/정상/COVID/긴축/AI)
+- §7 누락 종목: 카테고리 분류 + 회귀 (r², p-value) + 시각화 4 panel + Limitations 결론
+
+### 잠정 결과 예상 (§7 실행 후 확인)
+
+```
+누락 163 종목 (20.1%, universe 809 → panel 646)
+  · OOS 파산 14: SIVB(2023), FRC(2023), JCP(2020), CHK(2020), ...
+  · M&A 인수 ~80: MON, CELG, ATVI, RHT, PXD, XLNX, TWTR, WFM, ...
+  · 분할/사명변경, Private 등 ~70
+
+가장 영향 큰 시기: COVID (2020) — 6 종목 파산 (JCP/MNK/CHK/FTR/DO/DNR)
+다음: 회복·AI (2023~25) — SIVB/FRC/BIG 3 종목
+
+학술 정직성 결론:
+  Phase 3 BL_ml_sw Sharpe ~1.108 은 진짜 universe 대비 과대평가 가능성
+  (학술 보고서 Limitations 섹션 직접 활용)
+```
+
+### 산출물 (예정)
+
+- `outputs/05a_eval_stockwise/layer2_portfolio_diagnostic.png` (Step 2)
+- `outputs/05a_eval_stockwise/layer4_period_decomposition.png` (Step 3)
+- `outputs/05a_eval_stockwise/sec7_missing_impact.png` (Step 4, §7 시각화)
+
+### 작업 시간 vs 02b 학습 ETA
+
+| 시점 | 작업 |
+|---|---|
+| 09:38 | Step 1 (Cell 5 fix) — 30분 |
+| 09:50 | Step 4 (§7 5 셀 작성) — Bash heredoc 우회 (임시 .py 작성+실행+삭제) |
+| 10:00 | Step 5 (WORKLOG §13.6 초안 추가) — 본 섹션 |
+| 12:30 | Step 6 (§7-6/7/8 추가 + §13.6 보강) — 사용자 지적 보강, 본 sub-section |
+| ~ | (사용자 직접 노트북 실행 Step 2~3 + §7 + §7-6/7/8) |
+| ~+22h | 02b 학습 완료 → 03 BL 백테스트 진입 |
+
+### Step 6. §7-3 학술적 정정 + §7-6/7/8 추가 (2026-04-30, 사용자 지적 보강)
+
+> ⭐ 사용자가 §7-3 의 sector imbalance 1.64%p 결과 해석에 대해 학술적으로 정확한 지적을 함. 본 sub-section 은 그 정정을 §7-6/7/8 신규 셀과 본 WORKLOG 에 반영.
+
+#### 사용자 핵심 지적 (학술적 100% 정확)
+
+> "각 섹터의 분포는 괜찮다고 쳐도, 이미 살아남은, 또는 M&A 없이 정상적으로 생존한 기업만을 대상으로 하는 분석이라는 점에서 한계가 명확하지 않나?"
+
+#### §7-3 의 본질적 한계 — 정확한 표현
+
+| 잘못된 해석 (이전) | 정확한 해석 (정정) |
+|---|---|
+| "학습 615 가 panel 646 의 sector 분포 잘 대표 → BL_ml_sw 의 sector 측면 신뢰 가능" | "panel 646 (살아남은 종목) **안에서** 학습 615 의 sector 대표성 확보. 그러나 panel 자체가 이미 살아남은 종목 집합 → 진짜 생존편향 미측정" |
+
+```
+A. 진짜 universe (Wikipedia 809):  살아남은 종목 + 사라진 종목 모두 포함
+B. Panel (yfinance 646):           살아남은 종목 + M&A 직전 종목 (subset of A)
+C. 학습 (615):                     1334일+ 데이터 종목 (subset of B)
+
+§7-3 가 측정한 것: B vs C 의 차이 → 1.64%p (panel 안에서)
+§7-3 가 못 본 것:  A vs B 의 차이 → §7-7 에서 측정 (real_imbalance)
+```
+
+#### 진정한 생존편향 — 누락 163 종목의 systematic 특성
+
+**1. OOS 파산 14 종목의 sector 편중**
+
+| Sector | 누락 파산 종목 | 비중 |
+|---|---|---|
+| **Energy** | CHK, FTR, DO, DNR, ANR | **5/14 (36%)** ⭐ |
+| Financials | SIVB, FRC | 2/14 (14%) |
+| Consumer Discretionary | JCP, BIG, DF | 3/14 (21%) |
+| Health Care | MNK, ENDP | 2/14 (14%) |
+| Industrials/Telecom | EK, WIN | 2/14 (14%) |
+
+→ **Energy 가 압도적**. Phase 3 학습 universe 의 Energy 32 종목은 "**파산 위험 종목 제거된**" 분포.
+→ ML 변동성 모델이 학습한 Energy 분포는 "안정 Energy 회사" 위주 (현실 fat tail 미반영 가능성).
+
+**2. M&A ~80 종목의 systematic 차이**
+
+- 변동성 ↑: 인수 premium 협상기 (보통 30%+ jump)
+- 수익성 정점: 매력적 자산이라 인수 대상
+- Sector 다양: Tech (XLNX, ATVI, RHT), Health Care (CELG, AGN, STJ), Energy (APC, NBL, MRO, PXD), Materials (MON), Consumer (TIF, WFM)
+
+→ 학습 데이터의 변동성 분포가 "M&A 까지 이어진 prosperous 종목" 을 미반영.
+
+#### §7-6/7/8 신규 셀 (`05a_eval_stockwise.ipynb` Cell 28~31)
+
+| 셀 ID | 타입 | 역할 |
+|---|---|---|
+| `sec7_6_header` | markdown | §7-6/7/8 통합 헤더 + 사용자 지적 인용 |
+| `sec7_6_missing_sector` | code | 누락 163 sector hardcoded 매핑 (bankruptcy 14 + M&A 120) |
+| `sec7_7_compare_viz` | code | Panel 646 ↔ 누락 163 sector 분포 비교 + 4 panel 시각화 |
+| `sec7_8_conclusion` | code | 정정된 결론 (학술 보고서 Limitations 입력) |
+
+**산출 시각화 (사용자 노트북 실행 후 생성)**: `outputs/05a_eval_stockwise/sec7_real_universe_imbalance.png` (4 panel: panel vs 누락 분포 / 차이 (%p) / 카테고리×sector / panel 의 sector 별 universe 대표성).
+
+#### §7-7 측정 결과 (2026-04-30 사용자 노트북 실행 완료)
+
+```
+누락 163 종목 hardcoded sector 매핑 비율:  126/163 (77.3%)
+                                          Unknown 잔존 37/163 (22.7%)
+
+Real universe imbalance (Panel ↔ 누락):
+  - 전체:           31.31%p   (Unknown 포함, headline)
+  - Unknown 제외:   13.56%p   (방법론 noise 보정 후)
+
+§7-3 의 1.64%p 대비:
+  - 19.1배 (Unknown 포함)
+  - 8.3배 (Unknown 제외)
+
+Panel 비중 < 80% sector (진짜 universe 대비 under-representation):
+  - Unknown                46.4%  (panel 32, 누락 37) ← hardcoded 매핑 실패 noise
+  - Energy                 61.8%  (panel 34, 누락 21) ⭐ 핵심 발견
+  - Communication Services 73.0%  (panel 27, 누락 10)
+  - Consumer Staples       75.0%  (panel 39, 누락 13)
+  - Health Care            76.9%  (panel 70, 누락 21)
+
+(Panel 비중 > 100% 의 over-representation sector — 진짜 universe 대비 panel 에 더 많이 분포)
+  - Industrials            -7.65%p  (panel 93, 누락 11)
+  - Financials             -7.49%p  (panel 92, 누락 11)
+  - Consumer Discretionary -5.95%p  (panel 82, 누락 11)
+  - Real Estate            -3.73%p  (panel 36, 누락 3)
+  - Information Technology -2.87%p  (panel 78, 누락 15)
+  - Utilities              -2.50%p  (panel 32, 누락 4)
+  - Materials              -1.12%p  (panel 31, 누락 6)
+```
+
+#### §7-7 결과 해석 — 핵심 4가지
+
+**1. Energy 의 under-representation (진짜 universe 대비 61.8%) ⭐**
+
+가장 중요한 발견. 사용자가 가설로 제시한 "OOS 파산 14 중 Energy 5/14 (36%)" 의 편중이 universe 전체 차원에서도 확인됨. 누락 163 종목 중 Energy 21 종목 (12.88%) — Unknown 제외 시 누락 sector 비중 #1. 즉 ML 변동성 예측 모델이 학습한 Energy 분포는 panel 34 종목 (살아남은 안정 Energy) 만 보고, 진짜 universe Energy 55 종목 (panel 34 + 누락 21) 의 fat tail (파산·M&A 흡수된 Energy) 을 약 38% 미반영.
+
+**2. M&A 인수 sector 의 균등한 under-rep (Health Care, Communication Svcs, Consumer Staples)**
+
+각각 76.9%, 73.0%, 75.0% — Celgene/AGN/STJ (제약 인수), TWTR/ATVI/DTV (통신·미디어 인수), WFM/HNZ/MJN/DPS (소비재 인수) 등 panel 에서 누락된 매력적 인수 대상. 이들은 인수 직전 변동성 jump (premium 협상) 가 학습에 반영되지 않음.
+
+**3. 31.31%p vs 13.56%p — Unknown 처리 주의**
+
+headline 31.31%p 중 17.75%p (Unknown 카테고리) 는 hardcoded 매핑 실패 (분할/Private/기타 ~37 종목) 의 방법론적 noise 성격. 학술 보고서에는 두 수치 병기 (Unknown 포함 19.1배 vs 제외 8.3배) 가 정직한 표현. 어느 쪽이든 §7-3 의 1.64%p 는 진짜 생존편향의 1/8 ~ 1/19 만 측정한 결과.
+
+**4. Industrials/Financials 의 over-rep (panel 에 진짜 universe 대비 많음)**
+
+각각 -7.65%p, -7.49%p — 인수·파산 사례가 적어 panel 에 비중이 높음. 학습이 이 sector 의 "안정성" 을 진짜 시장보다 강하게 학습한 셈. 이는 BL_ml_sw 가 Industrials/Financials 비중을 높게 잡을 가능성과 연결 — 단 BL P 행렬은 vol-based 이므로 영향 제한적.
+
+#### 진정한 생존편향 결론 (학술 보고서 Limitations 섹션 직접 활용)
+
+```markdown
+### Survivorship Bias from yfinance Data Limitation
+
+본 연구는 yfinance 데이터 부재로 인해 S&P 500 의 시점별 멤버십 (Wikipedia
+2009~2025 union, 809 종목) 중 163 종목 (20.1%) 이 분석에서 제외되었다.
+누락 종목의 본질:
+- M&A 인수: ~80 종목 (49.1%) — ticker 자체 소멸
+- OOS 기간 내 파산: 14 종목 (8.6%) — SIVB(2023), FRC(2023), JCP(2020),
+  MNK(2020), CHK(2020), FTR(2020), DO(2020), DNR(2020) 등
+- 분할/사명변경: ~25 종목, Private: ~20 종목, 기타: ~24 종목
+
+⭐ 본 연구의 본질적 한계:
+**panel universe (yfinance 살아남은 646 종목) 안에서** 학습 universe (615
+종목) 의 sector 대표성은 1.64%p imbalance 로 매우 충실하다 (Section 7-3).
+그러나 이는 "**살아남은 종목 안에서** 학습 필터의 sector 중립성" 만 입증할
+뿐, **panel 자체가 이미 yfinance 살아남은 종목 집합** 이라는 본질적
+생존편향은 잔존한다 (Section 7-7 에서 정량화).
+
+특히 OOS 기간 내 파산 14 종목의 sector 분포 분석 결과 Energy sector 가
+36% (5/14) 로 가장 편중되어 있으며 (CHK, FTR, DO, DNR, ANR), 이는 본 연구
+panel 의 Energy 분포가 진짜 universe 대비 "안정 Energy 회사들" 위주로
+편향되었음을 시사한다. 즉 ML 변동성 예측 모델이 학습한 분포는 "M&A·파산
+까지 이어진 prosperous/안정 종목들" 이며, 진짜 시장 변동성의 fat tail
+(파산·인수당함 종목들의 극단 vol) 을 부분적으로 미반영한다.
+
+본 연구의 절대 수치 (BL_ml_sw Sharpe ~1.108) 는 진짜 universe 대비
+과대평가일 가능성이 높으며, 향후 학술 표준 데이터베이스 (CRSP) 를 사용한
+재현 검증이 필요하다.
+
+상대 비교 (BL_ml_sw vs BL_trailing) 는 두 시나리오가 동일 데이터 소스 한계를
+공유하므로 결론 (ML 통합 효과 -0.114 Sharpe) 의 방향성은 신뢰 가능하나,
+"Trailing vol = 방어주 proxy" 가설은 생존편향 환경에서 더 강하게 작동할
+가능성이 있다. 즉 본 연구의 발견 (Hit rate ↑이지만 BL Sharpe ↓) 은
+"살아남은 종목 환경" 이라는 specific 조건에서의 결론이며, 진짜 universe
+환경에서는 다를 수 있다.
+```
+
+#### 본 패러독스 (Hit rate ↑, BL Sharpe ↓) 의 신뢰성 재평가
+
+| 항목 | 이전 결론 | 정정된 결론 |
+|---|---|---|
+| 상대 비교 (ML vs Trailing) | "두 시나리오 동일 데이터 한계 공유 → 신뢰 가능" | 동일 — 방향성 (-0.114 Sharpe) 신뢰 가능 |
+| 절대 수치 (BL_ml_sw Sharpe 1.108) | (언급 없음) | ⚠️ 진짜 universe 대비 과대평가 가능성 |
+| Trailing vol = 방어주 proxy 가설 (§13.5) | 미국 17년 universe 환경 차이 | + 보강: 학습 universe 가 "살아남은 종목" 으로 제한 → 방어주 (Utilities/Staples) 자연 잘 살아남음 → Trailing 의 방어주 식별이 유리한 환경. 단 Trailing 은 구조적 식별, ML 은 forward 1개월 예측 → BAB 본질 미반영 |
+
+#### 02b 학습 영향 0 보장 (Step 6 검증)
+
+| 원칙 | Step 6 검증 |
+|---|---|
+| `scripts/` 절대 수정 X | 모든 변경: `05a_eval_stockwise.ipynb` (셀 4개 추가) + `재천_WORKLOG.md` (본 섹션 + footer) 만 |
+| `02b_phase15_cross_sectional.ipynb` 변경 X | 02b 노트북 미터치 |
+| 별도 커널 사용 | 사용자 VS Code 별도 .venv 커널 |
+| GPU 자원 비경쟁 | §7-6/7/8 은 CPU only (pandas/matplotlib) |
+| 새 모듈 함수 X | _tmp 스크립트가 inline code 로 셀 4개만 추가 후 자체 삭제 |
+
+#### 산출물 + 사용자 액션
+
+**Step 6 작업 산출 (즉시)**
+- `05a_eval_stockwise.ipynb`: 셀 28 ~ 31 신규 (markdown 1 + code 3, 총 32 셀)
+- `재천_WORKLOG.md`: 본 §13.6 Step 6 + footer 갱신
+- `_tmp_add_sec7_6_8.py`: 작성 후 즉시 삭제
+
+**사용자 액션 (대기)**
+- VS Code 에서 05a 노트북 § 7-6 → §7-7 → §7-8 셀 순차 실행 (각 1분 미만, 별도 커널)
+- 산출 PNG (`sec7_real_universe_imbalance.png`) 와 print 출력 확인 후 본 §13.6 의 "§7-7 측정 결과" 항목 placeholder 실수치 채움
+
+**학술 보고서 입력**
+- 위 "Survivorship Bias from yfinance Data Limitation" markdown 블록 → 보고서 Limitations 섹션에 그대로 활용 가능
+
+### Step 7. Static-Universe → Dynamic-Membership 전환 (2026-04-30, 사용자 결정)
+
+> ⭐ §13.6 Step 6 진행 중 universe 정의의 누수 발견 → 사용자 결정으로 즉시 전환.
+
+#### 사용자 결정
+
+> "dynamic membership으로 변경하고 기존꺼는 격리해줘. 앞으로 dynamic membership만 활용하자."
+
+#### 전환 배경 — Static-Universe 의 숨은 look-ahead
+
+§7-3 정정 작업 중 발견: 기존 코드가 `available_tickers = panel_at_date & trained_tickers 615` 로 universe 결정 → **그 시점 실제 S&P 500 멤버 여부 무관** 하게 학습된 615 종목 pool 에서 매월 후보 선정.
+
+| 종목 예시 | yfinance panel | 실제 S&P 편입 | Static 모드 universe 후보 (2010 reb_date) |
+|---|---|---|---|
+| TSLA | 2010-부터 데이터 있음 | **2020-12** | ⚠️ 포함 (2010~2019 도) |
+| FB/META | 2012-부터 | 2013-12 | ⚠️ 포함 (2012-12~2013-11 도) |
+
+→ portfolio backtest 단계에서 **"결국 큰 회사가 되어 S&P 편입한다" 는 미래 멤버십 정보 누수**. B1~B7, L1~L11 의 microscopic 누수 차단을 모두 적용해도 universe 자체에 leak 가 있어 학술 baseline 과 fair 비교 위반.
+
+#### Dynamic-Membership 정의
+
+매월 universe = `sp500_member_at_t ∩ panel ∩ 학습 615`.
+
+`reb_date` (거래일 월말, Issue #1 으로 보정된) → 동일 month period 의 calendar 월말 키 (`reb_date.to_period('M').to_timestamp(how='end').normalize()`) 로 `membership` dict lookup. Issue #1 의 calendar/market 월말 보정 패턴과 일관.
+
+#### 변경 코드 (4 cell)
+
+| 파일 | Cell | 변경 |
+|---|---|---|
+| `03_BL_backtest_extended.ipynb` | Cell 4 (§2 데이터 로드) | `membership = get_or_build_membership(...)` 로드 추가 |
+| `03_BL_backtest_extended.ipynb` | Cell 10 (BL 루프) | `available_tickers = members_at_date & panel & trained` |
+| `02a_phase15_stockwise_extended.ipynb` | Cell 22 (§6-1) | membership 로드 동일 추가 |
+| `02a_phase15_stockwise_extended.ipynb` | Cell 23 (§6-2 BL 루프) | `avail = members_at_date & panel & trained` |
+
+#### 격리 보존
+
+| 항목 | 위치 |
+|---|---|
+| 기존 03 노트북 (Static 모드) | `03_BL_backtest_extended_legacy_static.ipynb` |
+| 기존 02a §6 BL sanity check 결과 캐시 (Static) | `data/bl_weights_sanity_check_legacy_static.pkl` |
+| 메인 캐시 `data/bl_weights_sanity_check.pkl` | **삭제** (사용자 02a §6 재실행 시 Dynamic 결과로 자동 재생성) |
+
+→ 02a §6 자체는 격리 X — `§1~5 학습 cell 은 universe 필터 무관` 하므로 §6 만 in-place 수정 (학습 결과는 그대로).
+
+#### 두 bias 의 분리 (학술 보고서 표현)
+
+| Bias | Step 6 후 | Step 7 후 |
+|---|---|---|
+| Look-ahead (portfolio universe 의 미래 멤버십) | ⚠️ 잔존 (Static-Universe) | ✅ **해결** (Dynamic-Membership) |
+| Survivorship (panel 646 ⊂ 진짜 809) | ⚠️ 잔존 (§7-6/7/8 정량화 31.31/13.56%p) | ⚠️ 잔존 — yfinance 한계, CRSP 만 해결 가능 |
+
+→ **Dynamic-Membership 은 look-ahead 만 해결, survivorship 은 별개**. 학술 보고서에서 두 bias 를 분리해 표현해야 함.
+
+#### 결과 수치 변화 (2026-04-30 사용자 02a §6 재실행 실측)
+
+| 메트릭 | Static (legacy) | Dynamic (실측) | 차이 |
+|---|---|---|---|
+| 매월 universe size 평균 | 548.8 | **420.0** | **-128.9 종목 (-23%)** |
+| 매월 universe range | 477~594 | 337~488 | — |
+| BL_ml_sw Sharpe | 1.108 | **1.123** | +0.015 ↑ |
+| BL_trailing Sharpe | 1.222 | **1.203** | -0.019 ↓ |
+| **diff (ML 효과)** | **-0.114** | **-0.080** | **+0.034 (절대값 -30%)** ✅ 방향성 robust |
+| Hit rate Low (ML) | 0.6342 | 0.6342 | 동일 (universe filter 무관) |
+| Hit rate High (ML) | 0.6632 | 0.6632 | 동일 |
+| LS spread mw (ML, %/yr) | -9.53 | -9.53 | 동일 |
+| LS spread mw (TR, %/yr) | -4.84 | -4.84 | 동일 |
+
+**시기별 universe 축소**:
+
+| 시기 | Dynamic | Static | 축소 |
+|---|---|---|---|
+| GFC 회복 (09~11) | 350.1 | 494.0 | -143.9 ⭐ 가장 큰 축소 (과거일수록 미래 멤버 많음) |
+| 강세장 (12~19) | 405.3 | 541.2 | -135.9 |
+| COVID (20) | 457.5 | 574.8 | -117.3 |
+| 긴축 (21~22) | 468.2 | 582.2 | -113.9 |
+| 회복·AI (23~25) | 484.3 | 593.1 | -108.8 ← 최근일수록 작은 축소 |
+
+→ **시간 경과에 따른 축소폭 감소**가 학술 baseline 과 일관 — 정확히 시점별 멤버십이 작동.
+
+#### Look-ahead 차단 직접 검증 — TSLA 시점별 포함 여부
+
+TSLA S&P 500 편입 시점: **2020-12-21**
+
+| reb_date | Dynamic | Static | 의미 |
+|---|---|---|---|
+| 2009-01-30 | ✗ | ✗ | 둘 다 미포함 (TSLA 학습 데이터 부족) |
+| 2014-01-31 | ✗ | ✓ | ⭐ **Static 의 look-ahead 누수** (편입 6년 전) |
+| 2019-01-31 | ✗ | ✓ | ⭐ **Static 의 look-ahead 누수** (편입 1년 전) |
+| 2020-12-31 | ✓ | ✓ | 편입 직후 둘 다 포함 |
+| 2021-02-26 | ✓ | ✓ | 이후 둘 다 포함 |
+
+→ **Dynamic 가 TSLA 의 S&P 편입 전 누수를 정확히 차단**. 사용자 의도한 look-ahead 차단이 100% 작동 확인.
+
+#### Subset 관계 검증
+
+첫 시점 (2009-01-30) 비교:
+- Static 에 있고 Dynamic 에서 빠진 종목: **140 개** (ACN, ALGN, AJG 등 — 당시 비-멤버 후일 편입)
+- Dynamic 에 있고 Static 에 없는 종목: **0 개** ✅
+
+→ Dynamic ⊆ Static. 멤버십 필터만 추가됨이 수학적으로 보장.
+
+#### 핵심 학술 메시지 (실측 기반)
+
+매월 universe 가 **Static 의 76.5%** (420/548.8) 로 줄었음에도:
+- BL_ml_sw 와 BL_trailing 두 시나리오 절대 수치 모두 미세 변동 (각 ±0.02 이내)
+- ML 통합 효과 **-0.114 → -0.080** (절대값 30% 감소했으나 **방향성 유지**)
+- **"ML > Trailing 이 아님" 핵심 결론 robust** — Static 과 Dynamic 환경 양쪽에서 일관
+
+→ Pyo & Lee (2018) 부분 반증 + Trailing vol = 방어주 proxy 가설 (§13.5) 모두 universe 정의에 robust 한 결론으로 강화됨.
+
+#### 노트북 cosmetic 이슈 (정정 완료, 2026-04-30)
+
+- ✅ `02a` Cell 30 (§6 진단 결론) 의 하드코딩 1.108/1.222/-0.114 → `metrics_table` 변수 참조로 변경
+
+#### 재실행 안전성 강화 — 캐시 보호 (2026-04-30)
+
+비싼 작업 (학습 + BL 최적화) 의 무의도 재실행 방지를 위해 02a Cell 23 (§6-2) 와 동일 패턴의 캐시 로직을 두 곳에 추가:
+
+| 비싼 작업 | 캐시 파일 | flag | 비용 |
+|---|---|---|---|
+| 02a Cell 8 (LSTM 8-way GPU 학습) | `data/ensemble_predictions_stockwise.csv` (기존 산출) | `FORCE_RETRAIN=False` | ~수~십수 시간 (GPU) |
+| 02a Cell 23 (§6-2 BL sanity) | `data/bl_weights_sanity_check.pkl` (기존) | `FORCE_RECOMPUTE=False` | ~분~십수 분 (CPU) |
+| 03 Cell 10 (§4 BL 6 시나리오) | `data/scenario_weights_03_dynamic.pkl` (신규) | `FORCE_RECOMPUTE=False` | ~수십 분~수 시간 (612회 SLSQP) |
+
+**효과**:
+- VS Code "Run All" 또는 실수 클릭으로 인한 GPU 재학습 / BL 재계산 방지
+- 02b 학습 진행 중 02a 셀 안전 실행 보장
+- 분석/시각화 변경 후 03 재실행 시 즉시 캐시 로드 (~수 초)
+
+**강제 재계산이 필요한 경우** (예: 코드 변경, scripts/ 수정): 해당 flag 를 `True` 로 변경 후 재실행.
+
+#### 사용자 액션 (대기)
+
+1. **02a §6 BL sanity check 재실행** (별도 .venv 커널, 약 5분, CPU only)
+   - 새 캐시 `bl_weights_sanity_check.pkl` 자동 생성 (Dynamic 결과)
+2. **05a Cell 5 (BL_ml_sw 로드) + §3 Layer 2 + §5 Layer 4 + §7-2 재실행**
+   - 새 BL_ml_sw returns 로 메트릭 재계산 (Sharpe / MDD / Alpha 등)
+   - §7-2 시기별 회귀 결과 변동 가능
+   - §7-3, §7-6/7/8 의 sector imbalance 자체는 **변경 없음** (universe 정의 무관)
+3. **(02b 학습 완료 후, ~22h)**
+   - 03_BL_backtest_extended.ipynb 정식 실행 (6 시나리오 dynamic)
+   - 04 비교, 05b, 05c 재실행
+
+#### 02b 학습 영향 0 보장 (Step 7 검증)
+
+| 원칙 | Step 7 검증 |
+|---|---|
+| `scripts/` 절대 수정 X | 모든 변경: `03_BL_backtest_extended.ipynb` + `02a_*.ipynb` (§6 만) + `재천_WORKLOG.md` |
+| `02b_phase15_cross_sectional.ipynb` 변경 X | 02b 노트북 미터치 |
+| 별도 커널 사용 | 사용자 VS Code 별도 .venv 커널 |
+| GPU 자원 비경쟁 | 02a §6, 03 모두 CPU only (pandas/numpy/SLSQP) |
+
+#### 산출물
+
+- 노트북 변경: `03_BL_backtest_extended.ipynb`, `02a_phase15_stockwise_extended.ipynb`
+- 격리 보존: `03_BL_backtest_extended_legacy_static.ipynb`, `data/bl_weights_sanity_check_legacy_static.pkl`
+- 본 §13.6 Step 7 — 학술 보고서의 "Universe Definition" 섹션 표현으로 직접 활용
+
+### Step 8. Stale Price 발견 + Universe 단계 필터 적용 (2026-04-30, 팀원 발견 보강)
+
+> ⭐ 팀원이 다른 프로젝트에서 SW 티커의 stale price 문제를 발견. 본 프로젝트도 동일 현상 보유 — panel 진단 + universe 필터로 해결.
+
+#### 팀원 발견 + 본 프로젝트 검증
+
+> "SW 티커 종목의 경우 몇 달 간 0 으로 기록된 부분이 있다"
+
+**본 프로젝트 panel 검증 결과**:
+
+```
+SW 티커:
+  panel 기간: 2008-06-17 ~ 2025-12-31
+  log_ret == 0:        2,903 / 4,414 (65.8%) ⚠️
+  가장 긴 stale 구간: 2009-05-13 ~ 2009-08-19 (69 영업일, 14주)
+  30+ 영업일 연속 0 구간: 9 회
+
+panel 의 모든 date 는 영업일만 포함 (Mon~Fri, Sat=Sun=0):
+  → "주말이라 0" 가설 부정
+  → SW 의 0 행도 모두 평일에 분포 (Mon 534, Tue 607, Wed 598, Thu 577, Fri 587)
+  → 동일 영업일에 다른 종목 (513) 정상 거래 → SW 만 stale
+  → 명백한 데이터 품질 issue
+```
+
+#### 원인 — yfinance 의 stale fill
+
+| 원인 | 메커니즘 | 해당 종목 |
+|---|---|---|
+| **A. M&A 인수** | 인수 후 ticker 시장에서 소멸, yfinance 가 마지막 가격 stale fill | COL (Rockwell Collins → UTC 2018), EP (El Paso → KMI 2012), GR (Goodrich → UTC 2012) |
+| **B. Private 전환** | 상장 폐지 후 ticker 소멸 | CPWR (Compuware 2014), BMC (BMC Software 2013), CVG |
+| **C. 파산** | 거래 정지 후 ticker 소멸 | RSH (RadioShack 2015) |
+| **D. Ticker 재사용** | 동일 ticker 를 다른 회사가 재사용, yfinance 가 통합 | **SW**: Smurfit-Stone Container (2010) → Smurfit Westrock (2024) |
+
+#### 정량화 (panel 646)
+
+| 분류 | 종목 수 | 비율 | 학습 615 안 |
+|---|---|---|---|
+| 0 비율 > 50% (심각) | 9 | 1.4% | 7 (BMC, COL, CPWR, CVG, EP, GR, SW) |
+| 0 비율 > 30% (의심) | 12 | 1.9% | 8 (위 7 + AMCR) |
+| 0 비율 ≤ 30% (정상) | 634 | 98.1% | 607 |
+
+#### Dynamic-Membership 의 자연 차단 효과 (Step 7 부가 가치)
+
+학습 615 stale 8 종목의 BL universe 출현 빈도:
+
+| ticker | 0 비율 | BL 출현 시점 | 비고 |
+|---|---|---|---|
+| SW | 65.8% | **169/204** | 가장 많이 들어감 |
+| AMCR | 43.3% | 79/204 | |
+| EP | 53.3% | 40/204 | |
+| COL | 59.9% | 33/204 | |
+| CPWR | 67.5% | 18/204 | |
+| CVG | 55.1% | 11/204 | |
+| **BMC** | 50.2% | **0/204** ⭐ | Dynamic 자동 차단 |
+| **GR** | 51.4% | **0/204** ⭐ | Dynamic 자동 차단 |
+
+→ **BMC, GR 은 Dynamic-Membership 만으로도 차단**. 그러나 SW (169 시점), AMCR (79 시점) 등은 잔존 → Step 8 필요.
+
+#### 매월 stale 영향 정량 (Step 7 결과 기준)
+
+```
+매월 BL universe 안의 stale (>30%) 종목 수: mean 1.72, max 2 (절대 9개 아님)
+매월 stale 종목 가중치 합:
+  mean   0.075%
+  median 0.000%
+  max    0.939% (2020-02-28: AMCR 0.92% + SW 0.02%)
+
+Sharpe 영향 추정: < 0.005 (negligible)
+```
+
+→ portfolio 결과 (BL_ml_sw Sharpe 1.123) 에 **사실상 무시 가능한 영향**. 그러나 학술 정직성 차원에서 처리 필요.
+
+#### Step 8: Universe 단계 stale 필터 적용
+
+매월 BL 루프 안의 universe 결정 단계에 한 줄 추가:
+
+```python
+# IS 1260일 안에서 zero ratio > 30% 종목 제외
+is_window = daily_lr.loc[reb_date - pd.offsets.BDay(1260):reb_date]
+zero_ratio = (is_window == 0).mean()
+non_stale = set(zero_ratio[zero_ratio <= STALE_RATIO_THRESHOLD].index)
+
+available_tickers = members_at_date & panel_at & trained_tickers & non_stale  # ⭐ non_stale 추가
+```
+
+**Threshold 선택**: 0.30 (30%)
+- panel 의 98.1% 종목은 zero ratio < 30% (정상)
+- 1.9% 종목 (12개) 만 차단 대상
+- 정상 종목 (median 0.7%) 과 stale 종목 (50~67%) 사이 명확한 gap
+
+#### 변경 코드 (2 cell)
+
+| 파일 | Cell | 변경 |
+|---|---|---|
+| `02a_phase15_stockwise_extended.ipynb` | Cell 23 (§6-2) | `STALE_RATIO_THRESHOLD = 0.30` 상수 + universe 필터에 `& non_stale` 추가 |
+| `03_BL_backtest_extended.ipynb` | Cell 10 (§4 BL 루프) | 동일 패턴 적용 |
+
+#### 격리 보존 (캐시 갱신)
+
+| 항목 | 위치 |
+|---|---|
+| Step 7 (Dynamic-Membership) BL 결과 캐시 | `data/bl_weights_sanity_check_step7_dynamic.pkl` (격리 신규) |
+| Static (Step 6 이전) BL 결과 캐시 | `data/bl_weights_sanity_check_legacy_static.pkl` (기존) |
+| 메인 캐시 `bl_weights_sanity_check.pkl` | **삭제** (02a §6 재실행 시 Step 8 결과로 재생성) |
+
+→ **3 단계 진화 모두 보존**: Static (Step 6 이전) → Dynamic (Step 7) → Dynamic + Stale 필터 (Step 8).
+
+#### 학습 영향 0 보장 (사용자 핵심 의문 해결)
+
+| 단계 | Step 8 영향 |
+|---|---|
+| 02a Cell 8 (LSTM 8-way GPU 학습) | ❌ **영향 없음** — universe 필터는 BL portfolio 단계 |
+| 02a Cell 14 (ensemble_predictions_stockwise.csv 로드) | ❌ 그대로 사용 |
+| 02b Cross-sectional 학습 | ❌ **영향 없음** — 진행 중인 학습 그대로 |
+| 02a Cell 23 / 03 Cell 10 BL 루프 | ✅ stale 필터 적용 — 매월 universe 자동 축소 |
+
+→ **재학습 불필요**. 학습은 615 종목 그대로, 매월 BL 후보에서만 stale 종목 동적 제외.
+
+#### 결과 변화 (2026-04-30 사용자 02a §6 재실행 실측)
+
+| 메트릭 | Step 7 (Dynamic) | Step 8 (Dynamic + Stale) | 차이 |
+|---|---|---|---|
+| 매월 universe size 평균 | 420.0 | **418.5** | -1.51 종목 (예상 1~2 일치 ✅) |
+| BL_ml_sw Sharpe | 1.123 | **1.122** | -0.001 |
+| BL_trailing Sharpe | 1.203 | **1.207** | **+0.004** ⭐ |
+| **diff (ML 효과)** | **-0.080** | **-0.085** | -0.005 (방향성 robust ✅) |
+| ML CAGR | 13.285% | 13.275% | -0.010% |
+| Trailing CAGR | 14.270% | 14.326% | +0.056% |
+| 서윤범 baseline 대비 | +3.98% | +4.32% | +0.34% |
+
+#### Stale 종목 제거 검증 (시점별)
+
+| ticker | Step 7 출현 | Step 8 출현 | 제거 시점 |
+|---|---|---|---|
+| SW | 169/204 | **0/204** | +169 ⭐⭐ 100% 차단 |
+| AMCR | 79/204 | 42/204 | +37 (시기별 부분 차단, 43.3% 종목) |
+| EP | 40/204 | **0/204** | +40 ⭐ |
+| COL | 33/204 | **0/204** | +33 ⭐ |
+| CPWR | 18/204 | **0/204** | +18 ⭐ |
+| CVG | 11/204 | **0/204** | +11 ⭐ |
+| BMC | 0/204 | 0/204 | 0 (Dynamic 단계 이미 차단) |
+| GR | 0/204 | 0/204 | 0 (Dynamic 단계 이미 차단) |
+
+총 제거 = 308 시점 / 204 = **1.51 종목/월** → Universe 축소 평균과 **정확 일치**. 검증 완료.
+
+**AMCR 의 부분 차단**: 매월 IS 1260일 윈도우 기준 zero ratio 가 30% 경계를 동적으로 넘나듦. 일부 시점은 통과, 일부는 차단 — **의도한 동적 동작**.
+
+#### 시기별 universe 축소 (Step 7 → Step 8)
+
+| 시기 | Step 7 평균 | Step 8 평균 | 차이 |
+|---|---|---|---|
+| GFC 회복 (09~11) | 350.1 | 348.3 | -1.83 |
+| 강세장 (12~19) | 405.3 | 403.8 | -1.46 |
+| **COVID (20)** | 457.5 | 455.5 | **-2.00** ⭐ 가장 큰 축소 |
+| 긴축 (21~22) | 468.2 | 466.5 | -1.75 |
+| 회복·AI (23~25) | 484.3 | 483.3 | -1.00 |
+
+→ COVID (2020) 시기 stale 영향이 가장 컸음 — Step 7 의 max 가중치 합 0.939% (2020-02-28) 와 일관.
+
+#### 부수 발견 — Trailing vol 의 stale 노출 더 컸음
+
+| 시나리오 | Sharpe 변화 (Step 7 → Step 8) | 해석 |
+|---|---|---|
+| BL_ml_sw | -0.001 (거의 무변화) | ML 의 forward vol 예측은 stale 0 신호에 robust |
+| BL_trailing | **+0.004** (약간 상승) | Trailing 은 stale 0 vol 을 "low vol" 로 잘못 분류 → Long 자주 선택 |
+
+→ **§13.5 의 "Trailing vol = 방어주 proxy" 가설을 반대 방향에서 보강**:
+   Trailing 이 진짜 방어주뿐 아니라 **"가짜 방어주" (stale 종목)** 도 잘 잡고 있었음.
+   ML 이 더 noise-robust 함이 본 분석으로 추가 확인.
+
+#### Sharpe 변화의 학술적 의미
+
+변화 절대값 ±0.005 이내 = **statistical noise 수준** (Bootstrap 표준오차 약 ±0.05~0.10 보다 작음).
+- 핵심 결론 ("ML > Trailing 이 아님, 약 -0.08 Sharpe diff") **robust** ✅
+- Stale 필터는 **portfolio 결과를 흔들지 않으면서 학술 정직성 강화** ✅
+
+#### 사용자 액션
+
+1. **02a §6 BL sanity check 재실행** (별도 .venv 커널, ~십수 분)
+   - Cell 22~33 순차 실행
+   - 새 캐시 `bl_weights_sanity_check.pkl` 자동 생성 (Step 8 결과)
+   - 결과 확인: BL_ml_sw / BL_trailing Sharpe, diff
+
+2. **05a Layer 2~4 + §7-2 재실행**
+   - 새 BL_ml_sw returns 로 메트릭 재계산
+
+3. **02b 학습 완료 후 03 정식 실행**
+   - 6 시나리오 BL 백테스트 (Step 8 stale 필터 적용된 universe)
+
+#### 학술 보고서 Limitations 표현
+
+```markdown
+### Stale Price Detection in yfinance Data
+
+본 연구는 yfinance 데이터의 stale price 현상을 panel 단계에서 발견하였다.
+panel 646 종목 중 12 종목 (1.9%) 이 OOS 기간 동안 30% 이상의 거래일에서
+log_ret = 0 으로 기록되어 있으며, 이는 인수 / private 전환 / 파산 / ticker
+재사용 (예: SW = Smurfit-Stone Container 2010 + Smurfit Westrock 2024) 으로
+ticker 가 시장에서 소멸한 후 yfinance 가 마지막 가격을 stale fill 한
+결과로 추정된다.
+
+**Portfolio 영향 정량화**: Dynamic-Membership 의 시점별 멤버십 필터로 BMC,
+GR 등 2 종목은 BL universe 에 0 회 출현하였고, 잔존 6 종목은 매월 평균
+1.72 종목 (max 2개) 만 동시 출현하였다. 그 가중치 합계는 평균 0.075%, max
+0.939% 로 portfolio 결과 (BL_ml_sw Sharpe 1.123) 에 **0.005 이하의 영향**
+으로 추정된다.
+
+**처리**: BL universe 결정 단계에서 매월 IS 기간 (1260일) 의 zero ratio > 30%
+종목을 자동 제외하는 필터를 적용하였다 (Step 8). 학습 단계에는 영향이
+없으며, panel 단계의 stale 종목 영구 제거는 향후 연구로 남긴다 (CRSP 등
+학술 표준 DB 재현 검증과 함께).
+```
+
+#### 산출물
+
+- 노트북 변경: `02a_phase15_stockwise_extended.ipynb` Cell 23, `03_BL_backtest_extended.ipynb` Cell 10
+- 격리 보존: `data/bl_weights_sanity_check_step7_dynamic.pkl`
+- 본 §13.6 Step 8 — 학술 보고서 "Stale Price Detection" 섹션 표현으로 직접 활용
+
+#### 05a 재실행 후속 정리 (2026-04-30)
+
+**(a) §7-5 / §7-8 의 hardcoded 결론 텍스트 → 변수 참조 변환**
+
+이전 cosmetic 이슈: §7-5 의 "BL_ml_sw Sharpe ~1.108", "ML 통합 효과 -0.114 Sharpe" / §7-8 의 동일 hardcoded 가 §6-4 실측 (1.122 / 1.207 / -0.085) 과 어긋남. 변수 참조로 전환:
+
+| 위치 | 변경 |
+|---|---|
+| 02a §6-4 (메트릭 계산) 끝 | `metrics_table` + `delta_sharpe` 등을 `data/bl_metrics_sanity_check.pkl` 에 저장 |
+| 05a §7-5 (결론) 시작 | metrics pkl 로드 → `bl_ml_sharpe`, `bl_tr_sharpe`, `ml_effect` 변수 정의 |
+| 05a §7-5 Limitations 본문 | `''' → f'''` 변환 + `~1.108` → `~{bl_ml_sharpe:.3f}`, `-0.114 Sharpe` → `{ml_effect:+.3f} Sharpe` |
+| 05a §7-8 결론 본문 | 동일 패턴 (재실행 안전을 위해 metrics 로드 코드 별도 추가) |
+
+**검증 (사용자 재실행 후, 2026-04-30)**:
+- 05a §7-5 시작에 `⚡ 02a §6 metrics 로드: BL_ml_sw=1.122, BL_trailing=1.207, diff=-0.085` 출력 ✅
+- 05a §7-5 Limitations: `Sharpe ~1.122` / `-0.085 Sharpe` 동적 출력 ✅
+- 05a §7-8 결론: `Sharpe ~1.122` / `"ML 통합 효과 -0.085 Sharpe"` 동적 출력 ✅
+- 23 셀 모두 정상 실행 (에러 0건) ✅
+
+→ 이후 BL Sharpe 값이 변경되어도 (Step 9 등) 노트북이 자동으로 새 수치 반영. 학술 보고서 표현 일관성 강화.
+
+**(b) 05a Layer 2~4 + §7-2 / §7-4 재실행 결과 (Step 8 캐시 반영)**
+
+| Layer | Step 6 cache 시점 | **Step 8 (현재)** | 차이 |
+|---|---|---|---|
+| **Layer 2 BL_ml_sw Sharpe** | 1.105 | **1.119** | +0.014 |
+| Layer 2 CAGR | 13.342% | 13.205% | -0.137% |
+| Layer 2 MDD | -18.559% | -18.128% | +0.431% (개선) |
+| Layer 2 CAPM α | 19.208% | 18.883% | -0.325% |
+| Layer 2 Sortino | 1.653 | 1.657 | +0.004 |
+| Layer 2 Hit rate | 66.18% | 64.71% | -1.47% |
+| Layer 3 (universe filter 무관) | 동일 | 동일 ✅ | low/high hit 0.725/0.749 |
+
+**Layer 4 시기별 분해** (Step 8 반영):
+
+| 시기 | Step 6 Sharpe | **Step 8 Sharpe** | 차이 |
+|---|---|---|---|
+| GFC 회복 (09~11) | 1.320 | 1.311 | -0.009 |
+| 정상 강세장 (12~19) | 1.420 | 1.446 | +0.026 |
+| **COVID 충격 (20)** | 0.790 | **0.724** | **-0.066** ⭐ 가장 큰 변화 |
+| 긴축·전환 (21~22) | 0.571 | 0.615 | +0.044 |
+| 회복·AI (23~25) | 1.266 | 1.239 | -0.027 |
+
+→ COVID 시기 변화 (-0.066) 가 가장 큼. Step 8 의 COVID universe 축소 (-2.00 종목/월, 가장 큼) 와 일관 — **stale 종목 제거 효과가 변동성 큰 시기에 가장 크게 반영**.
+
+**§7-2 시기별 BL_ml_sw Sharpe overlay** (Step 8 반영):
+
+| 시기 | 파산 종목 수 | **새 Sharpe** | 변화 (Step 6→8) |
+|---|---|---|---|
+| GFC 회복 (09~11) | 0 | +1.311 | -0.009 |
+| 정상 강세장 (12~19) | 4 | +1.446 | +0.026 |
+| COVID 충격 (20) | 6 | +0.724 | -0.066 ⭐ |
+| 긴축·전환 (21~22) | 1 | +0.615 | +0.044 |
+| 회복·AI (23~25) | 3 | +1.239 | -0.027 |
+
+**§7-4 시기별 회귀** (Step 8 반영):
+
+| | r² | p-value | 해석 |
+|---|---|---|---|
+| Step 6 | 0.005 | 0.914 | 비유의 |
+| **Step 8** | **0.018** | **0.829** | 비유의 (statistical noise 수준 개선) |
+
+→ 누락 종목 카운트 vs Sharpe 회귀의 r² 가 약간 올라갔지만 여전히 통계적으로 무의미. **"누락 종목이 시기 성능에 통계적 영향 약함" 결론 유지**.
+
+**§7-3, §7-6, §7-7, §7-8 (sector 분석)** — 변화 없음 (universe filter 무관, panel/missing sector 분포는 Static/Dynamic/Step 8 모두 동일)
+
+**(c) 산출물 갱신 (05a outputs/)**
+
+| 파일 | 상태 |
+|---|---|
+| `outputs/05a_eval_stockwise/eval_summary_stockwise.md` | 갱신 (Step 8 + 새 Layer 2~4 결과) |
+| `outputs/05a_eval_stockwise/eval_metrics_stockwise.json` | 갱신 |
+| `outputs/05a_eval_stockwise/layer1_prediction_diagnostic.png` | 동일 (Layer 1 학습 무관) |
+| `outputs/05a_eval_stockwise/layer2_portfolio_diagnostic.png` | 갱신 |
+| `outputs/05a_eval_stockwise/layer3_ml_to_bl_causality.png` | 동일 (Layer 3 universe 무관) |
+| `outputs/05a_eval_stockwise/layer4_period_decomposition.png` | 갱신 |
+| `outputs/05a_eval_stockwise/sec7_missing_impact.png` | 갱신 |
+| `outputs/05a_eval_stockwise/sec7_real_universe_imbalance.png` | 동일 (sector 분포 무관) |
+
+**(d) 메트릭 일관성 — 두 곳의 BL_ml_sw Sharpe 차이**
+
+- 02a §6-4 직접 계산 (`compute_metrics(ret_ml_fair)`): **1.122**
+- 05a Layer 2 (`evaluate_portfolio_standalone`): **1.119**
+- 차이 0.003 — rf 차감 / 메트릭 정의 미세 차이 (statistical noise 수준)
+- 학술 보고서에는 02a §6-4 의 1.122 사용 (직접 계산이라 정의 명확) 권장. 또는 두 수치 병기.
+
+**(e) SPY index 정렬 fix — 누적 SPY 시각화 버그 (2026-04-30)**
+
+발견: 05a Layer 2 의 누적 수익률 그래프에서 SPY 가 5.82배로 표시 (정상은 11.23배).
+원인: Issue #1 패턴 잔존 — `spy_monthly = market['SPY'].pct_change().resample('ME').prod() - 1` 은
+**calendar 월말** (예: 2009-01-31 Sat), BL_ml_sw 의 returns index 는 **거래일 월말**
+(예: 2009-01-30 Fri) → `plot_portfolio_diagnostic_panel` 의 `intersection` 이 70% (143/204)
+만 일치 → cum SPY 가 잘못 측정.
+
+| 처리 | SPY 누적 |
+|---|---|
+| Intersection 만 (이전 05a Layer 2) | **5.82배** ⚠️ |
+| 거래일 월말 정렬 (정확, 02a §6-5 동일) | **11.23배** ✅ |
+
+**해결 (옵션 A)**: 05a Cell 4 (`spy_monthly` 정의) 만 변경:
+
+```python
+# Before (calendar 월말)
+spy_daily = market['SPY'].pct_change().dropna()
+spy_monthly = (1 + spy_daily).resample('ME').prod() - 1
+
+# After (거래일 월말, BL_ml_sw 와 일관)
+reb_dates_for_spy = market.groupby(market.index.to_period('M')).tail(1).index
+reb_dates_for_spy = reb_dates_for_spy[
+    (reb_dates_for_spy >= '2009-01-01') & (reb_dates_for_spy <= '2025-12-31')
+]
+spy_monthly = market['SPY'].reindex(reb_dates_for_spy, method='ffill').pct_change()
+```
+
+**영향 범위**:
+- Sharpe / CAGR / MDD / Sortino / CVaR / Hit rate (BL_ml_sw 자체 메트릭): ❌ **영향 없음**
+- CAPM α / β / Information Ratio: ⚠️ 70% 데이터 → 100% 데이터 (정확화), 약간의 수치 변화
+- 누적 수익률 시각화 SPY 라인: 🚨 5.82 → 11.23 (시각적 정정)
+- §7-3, §7-6/7/8 sector 분석: ❌ 영향 없음
+
+**추가 fix — `pct_change()` 첫 NaN 누설** (옵션 A 적용 직후 발견):
+
+옵션 A 적용 후 첫 재실행 시 `capm_alpha = NaN` 발견. 원인: `reindex(...).pct_change()` 의 첫 값이 NaN → CAPM 회귀 (numpy) 가 NaN 한 개로 전체 NaN. (Layer 4 시기별은 시기 슬라이싱 시 첫 NaN 자동 제외 → 정상)
+
+```python
+# Final fix
+spy_monthly = market['SPY'].reindex(reb_dates_for_spy, method='ffill').pct_change().dropna()
+#                                                                                  ↑ 추가
+```
+
+→ spy_monthly 길이 204 → 203 (첫 NaN 제거).
+
+**최종 실측 결과 (사용자 두 차례 재실행 후, 2026-04-30)**:
+
+| 메트릭 | 옵션 A 전 (70%) | **옵션 A + dropna 후 (100%)** | 차이 |
+|---|---|---|---|
+| Layer 2 Sharpe / CAGR / MDD / Sortino / Hit rate | 동일 | 동일 | 0 (BL 자체 메트릭, SPY 무관) |
+| Layer 2 CAPM α | 18.883% | **15.789%** | -3.094%p (정확화) |
+| Layer 2 CAPM β | -0.173 | **-0.131** | +0.042 (절대값 ↓) |
+| Layer 2 CAPM t | 0.236 | 0.242 | +0.006 |
+| **Layer 2 IR** | **+0.008** | **-0.084** ⭐⭐ | -0.092 (양→음 전환) |
+| 누적 그래프 SPY 라인 | 5.82배 | 11.23배 ✅ | 02a §6-5 와 일관 |
+
+**Layer 4 시기별 capm_α 변화**:
+
+| 시기 | 이전 (70%) | 현재 (100%) | 차이 |
+|---|---|---|---|
+| GFC 회복 (09~11) | 21.756% | 20.681% | -1.08%p |
+| 정상 강세장 (12~19) | 17.707% | 16.336% | -1.37%p |
+| COVID 충격 (20) | NaN | **19.561%** ⭐ | 정상 계산 |
+| 긴축·전환 (21~22) | 11.098% | 10.179% | -0.92%p |
+| 회복·AI (23~25) | 18.459% | 12.666% | **-5.79%p** ⭐ 가장 큰 변화 |
+
+회복·AI 시기 SPY 가 AI 붐으로 강하게 상승 → BL_ml_sw alpha 가 정확하게는 더 작게 측정.
+
+**IR 부호 전환의 의미** (+0.008 → -0.084):
+- 이전: 70% 시점만 사용 → BL_ml_sw 가 SPY 보다 약간 좋다고 잘못 측정
+- 정확: 100% 시점 → BL_ml_sw 가 SPY 보다 약간 떨어짐 (누적 8.3배 < SPY 11.23배 와 일관)
+- → §13.5/§13.6 의 "ML > SPY 도 아님" 결론 정직하게 반영
+
+**근본 fix (옵션 B, 02b 후 task)**: `scripts/diagnostics.py` 의 `plot_portfolio_diagnostic_panel`
+내부에서 SPY index 를 month period 매핑 + dropna 자동 처리. 02b 학습 진행 중이라
+`scripts/` 변경 미루고 02b 완료 후 적용 예정 (05b/05c 도 동일 검토 필요).
+
+#### Step 8 최종 요약
+
+| 항목 | 결과 |
+|---|---|
+| Stale 필터 작동 | ✅ 5/6 stale 종목 100% 차단 (SW 169→0, EP/COL/CPWR/CVG 100% 제거), 1/6 (AMCR) 동적 부분 차단 |
+| BL_ml_sw Sharpe (02a §6-4) | 1.123 → **1.122** (-0.001, 무변화) |
+| BL_trailing Sharpe (02a §6-4) | 1.203 → **1.207** (+0.004, 약간 상승) |
+| diff (ML 효과) | -0.080 → **-0.085** (절대값 +0.005, 방향성 robust) |
+| BL_ml_sw Sharpe (05a Layer 2) | 1.105 → **1.119** (+0.014, Step 6 → Step 8 누적 효과) |
+| 매월 universe 평균 | 420.0 → **418.5** (-1.51 종목) |
+| 02b 학습 영향 | 0 (universe 필터는 portfolio 단계, 학습 무관) |
+| 노트북 cosmetic 정정 | ✅ §7-5/§7-8 변수 참조 전환 (Cell 30 정정과 일관) |
+| 학술 보고서 Limitations | ✅ "Stale Price Detection" 섹션 표현 직접 활용 가능 |
+
+---
+
 ## §14. Phase 3-2 / 3-3 (선택, TBD)
 
 (Phase 3-1 결과 후 진행 결정)
@@ -1328,7 +2159,22 @@ LS spread 가 음수임에도 BL_trailing Sharpe 1.222 가 SPY 1.05 능가:
       · Hit rate ML > Trailing (low 0.634 vs 0.590, high 0.663 vs 0.626)
       · LS spread 패러독스: ML -9.53%/yr vs Trailing -4.84%/yr (mcap-w)
       · 진단: Trailing vol = 방어주 proxy, ML = pure forward vol → BAB 분리
-   ⏳ Step 2b (02b_crosssec) — 학습 대기 (Cross-Sec 의 BAB 활용도 검증)
+   🔄 Step 2b (02b_crosssec) — 학습 진행 중 (≈22h ETA, 615 종목 fair 비교)
+      · hidden=32, layers=1, batch=512, AMP, num_workers=2, patience=5
+      · val 정상 수렴 (~0.22), fold 5.1분/단발
+      · 02a 일관 (615 종목 ∩ panel) 보장
+   ✅ Step 2a 단독 깊이 분석 §13.6 (2026-04-30, 02b 학습 중 사전 준비)
+      · Step 1: 05a Cell 5 BL_ml_sw 캐시 fallback 적용
+      · Step 4: 05a §7 신규 (누락 163 종목 시기별 영향 분석) 6 셀 추가
+      · Step 6: 05a §7-6/7/8 추가 (사용자 지적 보강 — 진정한 생존편향 정량화) ⭐
+      · Step 7: Static-Universe → Dynamic-Membership 전환 (look-ahead 차단) ⭐
+                03 + 02a §6 dynamic 수정, 기존 03 노트북 + Static 캐시 격리 보존
+      · Step 8: Stale price 필터 추가 (zero_ratio > 30% 종목 매월 universe 제외) ⭐
+                팀원 발견 (SW 65.8% stale) 보강, 02a Cell 23 + 03 Cell 10
+                + 05a §7-5/§7-8 hardcoded → 변수 참조 변환 (cosmetic 정정 후속)
+      · 02b 학습 영향 0 보장 (별도 커널, scripts/ 변경 X)
+      · 사용자 재실행 완료: 02a §6 (Step 8) + 05a Layer 2~4 + §7-5/§7-8 (변수 참조)
+      · ⏳ 사용자 대기: 02b 학습 완료 후 03 정식 실행 (~22h) + 04/05b/05c 재실행
    ⏳ Step 3 (03_BL_backtest) — 02b 완료 후, 6 시나리오
    ⏳ Step 4 (04_compare) — 03 완료 후
 
@@ -1344,6 +2190,110 @@ LS spread 가 음수임에도 BL_trailing Sharpe 1.222 가 SPY 1.05 능가:
        (KOSPI vs 미국 17년 universe 환경 차이)
    ⭐ Trailing vol = 방어주 (Utilities/Staples/Healthcare) 식별 proxy
        — 회사 특성 식별과 vol 예측의 분리
+
+[핵심 학술 발견 — §13.6 Step 6 결과 (2026-04-30, 사용자 지적 보강)]
+   ⭐ §7-3 의 sector imbalance 1.64%p 의 정확한 의미:
+       "panel 646 (살아남은 종목) 안에서" 학습 615 의 sector 중립성만 입증
+       → panel 자체가 yfinance 살아남은 집합이라는 본질적 생존편향 미측정
+   ⭐ §7-7 진정한 universe imbalance 실측 (2026-04-30):
+       Real imbalance 31.31%p (Unknown 포함) / 13.56%p (Unknown 제외)
+       → §7-3 의 1.64%p 의 19.1배 / 8.3배 (방법론 noise 처리에 따라)
+       hardcoded 매핑: 126/163 (77.3%), Unknown 잔존 37 종목
+   ⭐ Panel 의 sector 별 진짜 universe 대표성 (Panel < 80% under-rep):
+       Energy 61.8% ⭐ #1 핵심 발견 (panel 34 vs 누락 21)
+       Communication Services 73.0%, Consumer Staples 75.0%, Health Care 76.9%
+       → 학습이 본 sector 분포는 "M&A·파산까지 이어진 prosperous/안정" 위주
+   ⭐ OOS 파산 14 종목 중 Energy 36% (CHK, FTR, DO, DNR, ANR) 가설이
+       universe 전체 차원에서도 확인 (panel Energy 진짜 universe 의 38% 미반영)
+   ⭐ 본 연구의 절대 수치 (BL_ml_sw Sharpe 1.108) 는 진짜 universe 대비
+       과대평가 가능성, 상대 비교 (ML vs Trailing -0.114) 의 방향성은 신뢰 가능
+
+[핵심 학술 발견 — §13.6 Step 7 결과 (2026-04-30, Dynamic-Membership 전환)]
+   ⭐ Universe 정의 전환:
+       Static-Universe (legacy):     매월 panel ∩ trained_tickers 615
+                                     (yfinance 가용 종목 중 학습된 종목, 시점별 멤버십 무관)
+       Dynamic-Membership (current): 매월 sp500_member_at_t ∩ panel ∩ 615
+                                     (Wikipedia 시점별 S&P 500 멤버십 적용)
+   ⭐ Look-ahead 차단:
+       Static 모드는 portfolio backtest universe 에 미래 멤버십 정보 누수
+       (예: TSLA 의 2010~2019 panel 데이터를 universe 후보에 포함, 실제 S&P 편입은 2020-12)
+       → Dynamic 으로 그 시점 실제 S&P 멤버만 후보 → 학술 baseline 과 fair 비교 회복
+   ⭐ 두 bias 의 분리:
+       Look-ahead    → Dynamic-Membership 으로 ✅ 해결 (Step 7)
+       Survivorship  → yfinance 한계로 ⚠️ 잔존 (§7-6/7/8 의 31.31%p / 13.56%p, CRSP 필요)
+       학술 보고서에서 분리 표현 권장
+   ⭐ 격리 보존:
+       기존 03 노트북 (Static)        → 03_BL_backtest_extended_legacy_static.ipynb
+       기존 BL sanity check 캐시      → data/bl_weights_sanity_check_legacy_static.pkl
+   ⭐ 결과 수치 변화 (2026-04-30 사용자 02a §6 재실행 실측):
+       매월 universe 평균: 548.8 → 420.0 (-128.9 종목, -23%)
+       BL_ml_sw Sharpe:   1.108 → 1.123 (+0.015)
+       BL_trailing Sharpe: 1.222 → 1.203 (-0.019)
+       diff (ML 효과):    -0.114 → -0.080 (절대값 -30%, 방향성 robust ✅)
+       Hit rate / LS spread 동일 (universe filter 무관 영역)
+   ⭐ Look-ahead 차단 직접 검증 (TSLA 사례):
+       2014-01-31, 2019-01-31: Static ✓ vs Dynamic ✗ (편입 2020-12 전 정확히 제외)
+       Dynamic ⊆ Static (수학적 부분집합 관계 확인, 첫 시점 140 종목 제거)
+   ⭐ 학술 baseline fair 비교 회복:
+       BL_trailing 1.203 vs 서윤범 99 재계산 1.157 (+3.98%, 안전 범위)
+   ⭐ 핵심 결론 robustness 강화:
+       "ML > Trailing 이 아님" 결론이 Static/Dynamic 양쪽 환경에서 일관 유지
+       Trailing vol = 방어주 proxy 가설도 universe 정의에 robust
+   ⭐ 재실행 안전성 강화 (캐시 보호):
+       02a Cell 8 (LSTM 학습) + Cell 23 (§6-2 BL) + 03 Cell 10 (§4 BL 6 시나리오) 모두 캐시 추가
+       FORCE_RETRAIN / FORCE_RECOMPUTE flag default False → VS Code Run All 도 안전
+       02b 학습 중 02a 노트북 안전 재실행 보장
+
+[핵심 학술 발견 — §13.6 Step 8 결과 (2026-04-30, Stale price 필터)]
+   ⭐ Stale price 발견 (팀원 보강):
+       panel 646 중 12 종목 (1.9%) 의 0 비율 > 30%
+       SW (65.8%) — Smurfit-Stone (2010) + Smurfit Westrock (2024) ticker 재사용
+       원인: yfinance 의 ticker 소멸 후 stale fill (M&A, private, 파산, 재사용)
+   ⭐ Dynamic-Membership 의 자연 차단 효과 (Step 7 부가 가치):
+       BMC, GR 등 2 종목은 시점별 멤버십 mismatch 로 BL universe 0회 출현
+       그러나 SW (169시점), AMCR (79시점), EP (40시점) 등 잔존 → Step 8 필요
+   ⭐ Step 7 결과 기준 stale 영향 정량 (Step 8 적용 전):
+       매월 동시 stale 종목: mean 1.72, max 2 (절대 9개 아님)
+       매월 가중치 합: mean 0.075%, max 0.939% (2020-02-28)
+       Sharpe 영향 < 0.005 (negligible)
+   ⭐ Step 8 적용 + 실측 결과 (2026-04-30 사용자 02a §6 재실행):
+       매월 universe 평균: 420.0 → 418.5 (-1.51 종목, 예상 1~2 일치 ✅)
+       BL_ml_sw Sharpe:   1.123 → 1.122 (-0.001, 거의 무변화)
+       BL_trailing Sharpe: 1.203 → 1.207 (+0.004)
+       diff (ML 효과):    -0.080 → -0.085 (절대값 약간 강해짐, 방향성 robust)
+       Stale 제거 검증: SW 169→0, EP 40→0, COL 33→0, CPWR 18→0, CVG 11→0
+                        AMCR 79→42 (시기별 부분 차단, 43.3% 종목)
+       → 5/6 stale 종목 100% 차단, 학습 영향 0
+   ⭐ 부수 발견: Trailing 이 stale 에 더 영향 받음 (Sharpe +0.004 vs ML -0.001)
+       → "Trailing vol = 방어주 proxy" 가설 반대 방향 보강
+          (Trailing 은 진짜 방어주뿐 아니라 "가짜 방어주" stale 종목도 잘 잡았음)
+       → ML 이 noise-robust 함 추가 확인
+   ⭐ Sharpe 변화 ±0.005 이내 = statistical noise 수준 → 핵심 결론 robust
+   ⭐ 05a 재실행 후속 정리 (2026-04-30, Step 8 캐시 반영):
+       (a) §7-5/§7-8 hardcoded → 변수 참조 변환
+           02a §6-4 가 metrics 를 bl_metrics_sanity_check.pkl 로 저장
+           05a §7-5/§7-8 가 로드 + f-string 으로 동적 인용
+           → 이전 1.108/-0.114 (stale) → 1.122/-0.085 자동 출력
+       (b) 05a Layer 2 BL_ml_sw Sharpe (Step 6→8): 1.105 → 1.119 (+0.014)
+       (c) Layer 4 COVID Sharpe: 0.790 → 0.724 (-0.066) ⭐ 가장 큰 변화
+           (Step 8 의 COVID universe 축소 -2.00 종목/월 와 일관)
+       (d) §7-4 회귀 r²: 0.005 → 0.018 (statistical noise 수준, 비유의 유지)
+       (e) §7-3/§7-6/§7-7/§7-8 sector 분석: universe filter 무관 → 변화 없음
+   ⭐ 메트릭 일관성: 02a §6-4 (1.122) vs 05a Layer 2 (1.119) 차이 0.003
+       → rf 차감 / 메트릭 정의 미세 차이 (noise 수준)
+       학술 보고서엔 02a §6-4 의 1.122 사용 권장 (직접 계산 정의 명확) 또는 두 수치 병기
+   ⭐ 추가 cosmetic 정정 — SPY index 정렬 (2026-04-30):
+       05a Layer 2 누적 그래프의 SPY 5.82배 (잘못) → 11.23배 (정확) 수정
+       원인: Issue #1 패턴 잔존 (spy_monthly 가 calendar 월말, BL returns 가 거래일 월말)
+            → plot_portfolio_diagnostic_panel 의 intersection 70% 만 일치
+       Fix (옵션 A + dropna): 05a Cell 4 의 spy_monthly = reindex(reb).pct_change().dropna()
+       실측 결과 (사용자 재실행):
+         CAPM α: 18.883% → 15.789% (-3.09%p, 정확화)
+         CAPM β: -0.173 → -0.131 (절대값 ↓)
+         IR:    +0.008 → -0.084 (양→음 전환, BL_ml_sw 가 SPY 보다 떨어짐 정직 반영)
+         Layer 4 capm_α 시기별 정확화 (회복·AI 18.46→12.67, 가장 큰 변화)
+       BL 자체 메트릭 (Sharpe/CAGR/MDD/Sortino/Hit rate) 변화 0
+       근본 fix (옵션 B, 02b 후): scripts/diagnostics.py 의 SPY 처리 month period 매핑 + dropna 자동
 
 [Phase 3-2/3] Phase 3-1 결과 후 결정
 ```

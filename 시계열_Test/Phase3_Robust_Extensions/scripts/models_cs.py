@@ -198,20 +198,21 @@ class CrossSectionalLSTMRegressor(nn.Module):
 # =============================================================================
 CS_V4_BEST_CONFIG: dict = {
     'input_size': 4,           # rv_d, rv_w, rv_m, vix_log
-    'hidden_size': 64,         # Phase 1.5 의 32 보다 크게 (sample 풍부)
-    'num_layers': 2,           # 2 layer (cross-sectional 환경)
-    'dropout': 0.3,
+    'hidden_size': 32,         # ⭐ 64 → 32 (02a 일관, fair 비교 + 학습 시간 ↓)
+    'num_layers': 1,           # ⭐ 2 → 1 (02a 일관, dropout 단순화)
+    'dropout': 0.3,            # layers=1 시 LSTM 내부 dropout 자동 무효 (output_dropout 만 작동)
     'embedding_dim': 8,        # ticker embedding 차원
-    'output_dropout': 0.2,
-    'lr': 1e-3,
+    'output_dropout': 0.2,     # 출력 직전 dropout (layers=1 환경에서 정규화 주역)
+    'lr': 1.4e-3,              # ⭐ batch=512 에 맞춰 sqrt 스케일링 (1e-3 × √2)
     'weight_decay': 1e-4,
     'loss_type': 'mse',
     'huber_delta': 0.01,
-    'max_epochs': 50,
-    'early_stop_patience': 10,
-    'lr_patience': 5,
+    'max_epochs': 25,            # ⭐ 50 → 25 (patience 5 와 함께 안전망)
+    'early_stop_patience': 5,    # ⭐ 10 → 5 (Phase 1.5 / 02a 일관, 학습 시간 ↓)
+    'lr_patience': 3,            # ⭐ 5 → 3 (patience 5 에 맞춰 비례 감소)
     'lr_factor': 0.5,
-    'batch_size': 256,         # Phase 1.5 의 64 보다 크게 (대규모 sample)
+    'batch_size': 512,         # ⭐ 256 → 512 (RTX 4090 24GB VRAM 여유, GPU 활용도 ↑)
+    'num_workers': 2,          # ⭐ DataLoader 병렬화 (Windows + Jupyter 호환)
     'is_len': 1250,
     'seq_len': 63,
     'embargo': 63,

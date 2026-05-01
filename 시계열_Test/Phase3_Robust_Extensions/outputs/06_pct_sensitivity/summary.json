@@ -1,0 +1,49 @@
+{
+  "experiment": "pct_sensitivity",
+  "pct_values": [
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4
+  ],
+  "baseline_pct": 0.3,
+  "fair_comparison_scenario": "BL_ml_sw",
+  "fair_date_range": [
+    "2009-01-30",
+    "2025-12-31"
+  ],
+  "n_months": 204,
+  "optimal_pct_by_scenario": {
+    "BL_ml_sw": {
+      "pct": 0.15,
+      "sharpe": 1.1302,
+      "annual_ret": 13.891,
+      "sortino": 1.7521
+    },
+    "BL_trailing": {
+      "pct": 0.2,
+      "sharpe": 1.2522,
+      "annual_ret": 14.5791,
+      "sortino": 1.863
+    },
+    "EqualWeight": {
+      "pct": 0.1,
+      "sharpe": 1.1328,
+      "annual_ret": 19.615,
+      "sortino": 1.6598
+    }
+  },
+  "spy_baseline": {
+    "sharpe": 1.0501,
+    "annual_ret": 15.4613,
+    "ann_vol": 14.7241,
+    "sortino": 1.551,
+    "mdd": -23.9272,
+    "cagr": 15.3679,
+    "n_months": 203.0
+  },
+  "has_cs": false
+}

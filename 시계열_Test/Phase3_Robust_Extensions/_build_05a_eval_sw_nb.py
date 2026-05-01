@@ -107,15 +107,79 @@ spy_monthly = (1 + spy_daily).resample('ME').prod() - 1
 print(f'spy_monthly: {len(spy_monthly)} 개월')""")
 
 code("""# BL_ml_sw 포트폴리오 결과 로드
+# ⭐ Step 1 (2026-04-30): 03 BL 미실행 (02b 학습 중) 시 02a §6 sanity check 캐시 fallback
+import pickle
+
+
+def make_returns_manual(weights_dict, name, forward_rets):
+    \"\"\"02a §6-3 일관: weights → portfolio returns 직접 계산.\"\"\"
+    if not weights_dict:
+        return pd.Series(dtype=float, name=name)
+    rets, dates = [], []
+    for reb_date in sorted(weights_dict.keys()):
+        w = weights_dict[reb_date]
+        if reb_date not in forward_rets.index:
+            continue
+        r_next = forward_rets.loc[reb_date]
+        common_t = w.index.intersection(r_next.index)
+        if len(common_t) == 0:
+            continue
+        w_c = w.reindex(common_t).fillna(0)
+        r_c = r_next.reindex(common_t).fillna(0)
+        port_ret = float((w_c * r_c).sum())
+        rets.append(port_ret)
+        dates.append(reb_date)
+    if not rets:
+        return pd.Series(dtype=float, name=name)
+    return pd.Series(rets, index=pd.DatetimeIndex(dates), name=name)
+
+
 bl_returns_path = OUTPUTS_DIR / '03_bl_backtest' / 'returns_BL_ml_sw.csv'
+bl_cache_path = DATA_DIR / 'bl_weights_sanity_check.pkl'
 
 if bl_returns_path.exists():
+    # 우선: 03 정식 BL 백테스트 결과
     bl_ml_sw_returns = pd.read_csv(bl_returns_path, index_col=0, parse_dates=True).squeeze()
-    print(f'BL_ml_sw returns: {len(bl_ml_sw_returns)} 개월')
+    print(f'BL_ml_sw returns (03 정식): {len(bl_ml_sw_returns)} 개월')
     print(f'  기간: {bl_ml_sw_returns.index[0].date()} ~ {bl_ml_sw_returns.index[-1].date()}')
+elif bl_cache_path.exists():
+    # ⭐ Fallback: 02a §6 sanity check 캐시 활용 (03 미실행 시)
+    print('⚠️ 03 BL 미실행 → 02a §6 sanity check 캐시 사용 (BL_ml_sw 만)')
+
+    with open(bl_cache_path, 'rb') as f:
+        sanity_cache = pickle.load(f)
+    weights_ml = sanity_cache['weights_ml']
+    print(f'  캐시: {len(weights_ml)} 시점 가중치')
+
+    # forward returns 재계산 (02a §6-3 동일 로직, market eom index)
+    panel_local = pd.read_csv(
+        DATA_DIR / 'daily_panel.csv', parse_dates=['date'],
+        usecols=['date', 'ticker', 'log_ret'],
+    )
+    sub = panel_local.set_index('date')
+    sub['month'] = sub.index.to_period('M')
+    monthly_lr = sub.groupby(['ticker', 'month'])['log_ret'].sum().reset_index()
+
+    market_local = pd.read_csv(DATA_DIR / 'market_data.csv', index_col='date', parse_dates=True)
+    reb_dates_local = market_local.groupby(market_local.index.to_period('M')).tail(1).index
+    reb_dates_local = reb_dates_local[(reb_dates_local >= '2009-01-01') & (reb_dates_local <= '2025-12-31')]
+    month_to_eom = {pd.Timestamp(d).to_period('M'): pd.Timestamp(d) for d in reb_dates_local}
+
+    monthly_lr['date'] = monthly_lr['month'].map(month_to_eom)
+    monthly_lr = monthly_lr.dropna(subset=['date'])
+    monthly_lr['ret'] = np.exp(monthly_lr['log_ret']) - 1
+    monthly_rets_local = monthly_lr.pivot_table(index='date', columns='ticker', values='ret')
+    forward_rets_local = monthly_rets_local.shift(-1)
+
+    bl_ml_sw_returns = make_returns_manual(weights_ml, 'BL_ml_sw', forward_rets_local)
+    print(f'BL_ml_sw returns (sanity check): {len(bl_ml_sw_returns)} 개월')
+    if len(bl_ml_sw_returns) > 0:
+        print(f'  기간: {bl_ml_sw_returns.index[0].date()} ~ {bl_ml_sw_returns.index[-1].date()}')
 else:
-    print(f'⚠️ BL_ml_sw 결과 없음: {bl_returns_path}')
-    print('  → 03 노트북 실행 후 본 노트북 §3~§6 재실행 필요')
+    print(f'⚠️ BL_ml_sw 결과 없음:')
+    print(f'  03 산출물: {bl_returns_path}')
+    print(f'  02a §6 캐시: {bl_cache_path}')
+    print('  → 03 BL 백테스트 또는 02a §6 sanity check 실행 후 재실행')
     bl_ml_sw_returns = None""")
 
 

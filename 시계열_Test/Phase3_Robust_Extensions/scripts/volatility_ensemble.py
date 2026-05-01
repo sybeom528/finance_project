@@ -374,11 +374,13 @@ def compute_performance_weights(
     """
     df = fold_results.sort_values(["ticker", "fold", "date"]).copy()
 
-    # ⭐ non-finite 행 제거 (target 또는 예측 폭주 종목 — 폐상장 등 stale price)
+    # ⭐ non-finite 행 제거 (예측 폭주 종목 — 폐상장 등 stale price)
+    # ⭐ 2026-05-01 수정: y_true 제거 (forward 21일 부재 시점도 ensemble 통과 가능)
+    #    y_true NaN 행은 line 453 의 RMSE 계산 시만 자동 제외 (dropna(subset=["y_true",...]))
+    #    → walk-forward 마지막 fold (panel 끝점) 의 y_true 부재 행도 ensemble 결합 통과
     n_before = len(df)
     finite_mask = (
-        np.isfinite(df["y_true"])
-        & np.isfinite(df["y_pred_lstm"])
+        np.isfinite(df["y_pred_lstm"])
         & np.isfinite(df["y_pred_har"])
     )
     n_dropped = (~finite_mask).sum()
@@ -386,7 +388,7 @@ def compute_performance_weights(
         dropped_tickers = df.loc[~finite_mask, "ticker"].unique()
         print(
             f"  [compute_performance_weights] {n_dropped}/{n_before} 행 제거 "
-            f"(non-finite y_true/pred). 영향 종목: {sorted(dropped_tickers)}"
+            f"(non-finite y_pred_lstm/har). 영향 종목: {sorted(dropped_tickers)}"
         )
     df = df[finite_mask].reset_index(drop=True)
 
@@ -609,6 +611,7 @@ def run_ensemble_for_universe_parallel(
     n_workers: int = 8,
     tickers_subset: Optional[list] = None,
     out_name: str = "ensemble_predictions_stockwise.csv",
+    overwrite: bool = False,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """Phase 3 — 종목별 walk-forward 8-way 병렬 학습.
@@ -656,6 +659,21 @@ def run_ensemble_for_universe_parallel(
     from concurrent.futures import ProcessPoolExecutor
 
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ⭐ 캐시 확인 (2026-04-30 추가): 출력 파일 이미 있으면 학습 skip
+    out_path = out_dir / out_name
+    if out_path.exists() and not overwrite:
+        if verbose:
+            print(f"  [parallel] 캐시 사용: {out_path.name} (재학습 생략)", flush=True)
+            print(f"  [parallel] 강제 재학습: overwrite=True 인자로 호출", flush=True)
+        cached = pd.read_csv(out_path, parse_dates=["date"])
+        if verbose:
+            print(
+                f'  [parallel] 로드 완료: {cached.shape}, '
+                f'unique 종목 {cached["ticker"].nunique()}',
+                flush=True,
+            )
+        return cached
 
     panel = pd.read_csv(panel_csv, parse_dates=["date"])
     universe_df = pd.read_csv(universe_csv, parse_dates=["cutoff_date"])
@@ -825,6 +843,7 @@ def build_cs_inputs(
     har_w: int = 5,
     har_m: int = 22,
     align_to_common_dates: bool = True,
+    min_data_days: int = 30,
 ) -> dict:
     """Cross-Sectional 학습용 input 빌드.
 
@@ -836,6 +855,10 @@ def build_cs_inputs(
         daily_panel.csv (long format: date, ticker, log_ret, vix, target_logrv).
     tickers : list of str
         학습 대상 종목 list.
+    min_data_days : int, default 30
+        ⭐ 02a fair 비교 (2026-04-30): n_actual < min_data_days 종목 제외.
+        02a 일관 시 1334 (= is_len 1250 + seq_len 63 + oos_len 21) 권장.
+        run_ensemble_cross_sectional 에서 config 기반 자동 계산.
     align_to_common_dates : bool, default True
         ⭐ C4+Mj5 수정 (2026-04-29):
         True  → 모든 종목을 panel 전체 날짜 축에 정렬 (IPO 이전/이후 = NaN).
@@ -886,8 +909,9 @@ def build_cs_inputs(
         panel_t_raw = panel[panel["ticker"] == ticker].copy().sort_values("date")
         n_actual = len(panel_t_raw)
 
-        if n_actual < 30:
-            # 실제 데이터가 30일 미만인 종목 제외
+        if n_actual < min_data_days:
+            # ⭐ 02a fair 비교 (2026-04-30): 학습 가능 일수 미만 종목 제외
+            # 02a 일관 시 1334 (= IS 1250 + seq 63 + OOS 21) 권장
             continue
 
         if common_dates is not None:
@@ -1037,9 +1061,12 @@ def _build_cs_dataset_for_fold(
         series = cs_inputs["series"][ticker]
         extra = cs_inputs["extra"][ticker]
 
-        train_idx_valid = train_idx[~np.isnan(target[train_idx])]
+        # ⭐ Issue 6 fix (2026-04-30): NaN + inf 모두 제거
+        # 폐상장 stale price 종목의 target_logrv 가 -inf 일 수 있음
+        # np.isnan() 은 inf 를 못 잡으므로 np.isfinite() 사용
+        train_idx_valid = train_idx[np.isfinite(target[train_idx])]
         test_idx_valid = (
-            test_idx[~np.isnan(target[test_idx])] if len(test_idx) > 0 else test_idx
+            test_idx[np.isfinite(target[test_idx])] if len(test_idx) > 0 else test_idx
         )
 
         if len(train_idx_valid) < seq_len + 30:
@@ -1051,28 +1078,29 @@ def _build_cs_dataset_for_fold(
         scaler.fit(train_data)
         scalers[ticker] = scaler
 
-        # ⭐ Sample 추출: 각 valid 위치에서 직전 seq_len 의 NaN 검증
-        # (train_idx_valid 가 NaN target 제거 후 불연속일 수 있으므로, 위치별 검증)
+        # ⭐ Sample 추출: 각 valid 위치에서 직전 seq_len 의 NaN+inf 검증
+        # (train_idx_valid 가 NaN/inf target 제거 후 불연속일 수 있으므로, 위치별 검증)
+        # ⭐ Issue 6 fix (2026-04-30): np.isnan → np.isfinite (inf 도 차단)
         n_total = len(series)
         for pos in train_idx_valid:
             pos_int = int(pos)
             if pos_int < seq_len:
                 continue
-            # seq window 의 NaN 체크
+            # seq window 의 NaN+inf 체크
             seq_x = series[pos_int - seq_len : pos_int]
             seq_extra = extra[pos_int - seq_len : pos_int]
-            if np.any(np.isnan(seq_x)) or np.any(np.isnan(seq_extra)):
+            if not np.all(np.isfinite(seq_x)) or not np.all(np.isfinite(seq_extra)):
                 continue
             train_samples.append((ticker, pos_int))
 
-        # test: 각 test_idx 위치에서 직전 seq_len 의 NaN 검증
+        # test: 각 test_idx 위치에서 직전 seq_len 의 NaN+inf 검증
         for pos in test_idx_valid:
             pos_int = int(pos)
             if pos_int < seq_len:
                 continue
             seq_x = series[pos_int - seq_len : pos_int]
             seq_extra = extra[pos_int - seq_len : pos_int]
-            if np.any(np.isnan(seq_x)) or np.any(np.isnan(seq_extra)):
+            if not np.all(np.isfinite(seq_x)) or not np.all(np.isfinite(seq_extra)):
                 continue
             test_samples.append((ticker, pos_int))
 
@@ -1091,6 +1119,7 @@ def run_ensemble_cross_sectional(
     tickers_subset: Optional[list] = None,
     out_name: str = "ensemble_predictions_crosssec.csv",
     use_har: bool = True,
+    overwrite: bool = False,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """Phase 3 — Cross-Sectional LSTM walk-forward 학습 + HAR ensemble.
@@ -1137,6 +1166,21 @@ def run_ensemble_cross_sectional(
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # ⭐ 캐시 확인 (2026-04-30 추가): 출력 파일 이미 있으면 학습 skip
+    out_path = out_dir / out_name
+    if out_path.exists() and not overwrite:
+        if verbose:
+            print(f"  [cross-sec] 캐시 사용: {out_path.name} (재학습 생략)", flush=True)
+            print(f"  [cross-sec] 강제 재학습: overwrite=True 인자로 호출", flush=True)
+        cached = pd.read_csv(out_path, parse_dates=["date"])
+        if verbose:
+            print(
+                f'  [cross-sec] 로드 완료: {cached.shape}, '
+                f'unique 종목 {cached["ticker"].nunique()}',
+                flush=True,
+            )
+        return cached
+
     # ─── 데이터 로드 ───
     panel = pd.read_csv(panel_csv, parse_dates=["date"])
     universe_df = pd.read_csv(universe_csv, parse_dates=["cutoff_date"])
@@ -1147,6 +1191,10 @@ def run_ensemble_cross_sectional(
     else:
         tickers = all_tickers
 
+    # ⭐ 02a fair 비교 (2026-04-30): 02a 와 동일한 1334일 임계값
+    # 02a 의 run_ensemble_for_universe_parallel 은 is_len + seq_len + oos_len 미만 종목 skip
+    min_data_days = config["is_len"] + config["seq_len"] + config["oos_len"]
+
     if verbose:
         print(
             f"  [cross-sec] {len(tickers)} 종목 cross-sectional 학습 시작", flush=True
@@ -1156,13 +1204,28 @@ def run_ensemble_cross_sectional(
             flush=True,
         )
         print(f"  [cross-sec] HAR 결합: {use_har}", flush=True)
+        print(
+            f'  [cross-sec] min_data_days={min_data_days} '
+            f'(IS {config["is_len"]} + seq {config["seq_len"]} + OOS {config["oos_len"]}) '
+            f'— 02a 일관',
+            flush=True,
+        )
 
     # ─── Cross-sectional inputs 빌드 ───
-    cs_inputs = build_cs_inputs(panel, tickers, config["har_w"], config["har_m"])
+    # ⭐ min_data_days 명시 — 02a 의 615 종목과 동일 기준
+    cs_inputs = build_cs_inputs(
+        panel,
+        tickers,
+        har_w=config["har_w"],
+        har_m=config["har_m"],
+        min_data_days=min_data_days,
+    )
 
     if verbose:
         print(
-            f'  [cross-sec] inputs: {len(cs_inputs["series"])} 종목 valid', flush=True
+            f'  [cross-sec] inputs: {len(cs_inputs["series"])} 종목 valid '
+            f'(02a 의 615 종목과 동일해야 정상)',
+            flush=True,
         )
 
     # ─── 공통 walk-forward fold 생성 ───
@@ -1217,6 +1280,46 @@ def run_ensemble_cross_sectional(
     else:
         torch_device = torch.device("cpu")
 
+    # ⭐ Speed up Tier 1 (2026-04-30): cudnn benchmark + AMP 사용 가능 여부
+    # 성능 영향 0, 단순 GPU 활용도 ↑
+    # PyTorch 2.x 의 새 표준 API (torch.amp) 사용 — torch.cuda.amp 는 deprecated
+    use_amp = (torch_device.type == "cuda")
+    _AMP_AVAILABLE = False
+    _AMP_NEW_API = False
+    autocast = None
+    GradScaler = None
+    if use_amp:
+        torch.backends.cudnn.benchmark = True
+        try:
+            # PyTorch 2.x 표준
+            from torch.amp import autocast as _autocast, GradScaler as _GradScaler
+            autocast = _autocast
+            GradScaler = _GradScaler
+            _AMP_AVAILABLE = True
+            _AMP_NEW_API = True
+        except ImportError:
+            try:
+                # PyTorch 1.x fallback
+                from torch.cuda.amp import autocast as _autocast, GradScaler as _GradScaler
+                autocast = _autocast
+                GradScaler = _GradScaler
+                _AMP_AVAILABLE = True
+                _AMP_NEW_API = False
+            except ImportError:
+                pass
+
+    # ⭐ AMP 컨텍스트 헬퍼 (API 차이 흡수)
+    # PyTorch 2.x: autocast('cuda') / 1.x: autocast()
+    def _amp_autocast():
+        if not _AMP_AVAILABLE:
+            # AMP 미사용 시 dummy 컨텍스트
+            from contextlib import nullcontext
+            return nullcontext()
+        return autocast('cuda') if _AMP_NEW_API else autocast()
+
+    if verbose and use_amp and _AMP_AVAILABLE:
+        print(f"  [cross-sec] ⚡ AMP (Mixed Precision) 활성화 (RTX Tensor Core)", flush=True)
+
     # ⭐ tqdm.auto: notebook + CMD 모두 작동
     try:
         from tqdm.auto import tqdm
@@ -1258,28 +1361,34 @@ def run_ensemble_cross_sectional(
         train_only_ds = torch.utils.data.Subset(train_ds, list(range(n_train_only)))
         val_ds = torch.utils.data.Subset(train_ds, list(range(n_train_only, n_train)))
 
-        # ⭐ DataLoader 최적화 (num_workers=0 권장 — Jupyter + Windows 호환)
-        # num_workers > 0 시 multiprocessing fork 충돌 가능
+        # ⭐ DataLoader 최적화 (2026-04-30 갱신)
+        # num_workers=2: CPU bottleneck 해결 (Windows + Jupyter spawn 호환)
+        # persistent_workers=True: fold 간 worker 재사용 → fork overhead 절감
+        n_workers = config.get("num_workers", 2)
+        cuda_pin = (torch_device.type == "cuda")
         train_loader = DataLoader(
             train_only_ds,
             batch_size=config["batch_size"],
             shuffle=True,
-            num_workers=0,
-            pin_memory=(torch_device.type == "cuda"),
+            num_workers=n_workers,
+            pin_memory=cuda_pin,
+            persistent_workers=(n_workers > 0),
         )
         val_loader = DataLoader(
             val_ds,
             batch_size=config["batch_size"],
             shuffle=False,
-            num_workers=0,
-            pin_memory=(torch_device.type == "cuda"),
+            num_workers=n_workers,
+            pin_memory=cuda_pin,
+            persistent_workers=(n_workers > 0),
         )
         test_loader = DataLoader(
             test_ds,
             batch_size=config["batch_size"],
             shuffle=False,
-            num_workers=0,
-            pin_memory=(torch_device.type == "cuda"),
+            num_workers=n_workers,
+            pin_memory=cuda_pin,
+            persistent_workers=(n_workers > 0),
         )
 
         # 모델
@@ -1311,22 +1420,41 @@ def run_ensemble_cross_sectional(
         best_state = None
         patience_counter = 0
 
+        # ⭐ AMP scaler (cuda + amp 사용 가능 시)
+        # PyTorch 2.x: GradScaler('cuda') / 1.x: GradScaler()
+        if use_amp and _AMP_AVAILABLE:
+            amp_scaler = GradScaler('cuda') if _AMP_NEW_API else GradScaler()
+        else:
+            amp_scaler = None
+
         for epoch in range(config["max_epochs"]):
             model.train()
             train_loss_sum = 0.0
             for x, ticker_ids, y in train_loader:
                 x, ticker_ids, y = (
-                    x.to(torch_device),
-                    ticker_ids.to(torch_device),
-                    y.to(torch_device),
+                    x.to(torch_device, non_blocking=cuda_pin),
+                    ticker_ids.to(torch_device, non_blocking=cuda_pin),
+                    y.to(torch_device, non_blocking=cuda_pin),
                 )
                 optimizer.zero_grad()
-                y_pred = model(x, ticker_ids)
-                loss = criterion(y_pred, y)
-                loss.backward()
-                # ⭐ Gradient clipping (LSTM 학습 안정)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                if amp_scaler is not None:
+                    # ⭐ AMP forward/backward (PyTorch 2.x 호환)
+                    with _amp_autocast():
+                        y_pred = model(x, ticker_ids)
+                        loss = criterion(y_pred, y)
+                    amp_scaler.scale(loss).backward()
+                    # gradient clipping 시 unscale 필요
+                    amp_scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    amp_scaler.step(optimizer)
+                    amp_scaler.update()
+                else:
+                    y_pred = model(x, ticker_ids)
+                    loss = criterion(y_pred, y)
+                    loss.backward()
+                    # ⭐ Gradient clipping (LSTM 학습 안정)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
                 train_loss_sum += loss.item() * len(y)
 
             # Validation
@@ -1335,12 +1463,18 @@ def run_ensemble_cross_sectional(
             with torch.no_grad():
                 for x, ticker_ids, y in val_loader:
                     x, ticker_ids, y = (
-                        x.to(torch_device),
-                        ticker_ids.to(torch_device),
-                        y.to(torch_device),
+                        x.to(torch_device, non_blocking=cuda_pin),
+                        ticker_ids.to(torch_device, non_blocking=cuda_pin),
+                        y.to(torch_device, non_blocking=cuda_pin),
                     )
-                    y_pred = model(x, ticker_ids)
-                    val_loss_sum += criterion(y_pred, y).item() * len(y)
+                    if amp_scaler is not None:
+                        with _amp_autocast():
+                            y_pred = model(x, ticker_ids)
+                            v_loss = criterion(y_pred, y)
+                    else:
+                        y_pred = model(x, ticker_ids)
+                        v_loss = criterion(y_pred, y)
+                    val_loss_sum += v_loss.item() * len(y)
 
             val_loss_avg = val_loss_sum / max(n_val, 1)
             scheduler.step(val_loss_avg)
@@ -1358,15 +1492,21 @@ def run_ensemble_cross_sectional(
         if best_state is not None:
             model.load_state_dict(best_state)
 
-        # OOS 예측
+        # OOS 예측 (⭐ AMP autocast — 추론도 FP16 으로 빠르게)
         model.eval()
         preds_lstm_cs = []
         truths = []
         meta_list = []
         with torch.no_grad():
             for batch_idx, (x, ticker_ids, y) in enumerate(test_loader):
-                x, ticker_ids = x.to(torch_device), ticker_ids.to(torch_device)
-                y_pred = model(x, ticker_ids).cpu().numpy()
+                x = x.to(torch_device, non_blocking=cuda_pin)
+                ticker_ids = ticker_ids.to(torch_device, non_blocking=cuda_pin)
+                if amp_scaler is not None:
+                    with _amp_autocast():
+                        y_pred = model(x, ticker_ids)
+                    y_pred = y_pred.float().cpu().numpy()
+                else:
+                    y_pred = model(x, ticker_ids).cpu().numpy()
                 preds_lstm_cs.extend(y_pred.tolist())
                 truths.extend(y.numpy().tolist())
 

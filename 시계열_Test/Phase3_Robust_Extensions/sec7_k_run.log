@@ -1,0 +1,228 @@
+﻿======================================================================
+  Phase 3-2 v2 §7-K. V자 반등 분석 standalone runner
+======================================================================
+============================================================
+  Phase 3 Robust Extensions — 환경 부트스트랩 완료
+============================================================
+  한글 폰트   : Malgun Gothic
+  시드        : 42
+  데이터 경로  : C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase3_Robust_Extensions\data
+  Phase 1.5  : C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase1_5_Volatility
+  Phase 2    : C:\Users\gorhk\최종 프로젝트\finance_project\시계열_Test\Phase2_BL_Integration
+============================================================
+
+[로드] BL 가중치 + ensemble + panel + market
+  panel: (3344502, 5), ensemble: (2468770, 3)
+  공통 기간: 2010-01-29 ~ 2025-11-28 (191 개월)
+
+======================================================================
+  A. Recovery 능력 (drawdown trough 후 6개월 누적)
+======================================================================
+
+시나리오                        # events  avg recov_6m_%  max recov_6m_%
+----------------------------------------------------------------------
+BL_ml_sw_mcap                      8            9.65           21.99
+BL_ml_sw_eq                        8           10.26           17.34
+BL_ml_sw_rp                        7            9.79           16.80
+BL_trailing_mcap                   8            6.75           21.90
+BL_trailing_eq                     7            9.06           20.09
+BL_trailing_rp                     7            9.09           20.47
+SPY                               11           12.20           25.55
+
+  === 주요 V자 반등 event (2020-COVID 등): 6개월 누적 수익률 비교 ===
+
+  ⭐ Event: start=2020-01, trough=2020-02
+    BL_ml_sw_mcap             depth -18.13% / recov_6m +21.99%
+    BL_ml_sw_eq               depth -16.41% / recov_6m +17.34%
+    BL_ml_sw_rp               depth -16.34% / recov_6m +16.80%
+    BL_trailing_mcap          depth -16.48% / recov_6m +21.90%
+    BL_trailing_eq            depth -14.84% / recov_6m +20.09%
+    BL_trailing_rp            depth -14.79% / recov_6m +20.47%
+    SPY                       depth -19.45% / recov_6m +14.66%
+
+======================================================================
+  B. Top 10 holdings 비교 (특정 시기, 두 mcap 시나리오)
+======================================================================
+
+  --- 2020-01 (실제 reb_date: 2020-01-31) ---
+    [BL_ml_sw_mcap] top10 share: 29.9% / total long: 281
+      JNJ     3.55%
+      MRK     3.55%
+      WMT     3.48%
+      VZ      3.32%
+      PG      2.98%
+      CME     2.87%
+      BRK-B   2.71%
+      PEP     2.70%
+      KO      2.42%
+      CINF    2.28%
+    [BL_trailing_mcap] top10 share: 30.0% / total long: 321
+      WMT     3.98%
+      JNJ     3.84%
+      VZ      3.59%
+      KO      2.80%
+      CME     2.74%
+      PG      2.73%
+      MRK     2.71%
+      PEP     2.71%
+      CB      2.54%
+      LLY     2.37%
+
+  --- 2020-05 (실제 reb_date: 2020-05-29) ---
+    [BL_ml_sw_mcap] top10 share: 61.7% / total long: 246
+      AAPL   11.77%
+      MSFT   11.39%
+      GOOGL   8.66%
+      AMZN    6.33%
+      WMT     5.61%
+      COST    4.68%
+      JNJ     3.97%
+      PG      3.20%
+      PEP     3.05%
+      ED      3.02%
+    [BL_trailing_mcap] top10 share: 52.5% / total long: 270
+      AAPL    9.04%
+      MSFT    7.95%
+      AMZN    7.45%
+      GOOGL   6.60%
+      META    5.82%
+      WMT     3.85%
+      LLY     3.27%
+      JNJ     3.00%
+      COST    2.94%
+      ADBE    2.55%
+
+  --- 2022-08 (실제 reb_date: 2022-08-31) ---
+    [BL_ml_sw_mcap] top10 share: 23.3% / total long: 301
+      AAPL    3.62%
+      JNJ     2.64%
+      UNH     2.41%
+      WMT     2.25%
+      MSFT    2.23%
+      PG      2.20%
+      BRK-B   2.16%
+      PFE     2.08%
+      PEP     1.89%
+      GOOGL   1.85%
+    [BL_trailing_mcap] top10 share: 20.4% / total long: 315
+      AAPL    3.20%
+      UNH     2.46%
+      JNJ     2.25%
+      BRK-B   1.99%
+      MSFT    1.95%
+      PG      1.90%
+      ABBV    1.84%
+      GOOGL   1.75%
+      PEP     1.55%
+      MRK     1.54%
+
+  --- 2023-12 (실제 reb_date: 2023-12-29) ---
+    [BL_ml_sw_mcap] top10 share: 42.5% / total long: 308
+      AAPL   11.29%
+      MSFT    8.97%
+      GOOGL   3.21%
+      MA      3.05%
+      JNJ     3.04%
+      BRK-B   2.88%
+      V       2.81%
+      KO      2.49%
+      WMT     2.43%
+      PG      2.37%
+    [BL_trailing_mcap] top10 share: 45.7% / total long: 300
+      AAPL   11.99%
+      MSFT    8.90%
+      GOOGL   4.43%
+      JNJ     3.72%
+      MA      3.36%
+      BRK-B   3.05%
+      UNH     2.69%
+      XOM     2.60%
+      MRK     2.52%
+      KO      2.50%
+
+  --- 2025-04 (실제 reb_date: 2025-04-30) ---
+    [BL_ml_sw_mcap] top10 share: 21.3% / total long: 400
+      LLY     3.78%
+      GOOGL   2.76%
+      WMT     2.50%
+      MSFT    2.49%
+      ORCL    1.86%
+      COST    1.70%
+      JNJ     1.64%
+      ABBV    1.57%
+      BRK-B   1.54%
+      MRK     1.45%
+    [BL_trailing_mcap] top10 share: 19.3% / total long: 387
+      GOOGL   3.34%
+      MSFT    2.89%
+      BRK-B   2.04%
+      JNJ     1.89%
+      COST    1.77%
+      WMT     1.68%
+      PG      1.49%
+      KO      1.48%
+      PM      1.45%
+      MRK     1.30%
+
+======================================================================
+  C. 대형주 비중 시계열 (universe top 50 mcap 차지 비율)
+======================================================================
+
+시나리오                            평균 top50 share        std        min        max
+--------------------------------------------------------------------------------
+BL_ml_sw_mcap                          51.84%      6.21%     35.32%     76.79%
+BL_trailing_mcap                       54.68%     10.28%     27.66%     76.77%
+BL_ml_sw_eq                            39.65%      7.24%     26.11%     54.09%
+BL_trailing_eq                         37.96%      8.84%     11.73%     56.07%
+
+  === 시기별 평균 대형주 (top 50) 비중 ===
+  [Pre-COVID (2018-2019)]
+    BL_ml_sw_mcap             top50 share avg: 44.94%
+    BL_trailing_mcap          top50 share avg: 50.84%
+    BL_ml_sw_eq               top50 share avg: 29.28%
+    BL_trailing_eq            top50 share avg: 23.48%
+  [COVID 회복 (2020)]
+    BL_ml_sw_mcap             top50 share avg: 54.66%
+    BL_trailing_mcap          top50 share avg: 55.31%
+    BL_ml_sw_eq               top50 share avg: 44.18%
+    BL_trailing_eq            top50 share avg: 47.34%
+  [긴축 (2021-2022)]
+    BL_ml_sw_mcap             top50 share avg: 49.61%
+    BL_trailing_mcap          top50 share avg: 50.22%
+    BL_ml_sw_eq               top50 share avg: 47.71%
+    BL_trailing_eq            top50 share avg: 44.70%
+  [회복·AI (2023-2024)]
+    BL_ml_sw_mcap             top50 share avg: 52.11%
+    BL_trailing_mcap          top50 share avg: 49.81%
+    BL_ml_sw_eq               top50 share avg: 48.32%
+    BL_trailing_eq            top50 share avg: 44.79%
+  [Hold-out (2025)]
+    BL_ml_sw_mcap             top50 share avg: 51.47%
+    BL_trailing_mcap          top50 share avg: 51.01%
+    BL_ml_sw_eq               top50 share avg: 46.85%
+    BL_trailing_eq            top50 share avg: 42.16%
+
+======================================================================
+  D. 변동성 예측 비교 (ML vs trailing, 특정 event)
+======================================================================
+
+Event                               reb_date      rank_corr   low_overlap    high_overlap
+----------------------------------------------------------------------------------------------------
+2020-01-31 (COVID 직전)               2020-01-31        0.782         69.9%           73.5%
+2020-02-28 (COVID 충격)               2020-02-28        0.756         63.3%           72.9%
+2020-04-30 (반등 시작)                  2020-04-30        0.815         75.4%           77.2%
+2022-08-31 (긴축 trough)              2022-08-31        0.894         80.8%           82.6%
+2025-04-30 (관세 충격)                  2025-04-30        0.873         79.7%           80.8%
+
+  📌 해석:
+    - rank_correlation ~ 1: ML 과 trailing 의 vol ranking 거의 일치 (ML 의 추가 정보 적음)
+    - low_overlap, high_overlap < 70%: ML 과 trailing 이 다른 종목 선택 (ML 의 차별화 영향)
+
+======================================================================
+  결과 저장
+======================================================================
+  💾 저장: sec7_k_recovery_analysis.pkl (34.0 KB)
+
+======================================================================
+  ALL DONE — total 20.8s (0.3 min)
+======================================================================

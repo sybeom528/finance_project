@@ -1,0 +1,350 @@
+[NbConvertApp] Converting notebook 02a_v2.ipynb to notebook
+C:\Users\gorhk\AppData\Roaming\Python\Python310\site-packages\zmq\_future.py:687: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+Traceback (most recent call last):
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\Scripts\jupyter-nbconvert.EXE\__main__.py", line 7, in <module>
+    sys.exit(main())
+  File "C:\Users\gorhk\AppData\Roaming\Python\Python310\site-packages\jupyter_core\application.py", line 283, in launch_instance
+    super().launch_instance(argv=argv, **kwargs)
+  File "C:\Users\gorhk\AppData\Roaming\Python\Python310\site-packages\traitlets\config\application.py", line 1075, in launch_instance
+    app.start()
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\nbconvertapp.py", line 420, in start
+    self.convert_notebooks()
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\nbconvertapp.py", line 597, in convert_notebooks
+    self.convert_single_notebook(notebook_filename)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\nbconvertapp.py", line 563, in convert_single_notebook
+    output, resources = self.export_single_notebook(
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\nbconvertapp.py", line 487, in export_single_notebook
+    output, resources = self.exporter.from_filename(
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\exporters\exporter.py", line 201, in from_filename
+    return self.from_file(f, resources=resources, **kw)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\exporters\exporter.py", line 220, in from_file
+    return self.from_notebook_node(
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\exporters\notebook.py", line 36, in from_notebook_node
+    nb_copy, resources = super().from_notebook_node(nb, resources, **kw)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\exporters\exporter.py", line 154, in from_notebook_node
+    nb_copy, resources = self._preprocess(nb_copy, resources)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\exporters\exporter.py", line 353, in _preprocess
+    nbc, resc = preprocessor(nbc, resc)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\preprocessors\base.py", line 48, in __call__
+    return self.preprocess(nb, resources)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\preprocessors\execute.py", line 103, in preprocess
+    self.preprocess_cell(cell, resources, index)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbconvert\preprocessors\execute.py", line 124, in preprocess_cell
+    cell = self.execute_cell(cell, index, store_history=True)
+  File "C:\Users\gorhk\AppData\Roaming\Python\Python310\site-packages\jupyter_core\utils\__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\asyncio\base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbclient\client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\nbclient\client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+# ¡×6-4. ¸ÞÆ®¸¯ °è»ê (Sharpe / CAGR / MDD) + Fair ºñ±³
+def compute_metrics(rets, annual_factor=12):
+    if len(rets) == 0:
+        return {k: np.nan for k in ['sharpe', 'cagr', 'ann_vol', 'mdd', 'n']}
+    ann_ret = rets.mean() * annual_factor
+    ann_vol = rets.std() * np.sqrt(annual_factor)
+    sharpe = ann_ret / ann_vol if ann_vol > 0 else np.nan
+    cum = (1 + rets).cumprod()
+    mdd = (cum / cum.cummax() - 1).min()
+    n = len(rets)
+    cagr = cum.iloc[-1] ** (annual_factor / n) - 1 if n > 0 else np.nan
+    return {
+        'sharpe': sharpe,
+        'cagr_%': cagr * 100,
+        'ann_vol_%': ann_vol * 100,
+        'mdd_%': mdd * 100,
+        'n_months': n,
+    }
+
+# Phase 3-2 v2: 6 BL + SPY fair ºñ±³
+common_idx = ret_ml.index.intersection(ret_tr.index).intersection(ret_spy.index)
+ret_ml_fair = ret_ml.reindex(common_idx).dropna()
+ret_tr_fair = ret_tr.reindex(common_idx).dropna()
+ret_spy_fair = ret_spy.reindex(common_idx).dropna()
+
+print(f'°øÅë ±â°£: {common_idx[0].date()} ~ {common_idx[-1].date()} ({len(common_idx)} °³¿ù)')
+print()
+
+# ¸ðµç ½Ã³ª¸®¿À fair Á¤·Ä
+all_returns = {f'BL_{s}': r for s, r in returns_v2.items()}
+all_returns['SPY'] = ret_spy
+all_returns_fair = {n: r.reindex(common_idx).dropna() for n, r in all_returns.items()}
+
+metrics_table = pd.DataFrame({
+    name: compute_metrics(r) for name, r in all_returns_fair.items()
+}).T.round(3)
+
+print('=== 3 ½Ã³ª¸®¿À Fair ºñ±³ ===')
+print(metrics_table.to_string())
+
+# ML vs Trailing Â÷ÀÌ (mcap default)
+delta_sharpe = metrics_table.loc['BL_ml_sw_mcap', 'sharpe'] - metrics_table.loc['BL_trailing_mcap', 'sharpe']
+delta_cagr = metrics_table.loc['BL_ml_sw_mcap', 'cagr_%'] - metrics_table.loc['BL_trailing_mcap', 'cagr_%']
+delta_mdd = metrics_table.loc['BL_ml_sw_mcap', 'mdd_%'] - metrics_table.loc['BL_trailing_mcap', 'mdd_%']
+
+print()
+print('=== ML ÅëÇÕ È¿°ú (BL_ml_sw - BL_trailing) ===')
+print(f'  Sharpe Â÷ÀÌ: {delta_sharpe:+.3f}')
+print(f'  CAGR Â÷ÀÌ:   {delta_cagr:+.2f}%')
+print(f'  MDD Â÷ÀÌ:    {delta_mdd:+.2f}%  (À½¼ö = ML ÀÌ ¼Õ½Ç ´õ Å­)')
+
+# ¼­À±¹ü 99 ºñ±³ (Âü°í)
+print()
+print('=== ¼­À±¹ü 99 baseline Âü°í ===')
+print('  º¸°í Sharpe: 1.065 (Àç°è»ê 1.157)')
+print(f'  Phase 3 BL_trailing Sharpe (ÇöÀç): {metrics_table.loc["BL_trailing_mcap", "sharpe"]:.3f}')
+print(f'  Â÷ÀÌ: {(metrics_table.loc["BL_trailing_mcap", "sharpe"] - 1.157) / 1.157 * 100:+.2f}% from ¼­À±¹ü (Àç°è»ê)')
+
+# \u2b50 metrics ÀúÀå (05a ¡×7-5/¡×7-8 °á·Ð ÅØ½ºÆ® º¯¼ö ÂüÁ¶¿ë, 2026-04-30)
+import pickle
+metrics_pkl_path = DATA_DIR / 'bl_metrics_sanity_check.pkl'
+with open(metrics_pkl_path, 'wb') as f:
+    pickle.dump({
+        'metrics_table': metrics_table.to_dict(),
+        'delta_sharpe': delta_sharpe,
+        'delta_cagr': delta_cagr,
+        'delta_mdd': delta_mdd,
+    }, f)
+print(f'\n\U0001f4be metrics ÀúÀå: {metrics_pkl_path.name} (05a ¡×7-5/¡×7-8 º¯¼ö ÂüÁ¶¿ë)')
+
+# Phase 3-2 v2: OOS / Hold-out ºÐ¸® ¸ÞÆ®¸¯
+print()
+print('=' * 75)
+print('  Phase 3-2: OOS (2010-2024) / Hold-out (2025) ºÐ¸®')
+print('=' * 75)
+
+oos_returns = {n: r.loc[OOS_START:OOS_END] for n, r in all_returns_fair.items()}
+holdout_returns = {n: r.loc[HOLDOUT_START:HOLDOUT_END] for n, r in all_returns_fair.items()}
+
+metrics_oos = pd.DataFrame({n: compute_metrics(r) for n, r in oos_returns.items()}).T.round(3)
+metrics_holdout = pd.DataFrame({n: compute_metrics(r) for n, r in holdout_returns.items()}).T.round(3)
+
+print(f'\n=== OOS ¸ÞÆ®¸¯ ({OOS_START} ~ {OOS_END}) ===')
+print(metrics_oos.to_string())
+
+print(f'\n=== Hold-out ¸ÞÆ®¸¯ ({HOLDOUT_START} ~ {HOLDOUT_END}) ===')
+print(metrics_holdout.to_string())
+
+print(f'\n=== °¡ÁßÄ¡ robustness (OOS, BL_ml_sw vs BL_trailing) ===')
+robustness = pd.DataFrame({
+    'ml_sw_mcap':    metrics_oos.loc['BL_ml_sw_mcap'],
+    'ml_sw_eq':      metrics_oos.loc['BL_ml_sw_eq'],
+    'ml_sw_rp':      metrics_oos.loc['BL_ml_sw_rp'],
+    'trailing_mcap': metrics_oos.loc['BL_trailing_mcap'],
+    'trailing_eq':   metrics_oos.loc['BL_trailing_eq'],
+    'trailing_rp':   metrics_oos.loc['BL_trailing_rp'],
+}).round(3)
+print(robustness.to_string())
+
+# metrics ÀúÀå (05a_v2 ¡×7-5/¡×7-8 º¯¼ö ÂüÁ¶¿ë)
+import pickle
+with open(METRICS_PKL_V2, 'wb') as f:
+    pickle.dump({
+        'metrics_table': metrics_table.to_dict(),
+        'metrics_oos': metrics_oos.to_dict(),
+        'metrics_holdout': metrics_holdout.to_dict(),
+        'delta_sharpe': delta_sharpe,
+        'delta_cagr': delta_cagr,
+        'delta_mdd': delta_mdd,
+    }, f)
+print(f'\nÀúÀå: {METRICS_PKL_V2.name}')
+
+
+# ============================================================================
+# Phase 3-2 v2: Ãß°¡ ½ÉÃþ ºÐ¼® (¥á/¥â/¥ã)
+# ============================================================================
+
+# ¥á. °¡ÁßÄ¡º° ½Ã±âº° ºÐÇØ (5 ½Ã±â x 6 ½Ã³ª¸®¿À)
+PERIODS_V2 = {
+    'GFC È¸º¹ (10~11)':  ('2010-01-01', '2011-12-31'),
+    '°­¼¼Àå (12~19)':     ('2012-01-01', '2019-12-31'),
+    'COVID (20)':       ('2020-01-01', '2020-12-31'),
+    '±äÃà (21~22)':      ('2021-01-01', '2022-12-31'),
+    'È¸º¹¡¤AI (23~24)':   ('2023-01-01', '2024-12-31'),
+}
+
+period_results = {}
+for period_name, (s, e) in PERIODS_V2.items():
+    period_returns = {n: r.loc[s:e] for n, r in all_returns_fair.items()}
+    period_results[period_name] = pd.DataFrame({
+        n: compute_metrics(r) for n, r in period_returns.items()
+    }).T.round(3)
+
+print()
+print('=' * 75)
+print('  ¥á. °¡ÁßÄ¡º° ½Ã±âº° Sharpe (BL_ml_sw vs BL_trailing diff)')
+print('=' * 75)
+robust_period = pd.DataFrame(index=list(PERIODS_V2.keys()), columns=['mcap', 'eq', 'rp'])
+for period_name in PERIODS_V2:
+    pm = period_results[period_name]
+    for w_method in ['mcap', 'eq', 'rp']:
+        if f'BL_ml_sw_{w_method}' in pm.index and f'BL_trailing_{w_method}' in pm.index:
+            diff = pm.loc[f'BL_ml_sw_{w_method}', 'sharpe'] - pm.loc[f'BL_trailing_{w_method}', 'sharpe']
+            robust_period.loc[period_name, w_method] = round(diff, 3)
+print(robust_period.to_string())
+
+# ½Ã±âº° BL_ml_sw 6 ½Ã³ª¸®¿À + BL_trailing ÀÇ Sharpe ¸ÅÆ®¸¯½º
+print()
+for period_name, pm in period_results.items():
+    print(f'\n--- {period_name} ---')
+    bl_rows = [r for r in pm.index if r.startswith('BL_')]
+    print(pm.loc[bl_rows, ['sharpe', 'cagr_%', 'mdd_%']].to_string())
+
+
+# ¥â. Turnover ºÐ¼®
+def compute_turnover_series(weights_dict):
+    """¸Å¿ù turnover = 0.5 * sum(|w_t - w_{t-1}|)"""
+    dates = sorted(weights_dict.keys())
+    if len(dates) < 2:
+        return pd.Series(dtype=float)
+    turnovers = []
+    for i in range(1, len(dates)):
+        w_prev = weights_dict[dates[i-1]]
+        w_curr = weights_dict[dates[i]]
+        all_t = w_prev.index.union(w_curr.index)
+        d = (w_curr.reindex(all_t).fillna(0) - w_prev.reindex(all_t).fillna(0)).abs().sum() / 2
+        turnovers.append(d)
+    return pd.Series(turnovers, index=dates[1:])
+
+print()
+print('=' * 75)
+print('  ¥â. 6 ½Ã³ª¸®¿À Æò±Õ monthly turnover')
+print('=' * 75)
+turnover_summary = {}
+for s_name, w_dict in weights.items():
+    tov = compute_turnover_series(w_dict)
+    turnover_summary[f'BL_{s_name}'] = {
+        'mean': tov.mean(),
+        'std': tov.std(),
+        'max': tov.max(),
+        'min': tov.min(),
+    }
+turnover_table = pd.DataFrame(turnover_summary).T.round(3)
+print(turnover_table.to_string())
+
+
+# ¥ã. °¡ÁßÄ¡ ºÐÆ÷ (Á¾¸ñ ¼ö, top10 concentration, Æò±Õ mcap)
+print()
+print('=' * 75)
+print('  ¥ã. 6 ½Ã³ª¸®¿À °¡ÁßÄ¡ ºÐÆ÷')
+print('=' * 75)
+dist_summary = {}
+for s_name, w_dict in weights.items():
+    n_stocks_list = [len(w) for w in w_dict.values()]
+    top10_concs = []
+    top1_concs = []
+    for w in w_dict.values():
+        if len(w) >= 10:
+            top10_concs.append(abs(w).nlargest(10).sum())
+        if len(w) >= 1:
+            top1_concs.append(abs(w).max())
+    dist_summary[f'BL_{s_name}'] = {
+        'avg_n': round(sum(n_stocks_list) / len(n_stocks_list), 1),
+        'top10_%': round(sum(top10_concs) / len(top10_concs) * 100, 2) if top10_concs else None,
+        'top1_%': round(sum(top1_concs) / len(top1_concs) * 100, 2) if top1_concs else None,
+    }
+dist_table = pd.DataFrame(dist_summary).T
+print(dist_table.to_string())
+
+# turnover + dist µµ metrics pkl ¿¡ Ãß°¡ ÀúÀå
+import pickle
+with open(METRICS_PKL_V2, 'wb') as f:
+    pickle.dump({
+        'metrics_table': metrics_table.to_dict(),
+        'metrics_oos': metrics_oos.to_dict(),
+        'metrics_holdout': metrics_holdout.to_dict(),
+        'period_results': {k: v.to_dict() for k, v in period_results.items()},
+        'robust_period': robust_period.to_dict(),
+        'turnover_summary': turnover_summary,
+        'dist_summary': dist_summary,
+        'delta_sharpe': delta_sharpe,
+        'delta_cagr': delta_cagr,
+        'delta_mdd': delta_mdd,
+    }, f)
+print(f'\nmetrics_v2 °»½Å: {METRICS_PKL_V2.name} (period + turnover + dist Ãß°¡)')
+------------------
+
+----- stdout -----
+°øÅë ±â°£: 2010-01-29 ~ 2025-11-28 (191 °³¿ù)
+
+=== 3 ½Ã³ª¸®¿À Fair ºñ±³ ===
+                      sharpe    cagr_%  ann_vol_%      mdd_%   n_months
+BL_BL_ml_sw_mcap    1.092000 12.700000  11.619000 -18.128000 191.000000
+BL_BL_ml_sw_eq      1.139000 12.724000  11.112000 -16.577000 191.000000
+BL_BL_ml_sw_rp      1.125000 12.558000  11.118000 -16.497000 191.000000
+BL_BL_trailing_mcap 1.188000 13.872000  11.546000 -16.483000 191.000000
+BL_BL_trailing_eq   1.150000 12.595000  10.878000 -15.938000 191.000000
+BL_BL_trailing_rp   1.147000 12.570000  10.891000 -15.981000 191.000000
+SPY                 1.013000 14.360000  14.325000 -23.927000 191.000000
+------------------
+
+[1;31m---------------------------------------------------------------------------[0m
+[1;31mKeyError[0m                                  Traceback (most recent call last)
+File [1;32m~\AppData\Local\Programs\Python\Python310\lib\site-packages\pandas\core\indexes\base.py:3812[0m, in [0;36mIndex.get_loc[1;34m(self, key)[0m
+[0;32m   3811[0m [38;5;28;01mtry[39;00m:
+[1;32m-> 3812[0m     [38;5;28;01mreturn[39;00m [38;5;28;43mself[39;49m[38;5;241;43m.[39;49m[43m_engine[49m[38;5;241;43m.[39;49m[43mget_loc[49m[43m([49m[43mcasted_key[49m[43m)[49m
+[0;32m   3813[0m [38;5;28;01mexcept[39;00m [38;5;167;01mKeyError[39;00m [38;5;28;01mas[39;00m err:
+
+File [1;32mpandas/_libs/index.pyx:167[0m, in [0;36mpandas._libs.index.IndexEngine.get_loc[1;34m()[0m
+
+File [1;32mpandas/_libs/index.pyx:196[0m, in [0;36mpandas._libs.index.IndexEngine.get_loc[1;34m()[0m
+
+File [1;32mpandas/_libs/hashtable_class_helper.pxi:7088[0m, in [0;36mpandas._libs.hashtable.PyObjectHashTable.get_item[1;34m()[0m
+
+File [1;32mpandas/_libs/hashtable_class_helper.pxi:7096[0m, in [0;36mpandas._libs.hashtable.PyObjectHashTable.get_item[1;34m()[0m
+
+[1;31mKeyError[0m: 'BL_ml_sw_mcap'
+
+The above exception was the direct cause of the following exception:
+
+[1;31mKeyError[0m                                  Traceback (most recent call last)
+Cell [1;32mIn[19], line 42[0m
+[0;32m     39[0m [38;5;28mprint[39m(metrics_table[38;5;241m.[39mto_string())
+[0;32m     41[0m [38;5;66;03m# ML vs Trailing Â÷ÀÌ (mcap default)[39;00m
+[1;32m---> 42[0m delta_sharpe [38;5;241m=[39m [43mmetrics_table[49m[38;5;241;43m.[39;49m[43mloc[49m[43m[[49m[38;5;124;43m'[39;49m[38;5;124;43mBL_ml_sw_mcap[39;49m[38;5;124;43m'[39;49m[43m,[49m[43m [49m[38;5;124;43m'[39;49m[38;5;124;43msharpe[39;49m[38;5;124;43m'[39;49m[43m][49m [38;5;241m-[39m metrics_table[38;5;241m.[39mloc[[38;5;124m'[39m[38;5;124mBL_trailing_mcap[39m[38;5;124m'[39m, [38;5;124m'[39m[38;5;124msharpe[39m[38;5;124m'[39m]
+[0;32m     43[0m delta_cagr [38;5;241m=[39m metrics_table[38;5;241m.[39mloc[[38;5;124m'[39m[38;5;124mBL_ml_sw_mcap[39m[38;5;124m'[39m, [38;5;124m'[39m[38;5;124mcagr_[39m[38;5;124m%[39m[38;5;124m'[39m] [38;5;241m-[39m metrics_table[38;5;241m.[39mloc[[38;5;124m'[39m[38;5;124mBL_trailing_mcap[39m[38;5;124m'[39m, [38;5;124m'[39m[38;5;124mcagr_[39m[38;5;124m%[39m[38;5;124m'[39m]
+[0;32m     44[0m delta_mdd [38;5;241m=[39m metrics_table[38;5;241m.[39mloc[[38;5;124m'[39m[38;5;124mBL_ml_sw_mcap[39m[38;5;124m'[39m, [38;5;124m'[39m[38;5;124mmdd_[39m[38;5;124m%[39m[38;5;124m'[39m] [38;5;241m-[39m metrics_table[38;5;241m.[39mloc[[38;5;124m'[39m[38;5;124mBL_trailing_mcap[39m[38;5;124m'[39m, [38;5;124m'[39m[38;5;124mmdd_[39m[38;5;124m%[39m[38;5;124m'[39m]
+
+File [1;32m~\AppData\Local\Programs\Python\Python310\lib\site-packages\pandas\core\indexing.py:1184[0m, in [0;36m_LocationIndexer.__getitem__[1;34m(self, key)[0m
+[0;32m   1182[0m     key [38;5;241m=[39m [38;5;28mtuple[39m(com[38;5;241m.[39mapply_if_callable(x, [38;5;28mself[39m[38;5;241m.[39mobj) [38;5;28;01mfor[39;00m x [38;5;129;01min[39;00m key)
+[0;32m   1183[0m     [38;5;28;01mif[39;00m [38;5;28mself[39m[38;5;241m.[39m_is_scalar_access(key):
+[1;32m-> 1184[0m         [38;5;28;01mreturn[39;00m [38;5;28;43mself[39;49m[38;5;241;43m.[39;49m[43mobj[49m[38;5;241;43m.[39;49m[43m_get_value[49m[43m([49m[38;5;241;43m*[39;49m[43mkey[49m[43m,[49m[43m [49m[43mtakeable[49m[38;5;241;43m=[39;49m[38;5;28;43mself[39;49m[38;5;241;43m.[39;49m[43m_takeable[49m[43m)[49m
+[0;32m   1185[0m     [38;5;28;01mreturn[39;00m [38;5;28mself[39m[38;5;241m.[39m_getitem_tuple(key)
+[0;32m   1186[0m [38;5;28;01melse[39;00m:
+[0;32m   1187[0m     [38;5;66;03m# we by definition only have the 0th axis[39;00m
+
+File [1;32m~\AppData\Local\Programs\Python\Python310\lib\site-packages\pandas\core\frame.py:4232[0m, in [0;36mDataFrame._get_value[1;34m(self, index, col, takeable)[0m
+[0;32m   4226[0m engine [38;5;241m=[39m [38;5;28mself[39m[38;5;241m.[39mindex[38;5;241m.[39m_engine
+[0;32m   4228[0m [38;5;28;01mif[39;00m [38;5;129;01mnot[39;00m [38;5;28misinstance[39m([38;5;28mself[39m[38;5;241m.[39mindex, MultiIndex):
+[0;32m   4229[0m     [38;5;66;03m# CategoricalIndex: Trying to use the engine fastpath may give incorrect[39;00m
+[0;32m   4230[0m     [38;5;66;03m#  results if our categories are integers that dont match our codes[39;00m
+[0;32m   4231[0m     [38;5;66;03m# IntervalIndex: IntervalTree has no get_loc[39;00m
+[1;32m-> 4232[0m     row [38;5;241m=[39m [38;5;28;43mself[39;49m[38;5;241;43m.[39;49m[43mindex[49m[38;5;241;43m.[39;49m[43mget_loc[49m[43m([49m[43mindex[49m[43m)[49m
+[0;32m   4233[0m     [38;5;28;01mreturn[39;00m series[38;5;241m.[39m_values[row]
+[0;32m   4235[0m [38;5;66;03m# For MultiIndex going through engine effectively restricts us to[39;00m
+[0;32m   4236[0m [38;5;66;03m#  same-length tuples; see test_get_set_value_no_partial_indexing[39;00m
+
+File [1;32m~\AppData\Local\Programs\Python\Python310\lib\site-packages\pandas\core\indexes\base.py:3819[0m, in [0;36mIndex.get_loc[1;34m(self, key)[0m
+[0;32m   3814[0m     [38;5;28;01mif[39;00m [38;5;28misinstance[39m(casted_key, [38;5;28mslice[39m) [38;5;129;01mor[39;00m (
+[0;32m   3815[0m         [38;5;28misinstance[39m(casted_key, abc[38;5;241m.[39mIterable)
+[0;32m   3816[0m         [38;5;129;01mand[39;00m [38;5;28many[39m([38;5;28misinstance[39m(x, [38;5;28mslice[39m) [38;5;28;01mfor[39;00m x [38;5;129;01min[39;00m casted_key)
+[0;32m   3817[0m     ):
+[0;32m   3818[0m         [38;5;28;01mraise[39;00m InvalidIndexError(key)
+[1;32m-> 3819[0m     [38;5;28;01mraise[39;00m [38;5;167;01mKeyError[39;00m(key) [38;5;28;01mfrom[39;00m[38;5;250m [39m[38;5;21;01merr[39;00m
+[0;32m   3820[0m [38;5;28;01mexcept[39;00m [38;5;167;01mTypeError[39;00m:
+[0;32m   3821[0m     [38;5;66;03m# If we have a listlike key, _check_indexing_error will raise[39;00m
+[0;32m   3822[0m     [38;5;66;03m#  InvalidIndexError. Otherwise we fall through and re-raise[39;00m
+[0;32m   3823[0m     [38;5;66;03m#  the TypeError.[39;00m
+[0;32m   3824[0m     [38;5;28mself[39m[38;5;241m.[39m_check_indexing_error(key)
+
+[1;31mKeyError[0m: 'BL_ml_sw_mcap'
+
