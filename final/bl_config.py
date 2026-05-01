@@ -22,12 +22,8 @@ from pathlib import Path
 
 # ── LSTM 예측 파일 경로 ────────────────────────────────────────────────────────
 # 위치에 따라 자동 탐색. 없으면 LSTM 실험은 자동 스킵됨.
-_candidate_phase3 = [
-    Path(__file__).parent.parent / '시계열_test' / 'Phase3_Robust_Extensions',            # 서윤범/ 아래
-    Path(__file__).parent.parent / '서윤범' / '시계열_test' / 'Phase3_Robust_Extensions',  # finance_project/ 아래
-]
-_PHASE3_DIR = next((p for p in _candidate_phase3 if p.exists()), _candidate_phase3[0])
-_LSTM_PRED_DEFAULT = _PHASE3_DIR / 'results' / 'ensemble_predictions_stockwise.csv'
+_PHASE3_DIR = Path(__file__).parent / 'phase3(data_outputs)'
+_LSTM_PRED_DEFAULT = _PHASE3_DIR / 'data' / 'ensemble_predictions_stockwise.csv'
 
 # ── 기준선 실험 (모든 실험의 default 값) ────────────────────────────────────
 BASELINE = {
@@ -77,6 +73,32 @@ EXPERIMENTS = [
 
     {**BASELINE, 'name': 'naive_lowvol_rp',
      'q_mode': 'none', 'p_weight': 'rp'},  # 저변동 역변동성 가중 (BL 생략)
+
+    # ── [LSTM] CAPM 시총가중 Prior × LSTM 예측 vol ───────────────────────────
+    {**BASELINE, 'name': 'p_lstm_mcap',
+     'p_mode': 'lstm_predicted'},
+
+    {**BASELINE, 'name': 'p_lstm_eq',
+     'p_mode': 'lstm_predicted', 'p_weight': 'eq'},
+
+    {**BASELINE, 'name': 'p_lstm_rp',
+     'p_mode': 'lstm_predicted', 'p_weight': 'rp'},
+
+    {**BASELINE, 'name': 'p_lstm_vol_mcap',
+     'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap'},
+
+    # ── [LSTM] 1/N Prior × LSTM 예측 vol ─────────────────────────────────────
+    {**BASELINE, 'name': 'prior_eq_p_lstm_mcap',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_eq',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'eq'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_rp',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'rp'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_vol_mcap',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap'},
 
 ]
 

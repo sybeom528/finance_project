@@ -100,15 +100,13 @@ def build_P(
         P[high_risk] = -1.0 / n_group
 
     elif weighting == 'rp':
-        # 전체 유니버스 사용 — 30% 컷 없음, 순수 vol 신호 (대칭)
-        # 롱: 1/σ → 저변동일수록 더 많이 담김
-        # 숏:   σ → 고변동일수록 더 강하게 숏
-        # 이 부분은 재천님 구현 방식과 다른데, 원하시면 수정하거나 추가하셔도 좋습니다!
-        inv_vol = (1.0 / vol_series).replace(0, np.nan).dropna()
-        vol_all = vol_series.replace(0, np.nan).dropna()
-        common  = inv_vol.index.intersection(vol_all.index)
-        P[common] = inv_vol[common] / inv_vol[common].sum() \
-                  - vol_all[common] / vol_all[common].sum()
+        # Phase3 방식: 30% 그룹 선별 후 그룹 내 역변동성 가중 (Pyo & Lee 2018)
+        # 롱: 저변동 하위 30% × (1/σ)
+        # 숏: 고변동 상위 30% × (1/σ)
+        inv_low  = (1.0 / vol_series[low_risk]).replace(0, np.nan).dropna()
+        inv_high = (1.0 / vol_series[high_risk]).replace(0, np.nan).dropna()
+        P[inv_low.index]  =  inv_low  / inv_low.sum()
+        P[inv_high.index] = -inv_high / inv_high.sum()
 
     elif weighting == 'vol_mcap':
         # 전체 유니버스 사용 — 30% 컷 없음, vol × 시총 신호 (대칭)

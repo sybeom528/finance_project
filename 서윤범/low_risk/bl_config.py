@@ -68,6 +68,19 @@ EXPERIMENTS = [
     {**BASELINE, 'name': 'p_vol_mcap',
      'p_weight': 'vol_mcap'},           # 롱 (1/σ)×mcap, 숏 σ×mcap
 
+    # ── [1/N Prior + P 조합] ─────────────────────────────────────────────────
+    {**BASELINE, 'name': 'prior_eq_p_vol252',
+     'prior': 'capm_eq', 'p_mode': 'trailing_vol252'},
+
+    {**BASELINE, 'name': 'prior_eq_p_rp',
+     'prior': 'capm_eq', 'p_weight': 'rp'},
+
+    {**BASELINE, 'name': 'prior_eq_p_eq',
+     'prior': 'capm_eq', 'p_weight': 'eq'},
+
+    {**BASELINE, 'name': 'prior_eq_p_vol_mcap',
+     'prior': 'capm_eq', 'p_weight': 'vol_mcap'},
+
     # ── [비교군] BL 없음 ──────────────────────────────────────────────────────
     {**BASELINE, 'name': 'capm_no_bl',
      'q_mode': 'capm'},                 # CAPM prior π 직접 최적화, 전체 유니버스, BL 없음
