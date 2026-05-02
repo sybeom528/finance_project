@@ -156,6 +156,7 @@ def compute_Q_ff3(
         return 0.003
 
     X      = np.column_stack([np.ones(n), ff3_aligned[['mkt_rf', 'smb', 'hml']].values])
+    
     X_next = np.array([1.0] + ff3_aligned[['mkt_rf', 'smb', 'hml']].mean().tolist())
     rf_next = float(rf_train.iloc[-1]) if len(rf_train) > 0 else 0.0
 
