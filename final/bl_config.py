@@ -11,9 +11,9 @@ bl_config.py — Black-Litterman 실험 정의
   q_mode    : 'fixed' | 'ff3_regression' | 'realized_spread' | 'regime' | 'none'
   q_value   : float  (q_mode='fixed' 일 때 사용)
   q_regime_table : dict (q_mode='regime' 일 때 사용)
-  omega_mode: 'he_litterman' | 'scaled' | 'rmse'
+  omega_mode: 'he_litterman' | 'scaled' | 'rmse' | 'rmse_per_ticker'
   omega_scale: float (omega_mode='scaled' 일 때 사용, 기본 1.0)
-  prior     : 'capm_mcap' | 'capm_eq'
+  prior     : 'capm_mcap' | 'capm_eq' | 'capm_rp'
   tc        : float  (거래비용, 편도 turnover 기준, 기본 0.001 = 10bp)
   max_weight: float  (단일 종목 상한, 기본 0.10)
   lstm_pred_path: str | None  (p_mode='lstm_predicted' 또는 omega_mode='rmse' 시 경로)
@@ -99,6 +99,77 @@ EXPERIMENTS = [
 
     {**BASELINE, 'name': 'prior_eq_p_lstm_vol_mcap',
      'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap'},
+
+    # ── [Omega-RMSE 옵션1: 시점별 평균 RMSE] CAPM 시총 prior × LSTM ─────────
+    # pred_date 이전 12개월 윈도우 안의 모든 종목·일자 abs_err의 sqrt-mean-square를
+    # 단일 RMSE로 계산해 omega 스케일에 반영. RMSE 클수록 omega↑ → 뷰 신뢰도↓.
+    {**BASELINE, 'name': 'p_lstm_mcap_omega_rmse',
+     'p_mode': 'lstm_predicted', 'omega_mode': 'rmse'},
+
+    {**BASELINE, 'name': 'p_lstm_eq_omega_rmse',
+     'p_mode': 'lstm_predicted', 'p_weight': 'eq', 'omega_mode': 'rmse'},
+
+    {**BASELINE, 'name': 'p_lstm_rp_omega_rmse',
+     'p_mode': 'lstm_predicted', 'p_weight': 'rp', 'omega_mode': 'rmse'},
+
+    {**BASELINE, 'name': 'p_lstm_vol_mcap_omega_rmse',
+     'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap', 'omega_mode': 'rmse'},
+
+    # ── [Omega-RMSE 옵션1] 1/N prior × LSTM ──────────────────────────────────
+    {**BASELINE, 'name': 'prior_eq_p_lstm_mcap_omega_rmse',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'omega_mode': 'rmse'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_eq_omega_rmse',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'eq', 'omega_mode': 'rmse'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_rp_omega_rmse',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'rp', 'omega_mode': 'rmse'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_vol_mcap_omega_rmse',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap', 'omega_mode': 'rmse'},
+
+    # ── [Omega-RMSE 옵션2: 종목별 가중 RMSE] CAPM 시총 prior × LSTM ────────
+    # 종목별 누적 RMSE를 계산하고 P^2로 가중 결합한 단일 RMSE로 omega 스케일링.
+    # 뷰의 실제 종목 구성(가중치 포함)에 따라 omega가 달라짐.
+    {**BASELINE, 'name': 'p_lstm_mcap_omega_rmse_pt',
+     'p_mode': 'lstm_predicted', 'omega_mode': 'rmse_per_ticker'},
+
+    {**BASELINE, 'name': 'p_lstm_eq_omega_rmse_pt',
+     'p_mode': 'lstm_predicted', 'p_weight': 'eq', 'omega_mode': 'rmse_per_ticker'},
+
+    {**BASELINE, 'name': 'p_lstm_rp_omega_rmse_pt',
+     'p_mode': 'lstm_predicted', 'p_weight': 'rp', 'omega_mode': 'rmse_per_ticker'},
+
+    {**BASELINE, 'name': 'p_lstm_vol_mcap_omega_rmse_pt',
+     'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap', 'omega_mode': 'rmse_per_ticker'},
+
+    # ── [Omega-RMSE 옵션2] 1/N prior × LSTM ──────────────────────────────────
+    {**BASELINE, 'name': 'prior_eq_p_lstm_mcap_omega_rmse_pt',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'omega_mode': 'rmse_per_ticker'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_eq_omega_rmse_pt',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'eq', 'omega_mode': 'rmse_per_ticker'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_rp_omega_rmse_pt',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'rp', 'omega_mode': 'rmse_per_ticker'},
+
+    {**BASELINE, 'name': 'prior_eq_p_lstm_vol_mcap_omega_rmse_pt',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap', 'omega_mode': 'rmse_per_ticker'},
+
+    # ── [Risk Parity Prior] vol_21d 기반 1/σ prior × p_weight 4종 ──────────
+    # prior 시장가중치를 시총가중도 균등가중도 아닌 1/vol_21d 정규화로 설정.
+    # 위험을 균등 분담하는 prior. P 행렬은 trailing_vol21 기준, omega는 he_litterman.
+    {**BASELINE, 'name': 'prior_rp_p_mcap',
+     'prior': 'capm_rp'},
+
+    {**BASELINE, 'name': 'prior_rp_p_eq',
+     'prior': 'capm_rp', 'p_weight': 'eq'},
+
+    {**BASELINE, 'name': 'prior_rp_p_rp',
+     'prior': 'capm_rp', 'p_weight': 'rp'},
+
+    {**BASELINE, 'name': 'prior_rp_p_vol_mcap',
+     'prior': 'capm_rp', 'p_weight': 'vol_mcap'},
 
 ]
 

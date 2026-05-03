@@ -254,6 +254,46 @@ def compute_omega_rmse(
     return compute_omega_scaled(P, Sigma, tau, scale)
 
 
+def compute_omega_rmse_per_ticker(
+    P: pd.Series,
+    Sigma: pd.DataFrame,
+    tau: float,
+    rmse_per_ticker: pd.Series,
+    base_rmse: float = 0.39265,   # Phase3 stockwise layer1 전체 RMSE
+) -> float:
+    """
+    종목별 RMSE를 P²-가중 평균으로 결합한 Omega (정규화 정의).
+
+    위 compute_omega_rmse는 시점별 단일 RMSE만 사용해 모든 뷰에 같은
+    스케일을 적용하는 반면, 본 함수는 종목별 누적 RMSE를 P²로 가중평균해
+    뷰에 들어간 종목들의 평균 정확도에 따라 omega가 달라지도록 한다.
+
+        pred_rmse_view = sqrt( sum_i ( P_i^2 * rmse_i^2 ) / sum_i ( P_i^2 ) )
+        scale          = (pred_rmse_view / base_rmse) ^ 2
+        omega          = scale * (tau * P^T * Sigma * P)
+
+    분모 sum(P²)로 정규화하여 P 행렬 자체의 절대 크기 효과를 제거한다.
+    → 모든 종목 RMSE가 base_rmse 와 같으면 scale=1 → he_litterman 와 동일.
+    → P 가중 방식(mcap/eq/rp/vol_mcap)이 omega 절대값에 영향을 주지 않으며,
+       오직 종목별 RMSE 분포 차이만 omega 에 반영된다.
+
+    rmse_per_ticker : 종목별 누적 RMSE 시리즈 (인덱스: ticker).
+                      P에 들어있지만 결측인 종목은 base_rmse로 fallback.
+    base_rmse       : Phase3 stockwise layer1 전체 RMSE (eval_metrics_stockwise.json).
+    """
+    # P와 RMSE의 인덱스를 합집합 기준으로 정렬해 누락 시 안전하게 처리
+    p_aligned    = P.reindex(rmse_per_ticker.index.union(P.index)).fillna(0)
+    rmse_aligned = rmse_per_ticker.reindex(p_aligned.index).fillna(base_rmse)
+    p_sq_sum     = float((p_aligned ** 2).sum())
+    if p_sq_sum <= 0:
+        # P 행렬이 모두 0인 극단 케이스 방어 — he_litterman 그대로 반환
+        return compute_omega_he(P, Sigma, tau)
+    weighted_sq = float(((p_aligned ** 2) * (rmse_aligned ** 2)).sum())
+    pred_rmse_view = float(np.sqrt(weighted_sq / p_sq_sum))
+    scale = (pred_rmse_view / base_rmse) ** 2 if base_rmse > 0 else 1.0
+    return compute_omega_scaled(P, Sigma, tau, scale)
+
+
 # ══════════════════════════════════════════════════════════════
 # 6. BL 핵심 수식
 # ══════════════════════════════════════════════════════════════
