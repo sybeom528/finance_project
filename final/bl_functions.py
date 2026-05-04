@@ -145,6 +145,23 @@ def compute_Q_lambda(
     return float(q_base * scale)
 
 
+def compute_Q_inv_lambda(
+    lam: float,
+    q_base: float = 0.003,
+    lam_mean: float = 2.5,
+) -> float:
+    """
+    역방향 λ 스케일링: 위기일수록 Q 강화, 강세장일수록 Q 약화.
+    λ < lam_mean (위기) → scale = lam_mean/lam > 1 → Q 증가
+    λ > lam_mean (강세) → scale = lam_mean/lam < 1 → Q 감소
+    lam=0.5 → scale=5.0(clip 3.0) → Q=q_base×3
+    lam=2.5 → scale=1.0           → Q=q_base×1
+    lam=10  → scale=0.25          → Q=q_base×0.25
+    """
+    scale = np.clip(lam_mean / lam, 0.1, 3.0)
+    return float(q_base * scale)
+
+
 def compute_Q_raw_lam(
     spy_excess_ret: float,
     sigma2_mkt: float,
@@ -195,6 +212,43 @@ def compute_Q_ff3(
         r_hat[t] = float(X_next @ coef) + rf_next
 
     return float(P.reindex(ret_matrix.columns).fillna(0) @ r_hat)
+
+
+def compute_Q_ff3_paper(
+    P: pd.Series,
+    ret_matrix: pd.DataFrame,
+    ff3_train: pd.DataFrame,
+    rf_train: pd.Series,
+) -> float:
+    """
+    논문 방식 Q: X_next = 훈련 윈도우 마지막 월 실현 팩터.
+    Ω는 walk-forward 루프에서 전월 오차²로 별도 계산.
+    """
+    view_tickers = P[P != 0].index.intersection(ret_matrix.columns).tolist()
+    if not view_tickers:
+        return 0.003
+
+    ff3_aligned = ff3_train.reindex(ret_matrix.index).dropna()
+    rf_aligned  = rf_train.reindex(ff3_aligned.index).fillna(0)
+    n = len(ff3_aligned)
+    if n < 24:
+        return 0.003
+
+    X      = np.column_stack([np.ones(n), ff3_aligned[['mkt_rf', 'smb', 'hml']].values])
+    X_next = np.array([1.0] + ff3_aligned.iloc[-1][['mkt_rf', 'smb', 'hml']].tolist())
+    rf_next = float(rf_train.iloc[-1]) if len(rf_train) > 0 else 0.0
+
+    r_hat_next = pd.Series(0.0, index=ret_matrix.columns)
+    for t in view_tickers:
+        y = ret_matrix[t].reindex(ff3_aligned.index) - rf_aligned
+        valid = y.notna()
+        if valid.sum() < 12:
+            continue
+        coef = np.linalg.lstsq(X[valid], y[valid].values, rcond=None)[0]
+        r_hat_next[t] = float(X_next @ coef) + rf_next
+
+    P_vec = P.reindex(ret_matrix.columns).fillna(0)
+    return float(P_vec @ r_hat_next)
 
 
 def compute_Q_spread(
@@ -280,6 +334,45 @@ def compute_omega_rmse(
     """
     scale = (pred_rmse / base_rmse) ** 2 if base_rmse > 0 else 1.0
     return compute_omega_scaled(P, Sigma, tau, scale)
+
+
+def compute_omega_paper(
+    P: pd.Series,
+    ret_matrix: pd.DataFrame,
+    ff3_train: pd.DataFrame,
+    rf_train: pd.Series,
+) -> float:
+    """
+    논문 방식 Ω: 훈련 구간 내 P-view 예측 오차 분산.
+    Ω = var(P @ r̂_k - P @ r_actual_k), k ∈ training window
+    FF3 in-sample fitted값과 실제 수익률 차이로 불확실성 추정.
+    """
+    view_tickers = P[P != 0].index.intersection(ret_matrix.columns).tolist()
+    fallback = 1e-6
+
+    ff3_aligned = ff3_train.reindex(ret_matrix.index).dropna()
+    rf_aligned  = rf_train.reindex(ff3_aligned.index).fillna(0)
+    n = len(ff3_aligned)
+    if n < 24 or not view_tickers:
+        return fallback
+
+    X = np.column_stack([np.ones(n), ff3_aligned[['mkt_rf', 'smb', 'hml']].values])
+    P_vec = P.reindex(ret_matrix.columns).fillna(0)
+
+    r_hat_matrix = pd.DataFrame(0.0, index=ff3_aligned.index, columns=ret_matrix.columns)
+    for t in view_tickers:
+        y = ret_matrix[t].reindex(ff3_aligned.index) - rf_aligned
+        valid = y.notna()
+        if valid.sum() < 12:
+            continue
+        coef = np.linalg.lstsq(X[valid], y[valid].values, rcond=None)[0]
+        r_hat_matrix.loc[valid, t] = X[valid] @ coef + rf_aligned[valid]
+
+    q_hat    = r_hat_matrix @ P_vec
+    q_actual = ret_matrix.reindex(ff3_aligned.index) @ P_vec
+    errors   = (q_hat - q_actual).dropna()
+
+    return float(max(errors.var(), 1e-8)) if len(errors) > 2 else fallback
 
 
 # ══════════════════════════════════════════════════════════════

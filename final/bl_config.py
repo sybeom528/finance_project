@@ -105,6 +105,16 @@ EXPERIMENTS = [
      'q_mode': 'lambda', 'q_value': 0.003, 'lam_mean': 2.5,
      'p_mode': 'lstm_predicted'},
 
+    # ── [inv_lambda_Q] 역방향 λ: 위기일수록 Q 강화 ───────────────────────────
+    # λ 낮음(위기) → Q 높음, λ 높음(강세) → Q 낮음
+    {**BASELINE, 'name': 'q_inv_lambda',
+     'q_mode': 'inv_lambda', 'q_value': 0.003, 'lam_mean': 2.5},
+
+    # inv_lambda × LSTM vol P 조합
+    {**BASELINE, 'name': 'q_inv_lambda_p_lstm',
+     'q_mode': 'inv_lambda', 'q_value': 0.003, 'lam_mean': 2.5,
+     'p_mode': 'lstm_predicted'},
+
     # ── [raw_lam_Q] raw λ 부호 기반 자연 게이팅 ─────────────────────────────
     # SPY 하락 → lam_raw 음수 → Q=0 자연 도달 (하드스탑 없이)
     {**BASELINE, 'name': 'q_raw_lam',
@@ -114,6 +124,32 @@ EXPERIMENTS = [
     {**BASELINE, 'name': 'prior_eq_p_lstm_rp_q_lambda',
      'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'rp',
      'q_mode': 'lambda', 'q_value': 0.003, 'lam_mean': 2.5},
+
+    # inv_lambda × LSTM P × prior_eq
+    {**BASELINE, 'name': 'prior_eq_q_inv_lambda_p_lstm',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'mcap',
+     'q_mode': 'inv_lambda', 'q_value': 0.003, 'lam_mean': 2.5},
+
+    # lambda × LSTM P × prior_eq
+    {**BASELINE, 'name': 'prior_eq_q_lambda_p_lstm',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'mcap',
+     'q_mode': 'lambda', 'q_value': 0.003, 'lam_mean': 2.5},
+
+    # ── [논문 FF3] Q = 직전월 실현팩터 (Ω = he_litterman) ────────────────────
+    {**BASELINE, 'name': 'q_ff3_paper',
+     'q_mode': 'ff3_paper'},
+
+    # ── [논문 완전 구현] Q = 직전월 실현팩터, Ω = 전월 예측오차² ─────────────
+    {**BASELINE, 'name': 'q_ff3_paper_omega_paper',
+     'q_mode': 'ff3_paper', 'omega_mode': 'ff3_paper'},
+
+    # ── [논문 Ω만] fixed Q + 논문 방식 Ω ──────────────────────────────────────
+    {**BASELINE, 'name': 'omega_paper',
+     'omega_mode': 'ff3_paper'},
+
+    # ── [논문 Ω + LSTM P] ──────────────────────────────────────────────────────
+    {**BASELINE, 'name': 'omega_paper_p_lstm',
+     'omega_mode': 'ff3_paper', 'p_mode': 'lstm_predicted'},
 
     # ════════════════════════════════════════════════════════════════════════
     # [윤서 추가 실험] prior 1/N × p_weight vol_mcap × Q 동적 조합 7개
