@@ -151,6 +151,14 @@ EXPERIMENTS = [
     {**BASELINE, 'name': 'omega_paper_p_lstm',
      'omega_mode': 'ff3_paper', 'p_mode': 'lstm_predicted'},
 
+    # ── [비교군] HRP — Hierarchical Risk Parity ──────────────────────────────
+    # q_mode='hrp' → walk_forward에서 BL 건너뛰고 HRP 가중치 직접 산출
+    {**BASELINE, 'name': 'hrp_trailing',
+     'q_mode': 'hrp'},                          # 과거 Ledoit-Wolf 공분산으로 HRP
+
+    {**BASELINE, 'name': 'hrp_lstm',
+     'q_mode': 'hrp', 'p_mode': 'lstm_predicted'},  # LSTM 예측 vol²로 대각 교체 후 HRP
+
 ]
 
 

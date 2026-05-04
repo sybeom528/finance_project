@@ -435,7 +435,87 @@ def optimize_portfolio(
 
 
 # ══════════════════════════════════════════════════════════════
-# 7. 거래비용 (Phase 3 방식)
+# 7. HRP — Hierarchical Risk Parity
+# ══════════════════════════════════════════════════════════════
+
+def _hrp_cluster_var(cov_vals: np.ndarray, idx: np.ndarray) -> float:
+    """클러스터 내 IVP(역분산) 포트폴리오의 분산."""
+    sub   = cov_vals[np.ix_(idx, idx)]
+    inv_d = 1.0 / np.maximum(np.diag(sub), 1e-12)
+    w     = inv_d / inv_d.sum()
+    return float(w @ sub @ w)
+
+
+def _hrp_bisect(cov_vals: np.ndarray, sorted_idx: list) -> dict:
+    """재귀 이분법 → {배열 인덱스: 가중치}."""
+    if len(sorted_idx) == 1:
+        return {sorted_idx[0]: 1.0}
+    mid   = len(sorted_idx) // 2
+    left  = sorted_idx[:mid]
+    right = sorted_idx[mid:]
+    vl    = _hrp_cluster_var(cov_vals, np.array(left))
+    vr    = _hrp_cluster_var(cov_vals, np.array(right))
+    alpha = 1.0 - vl / (vl + vr)
+    return {**{k: v * alpha       for k, v in _hrp_bisect(cov_vals, left).items()},
+            **{k: v * (1 - alpha) for k, v in _hrp_bisect(cov_vals, right).items()}}
+
+
+def compute_hrp_weights(Sigma: pd.DataFrame, max_weight: float = 0.10) -> pd.Series:
+    """
+    Hierarchical Risk Parity (Lopez de Prado 2016).
+    1. 상관계수 → 거리 행렬 d = sqrt((1-ρ)/2)
+    2. Single-linkage 계층 클러스터링 → 준대각화(leaves_list)
+    3. 재귀 이분법: 클러스터 IVP 분산 역비례 배분
+    Sigma: 월간 단위 공분산 (pd.DataFrame)
+    """
+    from scipy.cluster.hierarchy import linkage, leaves_list
+    from scipy.spatial.distance import squareform
+
+    cov  = Sigma.values.copy()
+    std  = np.sqrt(np.maximum(np.diag(cov), 1e-12))
+    corr = cov / (std[:, None] * std[None, :])
+    corr = np.clip(corr, -1.0, 1.0)
+    np.fill_diagonal(corr, 1.0)
+
+    dist = np.sqrt(np.maximum((1.0 - corr) / 2.0, 0.0))
+    np.fill_diagonal(dist, 0.0)
+
+    sort_ix = list(leaves_list(linkage(squareform(dist), method='single')))
+    raw_w   = _hrp_bisect(cov, sort_ix)
+
+    w = pd.Series({Sigma.index[k]: v for k, v in raw_w.items()})
+    w = w.reindex(Sigma.index).fillna(0.0)
+
+    # 반복 clip: 재정규화 후에도 max_weight를 초과할 수 있으므로 수렴까지 반복
+    for _ in range(30):
+        if not (w > max_weight + 1e-10).any():
+            break
+        w = w.clip(upper=max_weight)
+        if w.sum() > 0:
+            w = w / w.sum()
+
+    return w
+
+
+def build_cov_lstm(hist_cov: pd.DataFrame, lstm_vols: pd.Series) -> pd.DataFrame:
+    """
+    역사적 상관관계 유지 + LSTM 예측 vol²로 대각(분산) 교체.
+    hist_cov : pd.DataFrame (Ledoit-Wolf, 월간 단위. 대각 = monthly_var)
+    lstm_vols: pd.Series (vol_21d 예측값 = monthly std, 티커 인덱스)
+    """
+    tickers  = hist_cov.index
+    std_hist = np.sqrt(np.maximum(np.diag(hist_cov.values), 1e-12))
+    corr     = hist_cov.values / (std_hist[:, None] * std_hist[None, :])
+    corr     = np.clip(corr, -1.0, 1.0)
+    np.fill_diagonal(corr, 1.0)
+
+    new_std = lstm_vols.reindex(tickers).fillna(pd.Series(std_hist, index=tickers)).values
+    new_cov = corr * (new_std[:, None] * new_std[None, :])
+    return pd.DataFrame(new_cov, index=tickers, columns=tickers)
+
+
+# ══════════════════════════════════════════════════════════════
+# 8. 거래비용 (Phase 3 방식)
 # ══════════════════════════════════════════════════════════════
 
 def compute_turnover(w_new: pd.Series, w_prev: pd.Series) -> float:
