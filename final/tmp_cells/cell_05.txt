@@ -1,0 +1,57 @@
+import time
+
+# ══════════════════════════════════════════════════════════════
+# 월별 공유 데이터 캐시 (모든 실험에서 동일한 부분 — 한 번만 계산)
+#   Sigma (LedoitWolf), month_df, mcap, train_dates, spy_excess, sigma2_mkt
+#   실험별로 달라지는 것: vol_series(p_mode), P(p_weight), Q, omega, w
+# ══════════════════════════════════════════════════════════════
+
+monthly_cache = {}
+_cache_t0 = time.time()
+
+for i, pred_date in enumerate(pred_dates):
+    if i % 24 == 0:
+        elapsed = time.time() - _cache_t0
+        pct     = (i + 1) / len(pred_dates)
+        eta     = elapsed / pct * (1 - pct) if pct > 0.01 else 0
+        print(f'  캐시 {pred_date.strftime("%Y-%m")} ({i+1}/{len(pred_dates)}, {pct:.0%}) | '
+              f'경과 {elapsed/60:.1f}분 | ETA {eta/60:.1f}분', flush=True)
+    try:
+        month_df = panel.xs(pred_date, level='date').dropna(
+            subset=['vol_21d', 'log_mcap', 'ret_1m'])
+        if len(month_df) < 30:
+            continue
+
+        daily_slice, valid_tix = compute_daily_slice(
+            pred_date, month_df.index.tolist(),
+            daily_ret, TRAIN_WINDOW, THRESH_DAILY)
+        if len(valid_tix) < 20:
+            continue
+
+        Sigma    = compute_sigma(daily_slice, scale=21)
+        month_df = month_df.reindex(valid_tix)
+        mcap     = np.exp(month_df['log_mcap'])
+
+        idx         = all_dates.get_loc(pred_date)
+        train_dates = all_dates[max(0, idx - TRAIN_WINDOW): idx]
+        spy_s       = spy_series.reindex(train_dates)
+        rf_s        = rf_series.reindex(train_dates)
+
+        next_date = all_dates[idx + 1] if idx + 1 < len(all_dates) else None
+
+        monthly_cache[pred_date] = {
+            'month_df'   : month_df,
+            'valid_tix'  : valid_tix,
+            'Sigma'      : Sigma,
+            'mcap'       : mcap,
+            'train_dates': train_dates,
+            'spy_excess' : float((spy_s - rf_s).mean()),
+            'sigma2_mkt' : float(spy_s.var()),
+            'next_date'  : next_date,
+        }
+    except Exception as e:
+        print(f'  [캐시 에러] {pred_date.date()}: {e}')
+
+_cache_min = (time.time() - _cache_t0) / 60
+print(f'\n캐시 완료: {len(monthly_cache)}개월 / {len(pred_dates)}개월 | {_cache_min:.1f}분 소요')
+print('이후 실험은 Sigma 재계산 없이 캐시에서 로드')

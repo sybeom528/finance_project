@@ -1,0 +1,35 @@
+# ── LSTM 예측값 로드 (없으면 None) ────────────────────────────
+# bl_config.py의 BASELINE['lstm_pred_path']에 경로 지정
+# 파일이 없으면 LSTM 관련 실험은 자동 스킵
+
+from bl_config import BASELINE
+
+_lstm_path = Path(BASELINE.get('lstm_pred_path', ''))
+if _lstm_path.exists():
+    _raw = pd.read_csv(_lstm_path, parse_dates=['date'])
+    _raw['vol_pred'] = np.exp(_raw['y_pred_ensemble'])          # log-RV → 실제 변동성
+    _raw['abs_err']  = (_raw['y_pred_ensemble'] - _raw['y_true']).abs()
+
+    # 원본 (date, ticker) 인덱스 — omega_rmse 계산용
+    lstm_preds = _raw.set_index(['date', 'ticker'])
+
+    # ── 월별 피벗 (Phase3 get_monthly_pred 방식) ──────────────
+    # 각 종목·월 기준 마지막 예측값 → 시장 거래일 월말 매핑
+    _m = _raw.copy()
+    _m['month'] = _m['date'].dt.to_period('M')
+    _last = _m.groupby(['ticker', 'month'])['vol_pred'].last().reset_index()
+    _month_map = {pd.Timestamp(d).to_period('M'): pd.Timestamp(d) for d in pred_dates}
+    _last['pred_date'] = _last['month'].map(_month_map)
+    _last = _last.dropna(subset=['pred_date'])
+    lstm_pred_monthly = _last.pivot_table(
+        index='pred_date', columns='ticker', values='vol_pred')
+
+    print(f'LSTM 예측 로드: {len(_raw):,}행')
+    print(f'LSTM 월별 피벗: {lstm_pred_monthly.shape[0]}개월 × {lstm_pred_monthly.shape[1]}종목')
+    LSTM_AVAILABLE = True
+else:
+    lstm_preds        = None
+    lstm_pred_monthly = None
+    LSTM_AVAILABLE    = False
+    print(f'⚠  LSTM 예측 파일 없음 → lstm 관련 실험 스킵')
+    print(f'   경로: {_lstm_path}')

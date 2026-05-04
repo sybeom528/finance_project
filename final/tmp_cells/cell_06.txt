@@ -1,0 +1,144 @@
+import time
+
+# ══════════════════════════════════════════════════════════════
+# walk_forward(cfg) — 실험 하나 실행 (캐시에서 Sigma 로드)
+# ══════════════════════════════════════════════════════════════
+
+def walk_forward(cfg: dict) -> dict:
+    name       = cfg['name']
+    tc         = cfg.get('tc', 0.001)
+    max_w      = cfg.get('max_weight', 0.10)
+    q_mode     = cfg.get('q_mode', 'fixed')
+    p_weight   = cfg.get('p_weight', 'mcap')
+    is_naive   = (q_mode == 'none')
+    is_capm    = (q_mode == 'capm')
+
+    ret_list, comp_list, meta_list = [], [], []
+    spy_list, err_list = [], []
+    weights_history = {}
+    prev_w = None
+    _t0 = time.time()
+
+    for i, pred_date in enumerate(pred_dates):
+
+        if i % 12 == 0 or i == len(pred_dates) - 1:
+            elapsed = time.time() - _t0
+            pct     = (i + 1) / len(pred_dates)
+            eta     = elapsed / pct * (1 - pct) if pct > 0.01 else 0
+            print(f'  [{name}] {pred_date.strftime("%Y-%m")} '
+                  f'({i+1}/{len(pred_dates)}, {pct:.0%}) | '
+                  f'경과 {elapsed/60:.1f}분 | ETA {eta/60:.1f}분', flush=True)
+
+        if pred_date not in monthly_cache:
+            continue
+        c           = monthly_cache[pred_date]
+        month_df    = c['month_df']
+        valid_tix   = c['valid_tix']
+        Sigma       = c['Sigma']
+        mcap        = c['mcap']
+        train_dates = c['train_dates']
+        spy_excess  = c['spy_excess']
+        sigma2_mkt  = c['sigma2_mkt']
+        next_date   = c['next_date']
+
+        try:
+            w_mkt   = get_prior_weights(cfg, valid_tix, mcap)
+            pi, lam = compute_pi(Sigma, w_mkt, spy_excess, sigma2_mkt)
+
+            vol_series = get_vol_series(cfg, month_df, pred_date)
+            P = build_P(
+                vol_series.reindex(valid_tix).fillna(vol_series.median()),
+                mcap, pct=PCT_GROUP, weighting=p_weight)
+
+            if is_capm:
+                w = optimize_portfolio(pi, Sigma.values, lam, max_w)
+                mu_meta = None
+
+            elif is_naive:
+                n_g     = max(1, int(len(valid_tix) * PCT_GROUP))
+                vol_v   = vol_series.reindex(valid_tix)
+                low_tix = vol_v.sort_values().index[:n_g]
+
+                if p_weight == 'mcap':
+                    w_low = mcap.reindex(low_tix)
+                    w_low = w_low / w_low.sum()
+                elif p_weight == 'rp':
+                    inv_v = (1.0 / vol_v[low_tix]).replace(0, np.nan).dropna()
+                    w_low = inv_v / inv_v.sum()
+                else:
+                    w_low = pd.Series(1.0 / len(low_tix), index=low_tix)
+
+                w = w_low.reindex(valid_tix).fillna(0)
+                w = w.clip(upper=max_w)
+                w = w / w.sum()
+                mu_meta = None
+
+            else:
+                lam_q = float(np.clip(spy_excess / sigma2_mkt, 0.5, 10.0)) if sigma2_mkt > 1e-10 else 2.5
+                Q     = get_Q(cfg, P, valid_tix, train_dates, pred_date, all_dates,
+                              lam=lam_q, spy_excess=spy_excess, sigma2_mkt=sigma2_mkt)
+                omega  = get_omega(cfg, P, Sigma, pred_date)
+                mu_BL, sig_BL = black_litterman(pi, Sigma, P, Q, omega, TAU)
+                w      = optimize_portfolio(mu_BL, sig_BL, lam, max_w)
+                mu_meta = Q
+
+            actual_ret = month_df['fwd_ret_1m'].reindex(valid_tix).fillna(0)
+            gross_ret  = float(w @ actual_ret)
+            turnover   = compute_turnover(w, prev_w) if prev_w is not None else 0.0
+            net_ret    = apply_tc(gross_ret, turnover, tc)
+            r_spy      = float(spy_series.get(next_date, np.nan)) if next_date else np.nan
+
+            ret_list.append({'date': pred_date, 'ret': net_ret, 'gross_ret': gross_ret})
+            spy_list.append({'date': pred_date, 'ret': r_spy})
+
+            vol_col      = month_df['vol_21d'].reindex(valid_tix)
+            n_g          = max(1, int(len(valid_tix) * PCT_GROUP))
+            sv           = vol_col.sort_values()
+            low_tix_all  = sv.index[:n_g].tolist()
+            high_tix_all = sv.index[-n_g:].tolist()
+
+            comp_list.append({
+                'date'        : pred_date,
+                'n_stocks'    : len(valid_tix),
+                'eff_n'       : 1.0 / float((w**2).sum()) if (w**2).sum() > 0 else 0,
+                'top10_share' : float(w.nlargest(10).sum()),
+                'top1_weight' : float(w.max()),
+                'top1_ticker' : w.idxmax(),
+                'avg_vol'     : float((w * vol_col).sum()),
+                'low_weight'  : float(w.reindex(low_tix_all).sum()),
+                'high_weight' : float(w.reindex(high_tix_all).sum()),
+                'turnover'    : turnover,
+                'tc_cost'     : turnover * tc,
+            })
+
+            meta_list.append({'date': pred_date, 'Q': mu_meta, 'lam': lam})
+            weights_history[pred_date] = w
+            prev_w = w
+
+        except Exception as e:
+            err_list.append({'date': pred_date, 'error': str(e)})
+            if len(err_list) <= 3:
+                print(f'  [{name}] 에러 {pred_date.date()}: {e}')
+
+    total_min = (time.time() - _t0) / 60
+    ret_df  = pd.DataFrame(ret_list).set_index('date')  if ret_list  else pd.DataFrame()
+    spy_df  = pd.DataFrame(spy_list).set_index('date')  if spy_list  else pd.DataFrame()
+    comp_df = pd.DataFrame(comp_list).set_index('date') if comp_list else pd.DataFrame()
+    meta_df = pd.DataFrame(meta_list).set_index('date') if meta_list else pd.DataFrame()
+    wts_df  = pd.DataFrame(weights_history).T            if weights_history else pd.DataFrame()
+
+    print(f'  → [{name}] 완료: {len(ret_df)}개월 성공 / {len(err_list)}개 에러 / {total_min:.1f}분 소요')
+
+    return {
+        'config'   : cfg,
+        'ret'      : ret_df['ret']       if 'ret'       in ret_df.columns else pd.Series(dtype=float),
+        'gross_ret': ret_df['gross_ret'] if 'gross_ret' in ret_df.columns else pd.Series(dtype=float),
+        'spy_ret'  : spy_df['ret']       if 'ret'       in spy_df.columns else pd.Series(dtype=float),
+        'weights'  : wts_df,
+        'comp'     : comp_df,
+        'meta'     : meta_df,
+        'errors'   : err_list,
+    }
+
+
+print('walk_forward() 함수 정의 완료 (캐시 사용, Σ_BL 적용)')
