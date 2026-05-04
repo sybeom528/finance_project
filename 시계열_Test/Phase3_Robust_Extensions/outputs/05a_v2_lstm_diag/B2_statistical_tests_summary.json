@@ -1,0 +1,17 @@
+{
+  "kruskal_wallis_statistic": 70.5493476094855,
+  "kruskal_wallis_pvalue": 9.604583555040683e-11,
+  "kruskal_wallis_rejected": true,
+  "n_significant_pairs_bonf": 14,
+  "n_total_pairs": 66,
+  "jarque_bera_statistic": 605.6008712641527,
+  "jarque_bera_pvalue": 3.129260276197472e-132,
+  "normal_rejected": true,
+  "anova_period_F": 634.5598548203616,
+  "anova_period_pvalue": 1.1102230246251565e-16,
+  "anova_ticker_F": 2.1859308471256287,
+  "anova_ticker_pvalue": 1.1102230246251565e-16,
+  "ss_period_pct": 44.97572288226751,
+  "ss_ticker_pct": 19.444004090076373,
+  "ss_residual_pct": 35.58027302765612
+}

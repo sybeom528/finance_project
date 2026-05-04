@@ -321,6 +321,41 @@ Phase1_5_Volatility/
 | **입력** | `ensemble_predictions_stockwise.csv`, `daily_panel.csv`, `outputs/03_bl_backtest/returns_BL_ml_sw.csv` |
 | **출력** | `outputs/05a_v2_eval_stockwise/` |
 
+#### 📓 `05a_v2_lstm.ipynb` (2026-05-02 신설 — 종목별 LSTM 12 분석)
+
+| 항목 | 내용 |
+|---|---|
+| **목적** | 02a Stockwise LSTM 모델의 **변동성 예측 자체** 다차원 진단 (백테스트 무관, 가중치 무관) |
+| **12 분석** | §2-A 월별 RMSE / B 종목×시기 RMSE / C Forecast Bias / D Vol Regime / E VIX Tier / F Diebold-Mariano test / G Sector × Best Model / H 가중치 안정성 / I 시기별 산점도 / J Top/Bottom 5 case / K CV fold별 / L y 분포 |
+| **공정성 보강** | §2-B/J: **5 시기 cover 503 종목만** (인수/파산 110 종목 제외) |
+| **셀 수** | 31 (16 MD + 15 code) |
+| **입력** | `ensemble_predictions_stockwise.csv`, `daily_panel.csv`, `vix_daily.csv`, `ticker_sector_mapping.csv` |
+| **출력** | `outputs/05a_v2_lstm_diag/` (A_*, B_*, ... L_* 산출 17개 + summary.json) |
+| **핵심 결과** | LSTM 0.4298 > HAR 0.3922 > Ensemble 0.3815, Best model: Ensemble 69.7% / HAR 27.2% / LSTM 3.1% |
+
+#### 📓 `05a_v2_lstm_2b_deep.ipynb` (2026-05-02 신설 — §2-B 학술 심화 + 효과크기)
+
+| 항목 | 내용 |
+|---|---|
+| **목적** | §2-B 학술 심화 — 통계 검정 + 효과크기 + 시각화 (학술 보고서 인용용) |
+| **통계 검정** | Heavy-tail (Skew/Kurt/JB/AD), ANOVA Variance Decomposition, Kruskal-Wallis, Pairwise Mann-Whitney (Bonferroni), Welch ANOVA (이분산 robust) |
+| **효과크기** | η² (eta), ε² (epsilon), Cohen's d, r (rank-biserial) — Lin 2013 large-n 함정 보강 |
+| **시각화 5종** | Sector Boxplot / Sector × Period Heatmap / COVID Impact / Heavy-tail KDE+QQ / Variance Decomp Pie |
+| **셀 수** | 24 (12 MD + 12 code) |
+| **출력** | `outputs/05a_v2_lstm_diag/B2_*, B3_*, B4_*` |
+| **핵심 결과** | Period η²=0.450 LARGE / Ticker η²=0.194 LARGE / Sector ε²=0.121 medium / 14 sig pair 모두 LARGE Cohen's d (가짜 유의 0건) |
+
+#### 📓 `05a_v2_weighting.ipynb` (2026-05-02 신설 — eq/rp/mcap 가중치 비교)
+
+| 항목 | 내용 |
+|---|---|
+| **목적** | 6 시나리오 (3 가중치 × 2 vol input: BL_ml_sw_mcap/eq/rp + BL_trailing_mcap/eq/rp) Layer 2-4 비교 + ML 효과 분해 |
+| **분석 영역** | §2 Layer 2 (9 시나리오 메트릭, OOS+Hold-out 분리) / §3 누적수익 + Drawdown / §4 ML 효과 robustness / §5 Layer 3 인과 / §6 Layer 4 시기별 |
+| **셀 수** | 16 (8 MD + 8 code) |
+| **입력** | `outputs/03_bl_backtest/returns_BL_*.csv` (9개), `data/scenario_weights_03_v2.pkl` |
+| **출력** | `outputs/05a_v2_weighting/` (메트릭 + ML 효과 + 시각화) |
+| **핵심 결과** | BL_trailing_mcap Sharpe 1.225 (OOS 1위), Hold-out mcap 환경 ML 효과 +0.643 (부호 역전) |
+
 #### 📓 `05b_eval_crosssec.ipynb` & `05b_v2.ipynb`
 - 05a 와 동일 4-Layer 형식이나 **02b CS 모델 + BL_ml_cs** 평가.
 - **§2-7 CS 특화**: Ticker Embedding 의 PCA 시각화 + Cosine Similarity 행렬 (학습된 종목 표현 분석).
@@ -476,6 +511,9 @@ Phase1_5_Volatility/
 | 2026-04-30 | Phase 3-2: weighting 변형 3종 (mcap/eq/rp) 추가 — 9 시나리오 |
 | 2026-05-01 | 03_v2 estimate_covariance() 인자 불일치 수정 + 03_v2.py 변환본 추가 |
 | 2026-05-01 | 06_pct_sensitivity 추가 (pct 0.10~0.40 민감도) |
+| 2026-05-02 | `05a_v2_lstm.ipynb` (12 분석) + `05a_v2_lstm_2b_deep.ipynb` (학술 심화 + 효과크기) + `05a_v2_weighting.ipynb` (3 가중치 비교) 신설 |
+| 2026-05-02 | `data/ticker_sector_mapping.csv` 신설 (Wikipedia 503 + Hardcoded historical 25 = 528 종목 매핑) |
+| 2026-05-02 | §2-B 효과크기 검정 추가 — η²(Period)=0.450 LARGE, η²(Ticker)=0.194 LARGE, Welch ANOVA robust 검증 |
 | 2026-05-01 | README.md 종합 명세서로 재작성 |
 | 2026-05-01 | README 에 외부 Phase 폴더 의존성 섹션 추가 (분석 vs 재학습 분리 명시) |
 

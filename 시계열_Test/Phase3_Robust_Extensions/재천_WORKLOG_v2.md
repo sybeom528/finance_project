@@ -362,6 +362,175 @@ VS Code Jupyter kernel 무한 로딩 시 우회 절차:
 
 ---
 
+## §8. §2-B 학술 심화 분석 — 종목별 LSTM 진단 + 통계 검정 + 효과크기 (2026-05-02 추가)
+
+### §8.1 신설 노트북 3개 (옵션 C — 노트북 분리 전략)
+
+| 노트북 | 셀 수 | 역할 |
+|---|---|---|
+| `05a_v2_lstm.ipynb` | 31 (16 MD + 15 code) | 종목별 LSTM 모델 12 분석 (§2-A~L) |
+| `05a_v2_lstm_2b_deep.ipynb` | 24 (12 MD + 12 code) | §2-B 학술 심화 — 통계 검정 + 시각화 |
+| `05a_v2_weighting.ipynb` | 16 (8 MD + 8 code) | eq/rp/mcap 가중치 비교 (Layer 2-4 × 6 시나리오) |
+
+**분리 근거**: `05a_v2.ipynb` 단일 노트북에 추가 시 53+ 셀 / 1.8MB 로 가독성 저하. 옵션 C (3 노트북 분리) 채택 → 각 ~30셀 적정 규모.
+
+---
+
+### §8.2 12 분석 항목 (`05a_v2_lstm.ipynb` §2-A~L)
+
+| § | 분석 | 주요 발견 |
+|---|---|---|
+| §2-A | 월별 RMSE 시계열 | LSTM 평균 0.4069 > HAR 0.3763 > Ensemble 0.3696 |
+| §2-B | 종목 × 시기 RMSE Heatmap | **5 시기 cover 503 종목 필터** (인수/파산 110 종목 제외) |
+| §2-C | 종목별 Forecast Bias | over/underestimation 분포 |
+| §2-D | 변동성 Regime별 예측력 | Q3 (정상) 가장 잘 맞춤, Q1/Q5 (극단) 어려움 |
+| §2-E | VIX 분위별 예측 정확도 | **High VIX 에서 LSTM (0.488) > HAR (0.411)** — HAR 우위 |
+| §2-F | Diebold-Mariano test | LSTM 우월 25 (4.1%), HAR 우월 144 (23.5%) |
+| §2-G | Sector × Best Model | (sector mapping 활용) |
+| §2-H | 종목별 가중치 안정성 | w_v4 rolling std |
+| §2-I | 시기별 예측 vs 실제 산점도 | 5 시기 calibration 변화 |
+| §2-J | Top/Bottom 5 case study | **5 시기 cover 종목 필터** (B 와 동일) |
+| §2-K | CV fold별 성능 | fold 0~223 RMSE 추이 |
+| §2-L | y_true vs y_pred 분포 | KDE + QQ plot |
+
+**핵심 발견 (§3 종합 요약)**:
+- LSTM 0.4298 > HAR 0.3922 > Ensemble 0.3815 (전체 OOS RMSE)
+- **HAR 가 LSTM 보다 평균적으로 우월** — 단순 baseline robustness 강함
+- DM test 144 종목 (23.5%) 에서 HAR 통계적 우월, LSTM 단독 best 19 종목 (3.1%)
+- **Ensemble 의 가치 = 가중평균 안정성** (RMSE std 가장 작음 0.0985)
+
+---
+
+### §8.3 §2-B 학술 심화 — 통계 검정 + 시각화 (`05a_v2_lstm_2b_deep.ipynb`)
+
+**검정 영역**:
+1. Heavy-tail 통계 (Skewness, Kurtosis, Jarque-Bera, Anderson-Darling)
+2. ANOVA Variance Decomposition (시기 × 종목)
+3. Kruskal-Wallis Test (sector 별)
+4. Pairwise Mann-Whitney U (Bonferroni 보정 66 pair)
+
+**시각화 5종**:
+- Sector Boxplot, Sector × Period Heatmap, COVID Impact, Heavy-tail KDE+QQ, Variance Decomp Pie
+
+**통계 검정 결과 (학술 보고서 Table 인용용)**:
+
+```
+Table A: ANOVA Variance Decomposition (n=2515, 503 ticker × 5 period)
+Source         | SS     | % Total | df    | F      | p-value
+Period (시기)  | 8.174  | 45.0%   | 4     | 634.6  | < 1e-300
+Ticker (종목)  | 3.534  | 19.4%   | 502   | 2.19   | < 1e-15
+Residual      | 6.467  | 35.6%   | 2008  | -      | -
+
+Table B: Kruskal-Wallis Sector Heterogeneity
+H = 70.55, df = 11, p < 1e-10 → reject H0
+
+Table C: Heavy-Tail Statistics (n=503 ticker mean RMSE)
+Skewness = +1.30, Excess Kurtosis = +4.71
+Jarque-Bera: JB = 605.60, p < 1e-100 → reject Normal
+Anderson-Darling: AD = 4.89 (critical 5% = 0.78) → reject Normal
+```
+
+---
+
+### §8.4 효과크기 검정 — Large-N 함정 보강 (Lin 2013 우려 해소)
+
+**배경**: n=2515 ANOVA, n=503 KW, n=66 pairwise — sample size 큰 분석은 미세한 차이도 p<0.001 으로 나옴 → 효과크기 검증 필수.
+
+**검정 결과**:
+
+| 검정 | n | 효과크기 | Cohen 기준 | Large-n 함정 |
+|---|---|---|---|---|
+| ANOVA Period | 2515 | **η² = 0.450** (Cohen f = 0.904) | **LARGE** (≥0.14) | ❌ 무관 |
+| ANOVA Ticker | 2515 | **η² = 0.194** (ω² = 0.106) | **LARGE** | ❌ 무관 |
+| Kruskal-Wallis Sector | 503 종목 | ε² = 0.121 | medium (0.04~0.16) | ⚠️ 일부 가능 |
+| **Pairwise (14 sig pair)** | 각 pair | **14/14 medium+ Cohen's d** | LARGE | ❌ **0% 가짜 유의** |
+| Skewness/Kurtosis | 503 | |skew|=1.30, |kurt|=4.71 | LARGE departure | ❌ 무관 |
+
+**Welch ANOVA (이분산 robust)**:
+- Levene stat = 16.78, p < 1e-13 → 등분산 가정 기각
+- Welch ANOVA F = 420.59, p < 1e-16 → **이분산 robust 검정에서도 시기 효과 강하게 유의**
+
+**Top 10 sector pair Cohen's d**:
+| Sector A | Sector B | Cohen's d |
+|---|---|---|
+| Materials | Communication Services | **+1.626** (LARGE) |
+| Real Estate | Communication Services | +1.496 (LARGE) |
+| Energy | Communication Services | +1.488 (LARGE) |
+| Utilities | Communication Services | +1.454 (LARGE) |
+| Materials | Consumer Staples | +1.188 (LARGE) |
+
+→ **Bonferroni 통과 14 pair 중 14 pair (100%) 가 동시에 medium+ Cohen's d** — large-n 가짜 유의 0건.
+
+---
+
+### §8.5 학술 명제 4가지 (학술 보고서 인용 가능)
+
+| # | 명제 | 통계 증거 | 학술 baseline |
+|---|---|---|---|
+| 1 | **시기 효과 systematic, ~45% 변동 설명** | η²=0.450, F=634.6, Welch F=420.59 | Engle, Ghysels, Sohn (2013) |
+| 2 | **종목 difficulty 분포 Heavy-Tailed** | Skew=+1.30, Kurt=+4.71, JB p<1e-100 | Cont (2001), Mandelbrot (1963) |
+| 3 | **Sector effect 통계적 유의 (전체 medium, 일부 pair LARGE)** | KW H=70.55, ε²=0.121, 14/14 pair LARGE d | Fama-French (1992), Schwert (1989) |
+| 4 | **COVID 충격 sector-specific** | ΔRMSE: Utilities +0.20, Real Estate +0.19, Energy +0.17 | Schwert (1989) leverage effect |
+
+---
+
+### §8.6 산출물
+
+```
+outputs/05a_v2_lstm_diag/
+├── 12 분석 결과 (A_*, B_*, C_* ... L_*)
+├── 통계 검정 (B2_*)
+│   ├── B2_heavy_tail_stats.csv
+│   ├── B2_anova_decomposition.csv
+│   ├── B2_sector_summary.csv
+│   ├── B2_pairwise_mannwhitney.csv (66 pair)
+│   └── B2_statistical_tests_summary.json
+├── 시각화 5종 (B3_*)
+│   ├── B3_sector_boxplot.png
+│   ├── B3_sector_period_heatmap.png
+│   ├── B3_covid_impact.png
+│   ├── B3_heavy_tail_kde.png
+│   └── B3_variance_decomp.png
+├── 효과크기 검정 (B4_*)
+│   ├── B4_pairwise_effect_sizes.csv (66 pair × Cohen's d, r)
+│   ├── B4_effect_sizes_summary.csv
+│   ├── B4_effect_sizes_summary.json (Welch ANOVA 포함)
+│   └── B4_effect_size_visualization.png (3 panel)
+└── 학술 보고서 인용용
+    ├── B_academic_summary.json (3 명제 + sector ranking)
+    └── summary.json (12 분석 종합)
+
+outputs/05a_v2_weighting/
+├── 2_metrics_full/oos/holdout.csv (9 시나리오 메트릭)
+├── 3_cumret_drawdown.png
+├── 4_ml_effect_full/oos/holdout.csv
+├── 4_ml_effect_by_weighting.png
+├── 5_layer3_causality.csv (가중치별 ML→BL 인과)
+├── 6_period_sharpe/cagr.csv (시기별 분해)
+├── 6_layer4_period.png
+└── summary.json
+```
+
+---
+
+### §8.7 핵심 인사이트 (사용자 우려 해소 + 학술 가치)
+
+#### 사용자 지적 검증 (2026-05-02)
+> "각 검정에서 p값은 유의하게 나오는데 n수 자체가 많다는 등의 이유로 유의하게 나타났을 가능성은 없나?"
+
+**답변** (효과크기 검정 결과):
+- ✅ **Period/Ticker effect** = **Large-n 함정 무관** (η² LARGE)
+- ⚠️ **Sector effect** 전체는 medium 이지만 특정 pair (Materials vs Communication Services 등) 는 LARGE
+- ✅ **Heavy-tail** = 분포 형상 자체가 비정규 (Large-n 함정 무관)
+- ✅ **Pairwise 14/14 medium+ d** = 가짜 유의 0건
+
+#### 다른 인사이트
+1. **5 시기 cover 종목 필터의 중요성**: 단편 학습 종목 (CBE 등) 이 평균 RMSE 비교 시 왜곡 → §2-B/J 모두 503 종목만 비교
+2. **BL_trailing_mcap 이 6 시나리오 중 최강** (Sharpe 1.225 OOS, MDD -16.7%)
+3. **Hold-out (2025) 에서 mcap 환경 ML 효과 부호 역전** (mcap +0.643, eq/rp +0.04)
+
+---
+
 # 본 WORKLOG_v2 의 현재 상태
 
 ```

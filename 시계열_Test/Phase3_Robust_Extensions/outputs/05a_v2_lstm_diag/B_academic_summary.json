@@ -1,0 +1,100 @@
+{
+  "notebook": "05a_v2_lstm_2b_deep.ipynb",
+  "date": "2026-05-05",
+  "n_tickers_analyzed": 503,
+  "period_breakdown": [
+    "P1 (2010-2014)",
+    "P2 (2015-2018)",
+    "P3 (2019-2020)",
+    "P4 (2021-2022)",
+    "P5 (2023-2025)"
+  ],
+  "proposition_1_time_effect": {
+    "description": "시기 효과 systematic, ~45% of RMSE variance",
+    "anova_period_F": 634.5598548203652,
+    "anova_period_p": 0.0,
+    "ss_period_pct": 44.9757228822676,
+    "ss_ticker_pct": 19.444004090076415,
+    "ss_residual_pct": 35.580273027655984
+  },
+  "proposition_2_heavy_tail": {
+    "description": "종목 RMSE 분포 heavy-tailed (정규 강하게 기각)",
+    "skewness": 1.2993494658082334,
+    "excess_kurtosis": 4.705553407353383,
+    "jarque_bera_stat": 605.6008712641527,
+    "jarque_bera_p": 3.129260276197472e-132,
+    "anderson_darling_stat": 4.886381365089733,
+    "anderson_critical_5pct": 0.751
+  },
+  "proposition_3_sector_effect": {
+    "description": "Sector effect 통계적 유의, Materials/Utilities easy, Communication Services hard",
+    "kruskal_wallis_H": 70.5493476094855,
+    "kruskal_wallis_p": 9.604583555040683e-11,
+    "pairwise_significant_bonf": 14,
+    "pairwise_total": 66,
+    "sector_ranking": [
+      {
+        "sector": "Materials",
+        "mean_rmse": 0.34089046443392795
+      },
+      {
+        "sector": "Utilities",
+        "mean_rmse": 0.341967245794211
+      },
+      {
+        "sector": "Energy",
+        "mean_rmse": 0.34765311277954486
+      },
+      {
+        "sector": "Real Estate",
+        "mean_rmse": 0.3520235995228237
+      },
+      {
+        "sector": "Industrials",
+        "mean_rmse": 0.3606560961049089
+      },
+      {
+        "sector": "Financials",
+        "mean_rmse": 0.3618938356377643
+      },
+      {
+        "sector": "Health Care",
+        "mean_rmse": 0.3690591774037118
+      },
+      {
+        "sector": "Information Technology",
+        "mean_rmse": 0.3718674247403507
+      },
+      {
+        "sector": "Consumer Discretionary",
+        "mean_rmse": 0.37249787039732046
+      },
+      {
+        "sector": "Consumer Staples",
+        "mean_rmse": 0.3747521630016181
+      },
+      {
+        "sector": "Unknown",
+        "mean_rmse": 0.38329600088564547
+      },
+      {
+        "sector": "Communication Services",
+        "mean_rmse": 0.39120144251745426
+      }
+    ],
+    "covid_impact_top3": [
+      {
+        "sector": "Utilities",
+        "delta_rmse": 0.20087018423190917
+      },
+      {
+        "sector": "Real Estate",
+        "delta_rmse": 0.18906006807036058
+      },
+      {
+        "sector": "Energy",
+        "delta_rmse": 0.16842563383876952
+      }
+    ]
+  }
+}

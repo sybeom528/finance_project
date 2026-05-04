@@ -1,0 +1,54 @@
+{
+  "note": "Effect size — large-n 함정 보강 (Lin 2013, Funder Ozer 2019)",
+  "sample_sizes": {
+    "n_tickers": 503,
+    "n_observations_anova": 2515,
+    "n_sectors": 12,
+    "n_pairs": 66
+  },
+  "anova_period": {
+    "F": 634.5598548203616,
+    "p_value": 1.1102230246251565e-16,
+    "eta_squared": 0.4497572288226751,
+    "partial_eta_squared": 0.5583162665204786,
+    "omega_squared": 0.44896890447848736,
+    "cohens_f": 0.9040904948764767,
+    "interpretation": "LARGE"
+  },
+  "anova_ticker": {
+    "F": 2.1859308471256287,
+    "p_value": 1.1102230246251565e-16,
+    "eta_squared": 0.19444004090076372,
+    "partial_eta_squared": 0.3533713682139446,
+    "omega_squared": 0.10547066970998652,
+    "cohens_f": 0.49129677835461644,
+    "interpretation": "LARGE"
+  },
+  "kruskal_wallis_sector": {
+    "H": 70.5493476094855,
+    "p_value": 9.604583555040683e-11,
+    "epsilon_squared": 0.1212817670254287,
+    "interpretation": "medium"
+  },
+  "pairwise_summary": {
+    "n_pairs": 66,
+    "bonferroni_significant": 14,
+    "medium_plus_r": 35,
+    "medium_plus_d": 36,
+    "sig_and_large": 14
+  },
+  "heavy_tail": {
+    "skewness": 1.2993494658082334,
+    "excess_kurtosis": 4.705553407353383,
+    "skewness_interpretation": "LARGE departure",
+    "kurtosis_interpretation": "LARGE departure"
+  },
+  "welch_anova_period": {
+    "levene_stat": 16.777221881549394,
+    "levene_p": 1.4004788219872036e-13,
+    "welch_F": 420.5864573350606,
+    "welch_df1": 4,
+    "welch_df2": 1247.5759501991058,
+    "welch_p": 1.1102230246251565e-16
+  }
+}
