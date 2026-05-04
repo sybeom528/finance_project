@@ -6,12 +6,13 @@ bl_config.py — Black-Litterman 실험 정의
   - 새 계산 방식 도입 시 → bl_functions.py에 함수 추가 + 여기에 dict + 99_run dispatcher에 분기
 
 슬롯 키 정리:
-  p_mode    : 'trailing_vol21' | 'trailing_vol252' | 'lstm_predicted'
-  p_weight  : 'mcap' | 'eq' | 'rp' | 'asymmetric' | 'vol_mcap'
-  q_mode    : 'fixed' | 'ff3_regression' | 'realized_spread' | 'regime' | 'none'
-  q_value   : float  (q_mode='fixed' 일 때 사용)
+  p_mode    : 'trailing_vol21' | 'lstm_predicted'
+  p_weight  : 'mcap' | 'eq' | 'rp' | 'vol_mcap'
+  q_mode    : 'fixed' | 'ff3_regression' | 'realized_spread' | 'regime' | 'lambda' | 'raw_lam' | 'none'
+  q_value   : float  (q_mode='fixed'|'lambda'|'raw_lam' 일 때 q_base로 사용, 기본 0.003)
+  lam_mean  : float  (q_mode='lambda'|'raw_lam' 일 때 기준 λ, 기본 2.5)
   q_regime_table : dict (q_mode='regime' 일 때 사용)
-  omega_mode: 'he_litterman' | 'scaled' | 'rmse'
+  omega_mode: 'he_litterman' | 'scaled'
   omega_scale: float (omega_mode='scaled' 일 때 사용, 기본 1.0)
   prior     : 'capm_mcap' | 'capm_eq'
   tc        : float  (거래비용, 편도 turnover 기준, 기본 0.001 = 10bp)
@@ -50,11 +51,7 @@ EXPERIMENTS = [
     {**BASELINE, 'name': 'prior_eq',
      'prior': 'capm_eq'},               # 1/N 균등가중 prior
 
-    # ── [P 슬롯] 변동성 측정 기간 ─────────────────────────────────────────────
-    {**BASELINE, 'name': 'p_vol252',
-     'p_mode': 'trailing_vol252'},      # 252일 장기 실현변동성
-
-    # ── [P 슬롯] P 행렬 가중 방식 (5가지) ────────────────────────────────────
+    # ── [P 슬롯] P 행렬 가중 방식 ───────────────────────────────────────────────
     {**BASELINE, 'name': 'p_rp',
      'p_weight': 'rp'},                 # 1/σ 역변동성 가중
 
@@ -70,9 +67,6 @@ EXPERIMENTS = [
 
     {**BASELINE, 'name': 'naive_lowvol',
      'q_mode': 'none'},                 # 저변동 시총가중 직접 보유 (BL 생략)
-
-    {**BASELINE, 'name': 'naive_lowvol_rp',
-     'q_mode': 'none', 'p_weight': 'rp'},  # 저변동 역변동성 가중 (BL 생략)
 
     # ── [LSTM] CAPM 시총가중 Prior × LSTM 예측 vol ───────────────────────────
     {**BASELINE, 'name': 'p_lstm_mcap',
@@ -99,6 +93,27 @@ EXPERIMENTS = [
 
     {**BASELINE, 'name': 'prior_eq_p_lstm_vol_mcap',
      'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap'},
+
+    # ── [Q_lambda] 시장 위험회피계수 λ 기반 Q 조절 ───────────────────────────
+    # Q = q_base × clip(λ / lam_mean, 0.1, 3.0)
+    # 시장 안정(λ↑) → Q 강화 / 시장 불안(λ↓) → Q 약화
+    {**BASELINE, 'name': 'q_lambda',
+     'q_mode': 'lambda', 'q_value': 0.003, 'lam_mean': 2.5},
+
+    # Q_lambda × LSTM vol P 조합
+    {**BASELINE, 'name': 'q_lambda_p_lstm',
+     'q_mode': 'lambda', 'q_value': 0.003, 'lam_mean': 2.5,
+     'p_mode': 'lstm_predicted'},
+
+    # ── [raw_lam_Q] raw λ 부호 기반 자연 게이팅 ─────────────────────────────
+    # SPY 하락 → lam_raw 음수 → Q=0 자연 도달 (하드스탑 없이)
+    {**BASELINE, 'name': 'q_raw_lam',
+     'q_mode': 'raw_lam', 'q_value': 0.003, 'lam_mean': 2.5},
+
+    # ── [최고성과 조합] prior_eq × lstm_rp × q_lambda ────────────────────────
+    {**BASELINE, 'name': 'prior_eq_p_lstm_rp_q_lambda',
+     'prior': 'capm_eq', 'p_mode': 'lstm_predicted', 'p_weight': 'rp',
+     'q_mode': 'lambda', 'q_value': 0.003, 'lam_mean': 2.5},
 
 ]
 

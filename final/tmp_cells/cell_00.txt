@@ -1,0 +1,11 @@
+# 99_run — Black-Litterman 실험 실행
+
+**역할**: bl_config.py에 정의된 모든 실험을 walk-forward로 실행하고 결과를 `results/` 폴더에 저장.
+
+## 실행 순서
+1. 데이터 로드
+2. Dispatcher 함수 정의 (슬롯별 config → 함수 분기)
+3. walk_forward() 함수 정의
+4. 전체 실험 실행 → pkl 저장
+
+> 분석/시각화는 **99_analyze.ipynb**에서.

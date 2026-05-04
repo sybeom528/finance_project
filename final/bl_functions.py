@@ -100,23 +100,20 @@ def build_P(
         P[high_risk] = -1.0 / n_group
 
     elif weighting == 'rp':
-        # Phase3 방식: 30% 그룹 선별 후 그룹 내 역변동성 가중 (Pyo & Lee 2018)
-        # 롱: 저변동 하위 30% × (1/σ)
-        # 숏: 고변동 상위 30% × (1/σ)
+        # 롱: 저변동 하위 30% × (1/σ) → 가장 저변동 종목에 더 많이
+        # 숏: 고변동 상위 30% × σ    → 가장 고변동 종목에 더 많이
         inv_low  = (1.0 / vol_series[low_risk]).replace(0, np.nan).dropna()
-        inv_high = (1.0 / vol_series[high_risk]).replace(0, np.nan).dropna()
+        high_vol = vol_series[high_risk].replace(0, np.nan).dropna()
         P[inv_low.index]  =  inv_low  / inv_low.sum()
-        P[inv_high.index] = -inv_high / inv_high.sum()
+        P[high_vol.index] = -high_vol / high_vol.sum()
 
     elif weighting == 'vol_mcap':
-        # 전체 유니버스 사용 — 30% 컷 없음, vol × 시총 신호 (대칭)
-        # 롱: (1/σ)×mcap → 저변동 대형주일수록 더 많이 담김
-        # 숏:    σ ×mcap → 고변동 대형주일수록 더 강하게 숏
-        inv_vol_mcap = (mcap_series / vol_series).replace(0, np.nan).dropna()
-        vol_mcap     = (vol_series  * mcap_series).replace(0, np.nan).dropna()
-        common       = inv_vol_mcap.index.intersection(vol_mcap.index)
-        P[common] = inv_vol_mcap[common] / inv_vol_mcap[common].sum() \
-                  - vol_mcap[common]     / vol_mcap[common].sum()
+        # vol rank가 롱/숏 비율을 결정, mcap이 포지션 크기를 결정
+        # rank=0(최저변동) → 완전 롱, rank=1(최고변동) → 완전 숏, rank=0.5 → 중립
+        r       = vol_series.rank(pct=True)
+        long_w  = (1 - r) * mcap_series
+        short_w =      r  * mcap_series
+        P       = long_w / long_w.sum() - short_w / short_w.sum()
 
     else:
         raise ValueError(f"weighting={weighting!r} 미지원. 'mcap'/'eq'/'rp'/'vol_mcap' 중 선택")
@@ -131,6 +128,37 @@ def build_P(
 def compute_Q_fixed(q_value: float) -> float:
     """고정 Q값 그대로 반환."""
     return float(q_value)
+
+
+def compute_Q_lambda(
+    lam: float,
+    q_base: float = 0.003,
+    lam_mean: float = 2.5,
+) -> float:
+    """
+    시장 위험회피계수 λ로 Q 강도 조절.
+    λ > lam_mean → Q 강화 (시장 안정, 저위험 tilt 강하게)
+    λ < lam_mean → Q 약화 (시장 불안, 보수적으로)
+    lam: walk_forward에서 spy_excess/sigma2_mkt로 직접 계산한 λ, clip(0.5, 10.0) 적용 후 전달
+    """
+    scale = np.clip(lam / lam_mean, 0.1, 3.0)
+    return float(q_base * scale)
+
+
+def compute_Q_raw_lam(
+    spy_excess_ret: float,
+    sigma2_mkt: float,
+    q_base: float = 0.003,
+    lam_mean: float = 2.5,
+) -> float:
+    """
+    raw λ (clip 전) 부호 기반 자연 게이팅.
+    SPY 하락 → lam_raw 음수 → Q = 0 (자연 도달, 하드스탑 없이)
+    SPY 회복 → lam_raw 양수 복귀 → Q 자연 증가
+    lam_raw에 상한 clip 없으므로 q_base를 보수적으로 설정 필요.
+    """
+    lam_raw = spy_excess_ret / sigma2_mkt if sigma2_mkt > 1e-10 else 0.0
+    return float(max(0.0, q_base * (lam_raw / lam_mean)))
 
 
 def compute_Q_ff3(
@@ -265,21 +293,28 @@ def black_litterman(
     q: float,
     omega: float,
     tau: float,
-) -> pd.Series:
+) -> tuple[pd.Series, np.ndarray]:
     """
-    Sherman-Woodbury 단순화 BL 사후 기대수익률.
-    μ_BL = π + (τΣ·P^T) · (q - P·π) / (P·τΣ·P^T + ω)
+    BL 사후 분포 반환.
+    μ_BL: Sherman-Woodbury 단순화
+    Σ_BL = [(τΣ)^{-1} + P^T Ω^{-1} P]^{-1}  (논문 Fig.3 수식)
     """
     p    = P.values
     tSig = tau * Sigma.values
     M    = float(p @ tSig @ p) + omega
     diff = q - float(p @ pi.values)
-    return pd.Series(pi.values + tSig @ p * (diff / M), index=pi.index)
+    mu_bl = pd.Series(pi.values + tSig @ p * (diff / M), index=pi.index)
+
+    # Σ_BL = τΣ - (τΣ P^T P τΣ) / (P τΣ P^T + ω)
+    v     = tSig @ p                          # n-vector
+    sig_bl = tSig - np.outer(v, v) / M        # rank-1 update
+
+    return mu_bl, sig_bl
 
 
 def optimize_portfolio(
     mu_BL: pd.Series,
-    Sigma: pd.DataFrame,
+    Sigma_BL: np.ndarray,
     lam: float,
     max_weight: float = 0.10,
 ) -> pd.Series:
@@ -290,7 +325,7 @@ def optimize_portfolio(
     """
     n   = len(mu_BL)
     mu  = mu_BL.values
-    Sig = Sigma.values
+    Sig = Sigma_BL
 
     res = minimize(
         lambda w: 0.5 * lam * w @ Sig @ w - w @ mu,
