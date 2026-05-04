@@ -294,6 +294,49 @@ def compute_omega_rmse_per_ticker(
     return compute_omega_scaled(P, Sigma, tau, scale)
 
 
+def compute_omega_ewma(
+    P: pd.Series,
+    Sigma: pd.DataFrame,
+    tau: float,
+    prev_e_sq: float = None,
+    prev_omega: float = None,
+    lambda_: float = 0.94,
+) -> float:
+    """
+    EWMA omega — Pyo & Lee (2018) 식 (17) 의 단순화·시간연속 형태.
+
+        Ω_t = λ · Ω_{t-1} + (1 - λ) · e²_{t-1}
+
+    여기서 e_t = P_t · μ_BL_t - P_t · 실현수익률_t
+        (= 한 달 전 BL 의 뷰 포트폴리오 예측 오차)
+
+    분산 var() 가 아닌 제곱오차 e² 를 사용해 1개월 워밍업으로 시작.
+    초기값 (prev_e_sq=None) 에서는 he_litterman 으로 fallback.
+
+    λ 의 의미:
+      반감기 H = -ln(2) / ln(λ)
+        λ=0.825 → H ≈ 3.6개월   (12개월 후 10% 안정화, 노이즈 큼)
+        λ=0.94  → H ≈ 11.2개월  (RiskMetrics 표준, 36개월 후 10% 안정화)
+        λ=0.97  → H ≈ 22.8개월  (월별 데이터 표준, 76개월 후 10% 안정화)
+
+    Parameters
+    ----------
+    P, Sigma, tau   : 첫 시점 fallback 시 he_litterman 계산용
+    prev_e_sq       : 직전 시점 차이의 제곱 (= e²_{t-1}). None 이면 첫 시점
+    prev_omega      : 직전 시점 omega 값 (= Ω_{t-1}). None 이면 첫 시점
+    lambda_         : 망각 계수, [0, 1) 범위. 클수록 천천히 변함
+
+    Returns
+    -------
+    float : Ω_t (양수, 최소 1e-8 보장)
+    """
+    # 첫 시점이면 he_litterman 으로 초기화 (Ω_0)
+    if prev_e_sq is None or prev_omega is None:
+        return compute_omega_he(P, Sigma, tau)
+    omega_t = lambda_ * float(prev_omega) + (1.0 - lambda_) * float(prev_e_sq)
+    return max(float(omega_t), 1e-8)
+
+
 # ══════════════════════════════════════════════════════════════
 # 6. BL 핵심 수식
 # ══════════════════════════════════════════════════════════════

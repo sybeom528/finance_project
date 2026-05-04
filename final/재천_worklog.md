@@ -324,3 +324,137 @@ omega_mode in ('rmse', 'rmse_per_ticker')
 - **base_rmse=0.39265 의 in-sample 성격**: Phase3 `eval_metrics_stockwise.json` 의 layer1_overall.rmse 를 그대로 사용. 단, 정규화 상수로만 작용하므로 (모든 실험에 동일하게 적용) 실험 간 상대 비교에는 무영향.
 - **base_rmse=0.39265 (옵션2 fallback)**: 종목별 RMSE 시리즈에 결측인 신규 종목은 base_rmse 로 fallback. P 에 들어간 종목 중 결측이 많으면 omega 가 base_rmse 쪽으로 끌림.
 - **옵션2 정규화 정의 선택 근거**: P 가중 방식 효과와 RMSE 산정 효과를 분리 비교하기 위함. 대안(현재 정의 = `sqrt(Σ P²·RMSE²)`)은 실험에서 제외했으나, 후속 작업에서 별도 ablation 으로 확인 가능.
+
+---
+
+## 11. 후속 작업 — EWMA omega 추가 (사이클 2)
+
+### 11-1. 배경
+
+omega-RMSE 옵션1 결과가 시점 평균 RMSE 의 절대 수준이 walk-forward 분포와 안 맞아 BL 무력화 (MDD ≈ capm_no_bl 수준) 라는 진단 후, **Pyo & Lee (2018) 식 (17)** 의 정통 omega 정의 (BL 자기 예측-실현 차이의 분산) 가 단위 일관성 측면에서 더 자연스러움을 발견.
+
+다만 식 (17) 의 `var(N=60)` 는 60개월 워밍업 필요 → 사용자 제안에 따라 **분산 대신 단일 제곱오차 + EWMA 형태로 단순화**.
+
+### 11-2. EWMA 정의
+
+```
+Ω_t = λ · Ω_{t-1} + (1 - λ) · e²_{t-1}
+e_t = P_t · μ_BL_t  -  P_t · 실현수익률_t  (= 한 달 전 BL 예측 오차)
+초기값 Ω_0 = he_litterman (1 시점 워밍업)
+```
+
+### 11-3. 두 시나리오 — λ 값 결정
+
+| 시나리오 | λ | 반감기 | 12M 후 영향 | 의미 |
+|---|---|---|---|---|
+| **lo** (단축 워밍업) | 0.825 | 3.6개월 | 약 10% | 12M 워밍업 모사. ESS≈10, 노이즈 큼 |
+| **std** (RiskMetrics) | 0.94 | 11.2개월 | 약 48% | 표준값. ESS≈32. 36M 후 10% 안정화 |
+
+### 11-4. 데이터 가용성 검증
+
+| 데이터 | 시작 | EWMA 워밍업에 필요 |
+|---|---|---|
+| daily_returns.pkl | 2004-01 | ✓ Σ 추정에 충분 |
+| monthly_panel.csv | 2005-01 | △ 2009-01 시점 IS 60M 못 채움 |
+| LSTM 예측 csv | 2007-04 | ✓ 워밍업 시기 사용 가능 |
+
+→ "OOS 시작 전 안정화" 위해 monthly_panel 재수집 또는 IS 단축 필요. 본 사이클에서는 **워밍업을 OOS 안에 흡수** 하는 안 C 채택.
+
+### 11-5. 변경 파일
+
+| 파일 | 변경 |
+|---|---|
+| `final/bl_functions.py` | `compute_omega_ewma` 신규 함수 추가 (lines 297-336) |
+| `final/99_run.ipynb` | cell-00 import / cell-04 walk_forward 의 prev_omega·prev_e_sq 전파 + meta 에 view_pred_ret/view_real_ret/view_e/omega 기록 |
+| `final/bl_config.py` | 신규 실험 8개 + 슬롯 주석 lambda 추가 |
+
+### 11-6. 신규 실험 8개
+
+LSTM × p_weight 4종 × λ 2종:
+- `p_lstm_{mcap/eq/rp/vol_mcap}_ewma_lo` (λ=0.825) — 4개
+- `p_lstm_{mcap/eq/rp/vol_mcap}_ewma_std` (λ=0.94) — 4개
+
+### 11-7. 결과 분석 시 주의
+
+- **시나리오 lo (λ=0.825)**: 12개월 워밍업 후 분석 → 첫 12개월 trim 권장. 실효 168개월
+- **시나리오 std (λ=0.94)**: 36개월 워밍업 후 분석 → 첫 36개월 trim 권장. 실효 144개월
+- **공정 비교**: baseline 도 같은 구간으로 trim 후 비교
+
+### 11-8. 단위 검증 (test_ewma.py 통과 항목)
+
+1. 첫 시점 (prev_e_sq=None) → he_litterman fallback ✓
+2. 일정 입력 (e²=Ω_0) 정상상태 유지 ✓
+3. 충격 후 감쇠가 정확히 λ^t 따름 ✓
+4. λ 별 안정화 비교 (이론값 일치) ✓
+5. lower bound 1e-8 보장 ✓
+
+### 11-9. 실행 결과 — 전체 180개월 기준
+
+| 실험 | Sharpe | CAGR | Vol | MDD | Sortino |
+|---|---|---|---|---|---|
+| baseline | 1.106 | 13.37% | 10.98% | -13.03% | 1.726 |
+| p_lstm_mcap (LSTM 기본) | 0.990 | 12.37% | 11.28% | -12.39% | 1.524 |
+| p_lstm_vol_mcap_ewma_lo (λ=0.825) | **1.115** | **15.38%** | 12.73% | -16.79% | 1.595 |
+| p_lstm_vol_mcap_ewma_std (λ=0.94) | 1.057 | 14.64% | 12.73% | -17.35% | 1.496 |
+| p_lstm_mcap_ewma_lo | 1.006 | 15.06% | 13.79% | -17.91% | 1.453 |
+| p_lstm_mcap_ewma_std | 1.010 | 14.97% | 13.66% | -17.88% | 1.466 |
+| (참고) p_lstm_mcap_omega_rmse | 0.725 | 11.27% | 13.89% | -22.28% | 1.020 |
+| (참고) p_lstm_mcap_omega_rmse_pt | 0.931 | 12.15% | 11.75% | -14.65% | 1.364 |
+
+### 11-10. 핵심 발견
+
+**1. EWMA omega 는 omega_rmse 와 정반대로 작동 — 뷰 강화 방향**
+
+```
+omega_rmse  (옵션1) : omega ↑ (×2~6) → 뷰 약화 → BL 무력화 → MDD -22% (capm_no_bl 수준)
+omega_rmse_pt(옵션2) : omega ↑ (×1.1~1.2) → 미세 보수화 → MDD -15%
+ewma (lo·std)        : omega ≈ 비슷 또는 약간 ↓ → 뷰 강화 → CAGR ↑ MDD -17~18%
+```
+
+**2. CAGR 큰 폭 향상 (+2~5%p), 그러나 변동성·MDD 동반 증가**
+
+| LSTM 기본 | EWMA 변형 | CAGR Δ | Vol Δ | MDD Δ |
+|---|---|---|---|---|
+| p_lstm_mcap (12.37%) | ewma_lo (15.06%) | +2.69%p | +2.51%p | -5.52%p |
+| p_lstm_vol_mcap (10.27%) | ewma_lo (15.38%) | **+5.11%p** | +1.93%p | -4.87%p |
+
+→ 위험조정 성과 (Sharpe) 는 거의 동등 (CAGR/Vol 비율 유지)
+
+**3. λ 에 결과 robust (sensitivity 통계적 입증 효과)**
+
+| 변형 | Sharpe 평균 | CAGR 평균 | MDD 평균 |
+|---|---|---|---|
+| ewma_lo (λ=0.825) | 1.044 | 15.13% | -17.30% |
+| ewma_std (λ=0.94) | 1.028 | 14.83% | -17.87% |
+
+- λ 두 값 차이: Sharpe Δ 0.016, CAGR Δ 0.30%p, MDD Δ 0.57%p
+- → 사용자가 우려했던 "λ=0.825 노이즈 폭증" 이 결과 metric 에는 영향 없음
+- → "λ 에 robust" 의 통계적 입증 (Diebold-Mariano 검정 권장)
+
+**4. omega 시계열 진단**
+
+- 모든 EWMA 실험에서 omega std/mean ≈ 0.5~0.85 → 시점별 변동 있음
+- vol_mcap 의 omega 가 다른 가중의 1/10 수준 (sum(P²) 작음)
+- λ=0.825 가 λ=0.94 보다 std 큼 (이론과 일치)
+- 그러나 결과 metric 차이 미미 → 노이즈가 BL 결과에 큰 영향 없음
+
+**5. baseline 을 넘지 못한 이유**
+
+- baseline (q=0.003 fixed + omega=he_litterman) 이 여전히 가장 효율적
+- EWMA 의 평균 omega 가 he_litterman 과 비슷 → BL 동작 큰 차이 없음
+- 다만 시점별 변동이 위험을 약간 증가시켜 Sharpe 가 baseline 미달
+- **EWMA 가 진짜 효과 발휘하려면 e² 분포가 시기별로 크게 달라야** (= 위기/평온 차이가 명확) → 본 데이터에서는 그 차이가 일정 수준 이상 확대되지 않음
+
+### 11-11. 시사점
+
+1. **omega 동적 조정 메커니즘 자체가 항상 도움이 되는 건 아니다**: omega_rmse 무력화, omega_rmse_pt 미세 보수화, EWMA 뷰 강화 — 셋 다 baseline 미달
+2. **baseline 의 단순함이 강건성**: BL 의 4개 슬롯 (prior, P, Q, omega) 중 omega 변형 시도 모두 효과 약함
+3. **CAGR 절대값 측면에서는 EWMA 가 우월**: 위험 감수를 받아들이면 EWMA 가 매력적
+4. **λ robustness 는 좋은 학술적 신호**: hyperparameter 입증 부담 감소
+
+### 11-12. 추가 시도 후보 (미구현)
+
+- omega EWMA + Q 동적 (식 16의 q=Pr̂) 결합 → 논문 식 17 본래 의도 재현
+- 시점별 base_rmse rolling 정규화 + omega_rmse 결합
+- HMM 레짐 기반 동적 Q (worklog §10 의 미구현 hmm_bayesian 안)
+

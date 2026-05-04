@@ -11,8 +11,9 @@ bl_config.py — Black-Litterman 실험 정의
   q_mode    : 'fixed' | 'ff3_regression' | 'realized_spread' | 'regime' | 'none'
   q_value   : float  (q_mode='fixed' 일 때 사용)
   q_regime_table : dict (q_mode='regime' 일 때 사용)
-  omega_mode: 'he_litterman' | 'scaled' | 'rmse' | 'rmse_per_ticker'
+  omega_mode: 'he_litterman' | 'scaled' | 'rmse' | 'rmse_per_ticker' | 'ewma'
   omega_scale: float (omega_mode='scaled' 일 때 사용, 기본 1.0)
+  lambda    : float (omega_mode='ewma' 일 때 사용, EWMA 망각 계수. 기본 0.94)
   prior     : 'capm_mcap' | 'capm_eq' | 'capm_rp'
   tc        : float  (거래비용, 편도 turnover 기준, 기본 0.001 = 10bp)
   max_weight: float  (단일 종목 상한, 기본 0.10)
@@ -170,6 +171,38 @@ EXPERIMENTS = [
 
     {**BASELINE, 'name': 'prior_rp_p_vol_mcap',
      'prior': 'capm_rp', 'p_weight': 'vol_mcap'},
+
+    # ── [Omega-EWMA 시나리오 1: λ=0.825 ('lo')] ─────────────────────────────
+    # Pyo & Lee (2018) 식 (17) 의 단순화 EWMA 형태: Ω_t = λΩ_{t-1} + (1-λ)e²_{t-1}
+    # λ=0.825 → 반감기 3.6개월, 12개월 후 약 10% 안정화 (워밍업 1년 효과 모사)
+    # 노이즈 큼 (ESS≈10) — 데이터 부족 시 단축 워밍업 가능성 검증용
+    {**BASELINE, 'name': 'p_lstm_mcap_ewma_lo',
+     'p_mode': 'lstm_predicted', 'omega_mode': 'ewma', 'lambda': 0.825},
+
+    {**BASELINE, 'name': 'p_lstm_eq_ewma_lo',
+     'p_mode': 'lstm_predicted', 'p_weight': 'eq', 'omega_mode': 'ewma', 'lambda': 0.825},
+
+    {**BASELINE, 'name': 'p_lstm_rp_ewma_lo',
+     'p_mode': 'lstm_predicted', 'p_weight': 'rp', 'omega_mode': 'ewma', 'lambda': 0.825},
+
+    {**BASELINE, 'name': 'p_lstm_vol_mcap_ewma_lo',
+     'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap', 'omega_mode': 'ewma', 'lambda': 0.825},
+
+    # ── [Omega-EWMA 시나리오 2: λ=0.94 ('std')] ─────────────────────────────
+    # RiskMetrics 1996 표준값. 반감기 11.2개월, 36개월 후 10% 안정화
+    # 워밍업 36개월 OOS 안에 흡수 → 분석 시 2013-01~ 144개월로 trim 권장
+    # ESS≈32, 안정성 우수
+    {**BASELINE, 'name': 'p_lstm_mcap_ewma_std',
+     'p_mode': 'lstm_predicted', 'omega_mode': 'ewma', 'lambda': 0.94},
+
+    {**BASELINE, 'name': 'p_lstm_eq_ewma_std',
+     'p_mode': 'lstm_predicted', 'p_weight': 'eq', 'omega_mode': 'ewma', 'lambda': 0.94},
+
+    {**BASELINE, 'name': 'p_lstm_rp_ewma_std',
+     'p_mode': 'lstm_predicted', 'p_weight': 'rp', 'omega_mode': 'ewma', 'lambda': 0.94},
+
+    {**BASELINE, 'name': 'p_lstm_vol_mcap_ewma_std',
+     'p_mode': 'lstm_predicted', 'p_weight': 'vol_mcap', 'omega_mode': 'ewma', 'lambda': 0.94},
 
 ]
 
