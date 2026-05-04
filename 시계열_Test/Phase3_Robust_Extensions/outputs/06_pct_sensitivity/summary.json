@@ -19,9 +19,15 @@
   "optimal_pct_by_scenario": {
     "BL_ml_sw": {
       "pct": 0.15,
-      "sharpe": 1.1302,
-      "annual_ret": 13.891,
-      "sortino": 1.7521
+      "sharpe": 1.1303,
+      "annual_ret": 13.8923,
+      "sortino": 1.752
+    },
+    "BL_ml_cs": {
+      "pct": 0.4,
+      "sharpe": 1.2005,
+      "annual_ret": 13.839,
+      "sortino": 1.7665
     },
     "BL_trailing": {
       "pct": 0.2,
@@ -45,5 +51,5 @@
     "cagr": 15.3679,
     "n_months": 203.0
   },
-  "has_cs": false
+  "has_cs": true
 }
