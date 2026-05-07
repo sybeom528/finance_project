@@ -1,21 +1,26 @@
 """
-_extend_bl_to_2025.py — 165 BL pkl 의 ret 시리즈를 2024-12 → 2025-12 로 incremental 확장.
+_extend_bl_to_2025.py — BL pkl 의 ret 시리즈 incremental 확장 / 재계산.
 
-기존 pkl 파일에 12 개월 (2025-01-31 ~ 2025-12-31) 만 추가 계산하여 append.
+두 가지 모드:
+  1. 기본 (--mode=extend) : 2024-12 까지인 pkl 을 2025-12 로 확장 (12 month append)
+  2. 재계산 (--mode=recompute_dec_2025) : 이미 192m 인 pkl 의 마지막 12 시점만 재계산
+     (LSTM 예측 (ensemble csv) 가 갱신된 경우 사용)
+
 기존 prev_w, ff3_paper 의 _op_q_prev/_op_P_prev 상태를 정확히 재구성하여
 full re-run 과 동등한 결과 보장.
 
 전제 조건:
-  - final/data/monthly_panel.csv 가 2025-12-31 까지 cover (Step 1 완료 상태)
-  - final/results/*.pkl 165 개가 2024-12-31 까지의 결과 보유
+  - final/data/monthly_panel.csv 가 2025-12-31 까지 cover
+  - final/results/*.pkl 156 개가 학습된 상태
 
 소요 시간 예상:
-  - monthly_cache build (192 months): ~10 분
-  - 165 cfgs × 12 months 추가 계산: ~15 분
+  - monthly_cache build (192 months): ~10 분 (cache 미존재 시)
+  - 156 cfgs × 12 months: ~15 분
   - 전체: ~25-30 분
 
 실행:
-    cd final && python _extend_bl_to_2025.py
+    cd final && python _extend_bl_to_2025.py                     # 기본 (extend)
+    cd final && python _extend_bl_to_2025.py --recompute-2025    # LSTM 갱신 후 재계산
 """
 import io
 import sys
@@ -38,6 +43,23 @@ BACKUP_DIR    = RESULTS_DIR / '_backup_pre_extension'
 
 PRED_END    = '2025-12-31'
 PHASE0_TS   = pd.Timestamp(PRED_END)
+
+# ── 모드 결정 ──────────────────────────────────────────────────
+import argparse
+_parser = argparse.ArgumentParser()
+_parser.add_argument('--recompute-2025', action='store_true',
+                     help='LSTM 갱신 후 192m pkl 의 2025년 12 시점 재계산 (truncate + extend)')
+_args, _ = _parser.parse_known_args()
+RECOMPUTE_2025 = _args.recompute_2025
+
+if RECOMPUTE_2025:
+    print('━' * 72)
+    print(' MODE: recompute-2025 (LSTM 갱신 반영 — pkl 의 2025년 12 시점 재계산)')
+    print('━' * 72)
+else:
+    print('━' * 72)
+    print(' MODE: extend (180m → 192m, 12 month append)')
+    print('━' * 72)
 
 # ── 1. 99_run 노트북 cells 0~6 (실행 전 6개) 실행하여 dispatcher + walk_forward 로드 ──
 print('[1/4] 99_run.ipynb cells 0-6 실행 (data load + dispatcher + monthly_cache build) ...')
@@ -94,8 +116,25 @@ def extend_one(cfg):
         return f'[SKIP] {name}: 기존 ret 비어있음'
 
     last_date = existing['ret'].index[-1]
-    if last_date >= PHASE0_TS:
-        return f'[SKIP] {name}: 이미 {last_date.date()} 까지 cover'
+
+    if RECOMPUTE_2025:
+        # LSTM 갱신 후 — 2025년 12 시점만 재계산. 기존 pkl 의 2024-12 까지는 보존.
+        # 2024-12-31 시점에 대한 state (prev_w, _op_q_prev/P_prev) 재구성 후
+        # 2025 시점들 재실행
+        if last_date < pd.Timestamp('2025-12-31'):
+            return f'[SKIP] {name}: 192m 미만 ({last_date.date()}) — 먼저 기본 extend 모드 실행'
+        # truncate to 2024-12-31, then extend
+        cutoff = pd.Timestamp('2024-12-31')
+        for k in ['ret', 'gross_ret', 'spy_ret']:
+            if isinstance(existing.get(k), pd.Series):
+                existing[k] = existing[k][existing[k].index <= cutoff]
+        for k in ['weights', 'comp', 'meta']:
+            if isinstance(existing.get(k), pd.DataFrame):
+                existing[k] = existing[k][existing[k].index <= cutoff]
+        last_date = cutoff
+    else:
+        if last_date >= PHASE0_TS:
+            return f'[SKIP] {name}: 이미 {last_date.date()} 까지 cover'
 
     p_weight   = cfg.get('p_weight', 'mcap')
     q_mode     = cfg.get('q_mode', 'fixed')
