@@ -712,6 +712,8 @@ def _train_ticker_worker(args: tuple) -> tuple:
     """ProcessPoolExecutor worker — 단일 종목 walk-forward.
 
     Spawn 호환을 위해 모듈 최상위 정의.
+
+    재현성: worker 시작 시 setup_seeds(42) 호출 — main process seed 미전파 대응.
     """
     if len(args) == 5:
         ticker, panel_t, config, device, gpu_id = args
@@ -720,6 +722,13 @@ def _train_ticker_worker(args: tuple) -> tuple:
         ticker, panel_t, config, device, gpu_id, existing_folds_t = args
     else:
         return (None, None, f'Invalid args length: {len(args)}')
+
+    # ⭐ worker 의 seed 고정 (multiprocessing spawn 후 새 process 라 main 의 seed 미전파)
+    try:
+        from timeseries_lib import setup_seeds
+        setup_seeds(42)
+    except Exception:
+        pass   # seed 못 잡으면 stochastic 변동만 약간 — 학습은 진행
 
     try:
         if device == 'cuda' or (isinstance(device, str) and device.startswith('cuda')):
@@ -745,13 +754,63 @@ def _train_ticker_worker(args: tuple) -> tuple:
         return (ticker, None, f'{type(e).__name__}: {str(e)[:200]}')
 
 
+def auto_n_workers(device: str = 'cuda', verbose: bool = True) -> int:
+    """GPU 메모리에 따라 안전한 n_workers 자동 결정 (OOM 회피).
+
+    기준: RTX 4090 24GB → 8 workers, 16GB → 4, 12GB → 4, 8GB → 2, CPU → 4
+    """
+    if device == 'cpu' or not torch.cuda.is_available():
+        return 4   # CPU 는 코어 수 의존, 안전한 default
+    try:
+        gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        if gpu_mem_gb >= 22:
+            n = 8
+        elif gpu_mem_gb >= 14:
+            n = 4
+        elif gpu_mem_gb >= 10:
+            n = 4
+        elif gpu_mem_gb >= 6:
+            n = 2
+        else:
+            n = 1
+        if verbose:
+            print(f'  [auto_n_workers] GPU memory {gpu_mem_gb:.1f} GB → n_workers={n}')
+        return n
+    except Exception:
+        return 4   # GPU 정보 못 얻으면 보수적
+
+
+def filter_panel_to_target_universe(panel: pd.DataFrame,
+                                     target_tickers: list,
+                                     verbose: bool = True) -> pd.DataFrame:
+    """Panel 일관성 보강 — 학습 대상 universe 와 panel 종목을 일치시킴.
+
+    fold csv 에 이미 학습된 fold 가 있다면 그 종목 list 와 새로 빌드한 panel 의 종목 list
+    를 맞춰서, 학습 결과의 inconsistency 를 방지.
+    """
+    panel_tickers = set(panel['ticker'].unique())
+    target_set = set(target_tickers)
+
+    common = panel_tickers & target_set
+    only_panel = panel_tickers - target_set
+    only_target = target_set - panel_tickers
+
+    if verbose:
+        print(f'  [panel filter] panel 종목 {len(panel_tickers)}, target {len(target_tickers)}')
+        print(f'    공통        : {len(common)}')
+        print(f'    panel 만    : {len(only_panel)}')
+        print(f'    target 만   : {len(only_target)}  (panel 에 없어 학습 불가)')
+
+    return panel[panel['ticker'].isin(target_set)].copy()
+
+
 def run_ensemble_for_universe_parallel(
     panel: pd.DataFrame,
     universe_tickers: list,
     out_dir: Path,
     config: dict = V4_BEST_CONFIG,
     device: str = 'cuda',
-    n_workers: int = 8,
+    n_workers: Optional[int] = None,
     out_name: str = 'ensemble_predictions_stockwise.csv',
     fold_name: str = 'fold_predictions_stockwise.csv',
     incremental: bool = False,
@@ -782,7 +841,11 @@ def run_ensemble_for_universe_parallel(
     out_path = out_dir / out_name
     fold_path = out_dir / fold_name
 
-    # incremental 모드 — 기존 fold predictions 로드
+    # n_workers 자동 결정 (None 시 GPU 메모리 기반)
+    if n_workers is None:
+        n_workers = auto_n_workers(device, verbose=verbose)
+
+    # incremental 모드 — 기존 fold predictions 로드 + universe 일관성 강제
     existing_fold_all = None
     if incremental:
         if not fold_path.exists():
@@ -794,6 +857,29 @@ def run_ensemble_for_universe_parallel(
             if verbose:
                 print(f'  ⚡ Incremental 모드: {len(existing_fold_all):,} rows, '
                       f'max fold {int(existing_fold_all["fold"].max())}')
+
+            # ⭐ Panel 일관성 보강 (Critical):
+            # incremental 모드에서 fold csv 의 종목 ⊂ panel 종목 강제
+            # 그렇지 않으면 fold 0~N 학습 결과 + fold N+1~ 새 학습 결과의 종목이 달라
+            # 통합 ensemble 의 의미가 약해짐
+            fold_tickers = set(existing_fold_all['ticker'].unique())
+            panel_tickers = set(panel['ticker'].unique())
+            target_set = set(universe_tickers)
+
+            # 교집합: fold csv 와 panel 모두에 있는 종목
+            consistent_universe = fold_tickers & panel_tickers & target_set
+            if len(consistent_universe) < len(target_set):
+                if verbose:
+                    n_drop_panel = len(target_set - panel_tickers)
+                    n_drop_fold = len(target_set - fold_tickers)
+                    print(f'  ⚙ Panel 일관성 보강 (Critical):')
+                    print(f'    target universe        : {len(target_set)}')
+                    print(f'    fold csv 에 학습된 종목: {len(fold_tickers)}')
+                    print(f'    final panel 에 있는 종목: {len(panel_tickers)}')
+                    print(f'    consistent (3 교집합)  : {len(consistent_universe)}')
+                    if n_drop_panel > 0:
+                        print(f'    제외 — panel 부재 {n_drop_panel}, fold 부재 {n_drop_fold}')
+                universe_tickers = sorted(consistent_universe)
 
     # ticker 별 args 준비
     args_list = []
