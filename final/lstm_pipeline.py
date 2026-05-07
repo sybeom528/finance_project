@@ -431,6 +431,187 @@ def run_walkforward_for_ticker(ticker: str,
 
 
 # =============================================================================
+# 4-B. 캐시 점검 + 자동 truncate (incremental 학습 진입 준비)
+# =============================================================================
+def diagnose_fold_csv(fold_path: str | Path,
+                      lstm_finite_threshold: float = 0.95,
+                      verbose: bool = True) -> dict:
+    """fold_predictions_stockwise.csv 진단 — LSTM 결손 fold 자동 식별.
+
+    Returns
+    -------
+    dict
+        {
+            'exists'              : bool,
+            'shape'               : tuple,
+            'fold_min'            : int,
+            'fold_max'            : int,
+            'first_deficient_fold': int | None  — LSTM finite < threshold 인 첫 fold,
+            'lstm_max_date'       : pd.Timestamp | None,
+            'recommendation'      : str — 'use_as_is' | 'truncate_at_X' | 'rebuild',
+        }
+    """
+    fold_path = Path(fold_path)
+    if not fold_path.exists():
+        if verbose:
+            print(f'  [diagnose] {fold_path.name} 부재 → recommendation: rebuild')
+        return {
+            'exists': False, 'shape': None, 'fold_min': None, 'fold_max': None,
+            'first_deficient_fold': None, 'lstm_max_date': None,
+            'recommendation': 'rebuild',
+        }
+
+    if verbose:
+        print(f'  [diagnose] 로드: {fold_path}')
+    fold = pd.read_csv(fold_path, parse_dates=['date'])
+
+    fold_min = int(fold['fold'].min())
+    fold_max = int(fold['fold'].max())
+
+    # 첫 결손 fold
+    first_def = None
+    for f in sorted(fold['fold'].unique()):
+        sub = fold[fold['fold'] == f]
+        if len(sub) == 0: continue
+        n_lstm = int(np.isfinite(sub['y_pred_lstm']).sum())
+        if n_lstm / len(sub) < lstm_finite_threshold:
+            first_def = int(f)
+            break
+
+    # LSTM finite max date
+    lstm_max = fold[np.isfinite(fold['y_pred_lstm'])]['date'].max()
+
+    # 권장 사항
+    if first_def is None:
+        rec = 'use_as_is'
+    elif first_def <= fold_min + 1:
+        rec = 'rebuild'  # 너무 일찍부터 결손 — 처음부터 재학습 권장
+    else:
+        rec = f'truncate_at_{first_def - 1}'
+
+    if verbose:
+        print(f'  [diagnose] shape: {fold.shape}, fold {fold_min}~{fold_max}')
+        print(f'  [diagnose] LSTM 마지막 finite: {lstm_max.date() if pd.notna(lstm_max) else "N/A"}')
+        if first_def is not None:
+            print(f'  [diagnose] 첫 결손 fold: {first_def} (이전 정상 fold ≤ {first_def - 1})')
+        print(f'  [diagnose] 권장: {rec}')
+
+    return {
+        'exists': True, 'shape': fold.shape, 'fold_min': fold_min, 'fold_max': fold_max,
+        'first_deficient_fold': first_def, 'lstm_max_date': lstm_max,
+        'recommendation': rec,
+    }
+
+
+def prepare_incremental_state(out_dir: str | Path,
+                              fold_name: str = 'fold_predictions_stockwise.csv',
+                              fallback_search_paths: Optional[list] = None,
+                              auto_truncate: bool = True,
+                              backup: bool = True,
+                              verbose: bool = True) -> dict:
+    """캐시 점검 + 자동 복사·truncate 로 incremental 학습 진입 상태 준비.
+
+    동작:
+      1. out_dir 에 fold csv 가 없으면 fallback_search_paths 에서 자동 복사
+      2. fold csv 진단 — 첫 LSTM 결손 fold 식별
+      3. auto_truncate=True 면 결손 fold 직전까지 truncate (자동 백업)
+      4. 결과 dict 반환 (학습 시 incremental 인자 결정용)
+
+    Parameters
+    ----------
+    out_dir : final/phase3(data_outputs)/data 등
+    fallback_search_paths : list of Path
+        fold csv 가 없을 때 검색할 경로 후보. None 시 [시계열_Test/Phase3/data] 기본
+    auto_truncate : bool
+        True 면 결손 fold 자동 truncate. False 면 진단만.
+    backup : bool
+        truncate 전 .bak_pre_retrain 백업
+
+    Returns
+    -------
+    dict
+        {
+            'incremental_ok'       : bool — incremental 학습 진입 가능 여부,
+            'fold_path'            : Path,
+            'truncated_at'         : int | None — truncate 한 fold (없으면 None),
+            'first_deficient_fold' : int | None,
+            'recommendation'       : str,
+        }
+    """
+    import shutil
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fold_path = out_dir / fold_name
+
+    if verbose:
+        print('━' * 70)
+        print(' prepare_incremental_state — 캐시 점검 + 자동 truncate')
+        print('━' * 70)
+
+    # 1. 자동 복사 — 시계열_Test 등의 fallback 경로
+    if not fold_path.exists():
+        if fallback_search_paths is None:
+            fallback_search_paths = [
+                _THIS_DIR.parent / '시계열_Test' / 'Phase3_Robust_Extensions' / 'data' / fold_name,
+            ]
+        for src in fallback_search_paths:
+            src = Path(src)
+            if src.exists():
+                if verbose:
+                    print(f'  [copy] {src.name} 발견 → 복사')
+                    print(f'         from: {src}')
+                    print(f'           to: {fold_path}')
+                shutil.copy2(src, fold_path)
+                break
+        else:
+            if verbose:
+                print(f'  [copy] fold csv 없음 — fallback 도 없음 → full 학습 필요')
+            return {
+                'incremental_ok': False, 'fold_path': fold_path,
+                'truncated_at': None, 'first_deficient_fold': None,
+                'recommendation': 'rebuild',
+            }
+
+    # 2. 진단
+    diag = diagnose_fold_csv(fold_path, verbose=verbose)
+
+    # 3. auto_truncate
+    truncated_at = None
+    if auto_truncate and diag['recommendation'].startswith('truncate_at_'):
+        cutoff_fold = int(diag['recommendation'].split('_')[-1])
+        if verbose:
+            print(f'  [truncate] fold ≤ {cutoff_fold} 보존, 결손 fold 제거')
+
+        if backup:
+            bak = fold_path.with_suffix('.csv.bak_pre_retrain')
+            if not bak.exists():
+                shutil.copy2(fold_path, bak)
+                if verbose:
+                    print(f'  [backup] {bak.name} 생성')
+
+        fold = pd.read_csv(fold_path, parse_dates=['date'])
+        kept = fold[fold['fold'] <= cutoff_fold].copy()
+        kept.to_csv(fold_path, index=False)
+        truncated_at = cutoff_fold
+        if verbose:
+            print(f'  [truncate] {len(fold) - len(kept):,} rows 제거 → {len(kept):,} rows 보존')
+
+    incremental_ok = diag['recommendation'] != 'rebuild'
+
+    if verbose:
+        print()
+        print(f'  ✅ incremental_ok = {incremental_ok}, truncated_at = {truncated_at}')
+
+    return {
+        'incremental_ok': incremental_ok,
+        'fold_path': fold_path,
+        'truncated_at': truncated_at,
+        'first_deficient_fold': diag['first_deficient_fold'],
+        'recommendation': diag['recommendation'],
+    }
+
+
+# =============================================================================
 # 5. Performance-Weighted Ensemble (Diebold-Pauly 1987)
 # =============================================================================
 def compute_performance_weights(fold_results: pd.DataFrame,
