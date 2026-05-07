@@ -90,6 +90,7 @@ def build_daily_panel(
     sp500_membership_path: str | Path = None,
     out_path: Optional[str | Path] = None,
     horizon: int = 21,
+    max_date: Optional[str] = None,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """final/data 의 daily 데이터로 LSTM 학습용 long format daily_panel 빌드.
@@ -110,6 +111,10 @@ def build_daily_panel(
         결과 저장 경로 (None 시 저장 안 함, DataFrame 만 반환)
     horizon : int, default 21
         target_logrv 의 forward 영업일 수
+    max_date : str | None, default None
+        'YYYY-MM-DD' 형태로 panel 의 끝점 cap. None 시 daily_returns 의 모든 데이터 사용.
+        BL 분석 기간이 2025-12-31 까지면 max_date='2026-02-01' 정도 (forward 21d buffer)
+        로 설정하면 LSTM 학습 범위가 분석 기간에 맞게 자동으로 줄어 학습 시간 ~30% 단축.
     verbose : bool
 
     Returns
@@ -134,6 +139,14 @@ def build_daily_panel(
         dr = pickle.load(f)
     if not isinstance(dr, pd.DataFrame):
         raise ValueError(f'daily_returns 가 DataFrame 이 아님: {type(dr)}')
+
+    # max_date 적용 — panel 의 끝점 cap (학습 시간 단축)
+    if max_date is not None:
+        max_ts = pd.Timestamp(max_date)
+        dr = dr[dr.index <= max_ts]
+        if verbose:
+            print(f'    max_date={max_date} 적용 — panel 끝점 cap')
+
     # long format
     long = dr.stack().reset_index()
     long.columns = ['date', 'ticker', 'log_ret']
