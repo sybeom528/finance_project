@@ -189,6 +189,14 @@ def compute_Q_ff3_paper(
     논문 방식 Q: X_next = 훈련 윈도우 마지막 월 실현 팩터.
     Ω는 walk-forward 루프에서 전월 오차²로 별도 계산.
     """
+    # 방어: 중복 라벨 제거 (threading 환경에서 stale state 가능)
+    if P.index.duplicated().any():
+        P = P[~P.index.duplicated(keep='first')]
+    if ret_matrix.columns.duplicated().any():
+        ret_matrix = ret_matrix.loc[:, ~ret_matrix.columns.duplicated(keep='first')]
+    if ret_matrix.index.duplicated().any():
+        ret_matrix = ret_matrix[~ret_matrix.index.duplicated(keep='first')]
+
     view_tickers = P[P != 0].index.intersection(ret_matrix.columns).tolist()
     if not view_tickers:
         return 0.003
@@ -201,6 +209,67 @@ def compute_Q_ff3_paper(
 
     X      = np.column_stack([np.ones(n), ff3_aligned[['mkt_rf', 'smb', 'hml']].values])
     X_next = np.array([1.0] + ff3_aligned.iloc[-1][['mkt_rf', 'smb', 'hml']].tolist())
+    rf_next = float(rf_train.iloc[-1]) if len(rf_train) > 0 else 0.0
+
+    r_hat_next = pd.Series(0.0, index=ret_matrix.columns)
+    for t in view_tickers:
+        y = ret_matrix[t].reindex(ff3_aligned.index) - rf_aligned
+        valid = y.notna()
+        if valid.sum() < 12:
+            continue
+        coef = np.linalg.lstsq(X[valid], y[valid].values, rcond=None)[0]
+        r_hat_next[t] = float(X_next @ coef) + rf_next
+
+    P_vec = P.reindex(ret_matrix.columns).fillna(0)
+    return float(P_vec @ r_hat_next)
+
+
+
+def compute_Q_ff3_paper_mean(
+    P: pd.Series,
+    ret_matrix: pd.DataFrame,
+    ff3_train: pd.DataFrame,
+    rf_train: pd.Series,
+) -> float:
+    """
+    논문 방식 Q (학계 표준 변형):
+      X_next = 훈련 윈도우 60개월 팩터 평균 (장기 평균 회귀 가정).
+
+    기존 compute_Q_ff3_paper 와의 차이:
+      - 기존:  X_next = ff3_aligned.iloc[-1]      (직전월 실현값, random walk)
+      - 신규:  X_next = ff3_aligned.mean()         (60개월 평균, mean reversion)
+
+    재무학 표준 (Fama-MacBeth 1973, Cochrane 2005):
+      월별 팩터는 σ/μ 비율이 8~15배라 random walk 예측 시 노이즈 큼.
+      장기 평균을 다음달 기대 프리미엄으로 쓰는 것이 일반적.
+
+    rf_next 는 변동성 작은 이자율이라 직전월 그대로 사용.
+    """
+    # 방어: 중복 라벨 제거 (threading 환경에서 stale state 가능)
+    if P.index.duplicated().any():
+        P = P[~P.index.duplicated(keep='first')]
+    if ret_matrix.columns.duplicated().any():
+        ret_matrix = ret_matrix.loc[:, ~ret_matrix.columns.duplicated(keep='first')]
+    if ret_matrix.index.duplicated().any():
+        ret_matrix = ret_matrix[~ret_matrix.index.duplicated(keep='first')]
+
+    view_tickers = P[P != 0].index.intersection(ret_matrix.columns).tolist()
+    if not view_tickers:
+        return 0.003
+
+    ff3_aligned = ff3_train.reindex(ret_matrix.index).dropna()
+    rf_aligned  = rf_train.reindex(ff3_aligned.index).fillna(0)
+    n = len(ff3_aligned)
+    if n < 24:
+        return 0.003
+
+    X      = np.column_stack([np.ones(n), ff3_aligned[['mkt_rf', 'smb', 'hml']].values])
+    X_next = np.array([
+        1.0,
+        float(ff3_aligned['mkt_rf'].mean()),
+        float(ff3_aligned['smb'].mean()),
+        float(ff3_aligned['hml'].mean()),
+    ])
     rf_next = float(rf_train.iloc[-1]) if len(rf_train) > 0 else 0.0
 
     r_hat_next = pd.Series(0.0, index=ret_matrix.columns)
