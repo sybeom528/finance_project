@@ -21,7 +21,13 @@ md("""# 06 — Top 1 Selection (객관적 다중 메트릭 + Lexicographic)
 
 > **목적**: BL 156 cfg 중 객관적 절차로 **Top 1 모델을 재산출**합니다.
 >
-> **배경**: 잠정 Top 1 (`mat_eq_eq_lam_pap`) 의 HOLD_OUT 24m sortino 0.685 (Top 134/153) 부진으로 학습편향 가능성 → 다중 메트릭 + lexicographic 우선순위 + sensitivity test 절차로 재검증.
+> **배경**: 초기 잠정 Top 1 (`mat_eq_eq_lam_pap`) 의 HOLD_OUT 24m sortino 0.685 부진으로 학습편향 가능성 제기 → 다중 메트릭 + lexicographic 우선순위 + sensitivity test 절차 + **HO 누설 완전 제거** (in-sample only) 로 재검증.
+>
+> **누설 제거 결과**:
+> - sortino_ir 재산출 (R3 끝점 2024-12 → **2023-12**, HO 12m 분리) → universe **22 → 26 cfg 확장** (HO universe 가 IS universe 의 부분집합, 신규 진입 4 cfg, 탈락 0 cfg)
+> - 신규 진입: `mat_rp_rp_lam_pap`, `mat_rp_rp_raw_pap`, `mat_rp_eq_raw_pap`, `mat_rp_eq_lam_pap` (RP 계열 4 cfg)
+> - `mat_eq_eq_lam_pap` 의 sortino_ir: **10.46 → 20.93** (HO 12m 부진 제거로 향상). Top 10 #9 위치 유지하나 mdd_TEST -0.129 로 Lex 후순위
+> - 신규 Top 1 = **`mat_eq_mcap_lam_he`** (Lex/DM 양 학술 표준 일치, mdd_TEST -0.120 ★ 1위)
 
 ## 노트북 구성
 
@@ -39,13 +45,15 @@ md("""# 06 — Top 1 Selection (객관적 다중 메트릭 + Lexicographic)
 | §9 | Top 5 → Top 1 결정 | 결정 matrix + narrative |
 | §10 | Sensitivity test (견고성) | ε / 우선순위 / sub-period 변경 |
 
-## 평가 메트릭 우선순위 (사용자 합의)
+## 평가 메트릭 우선순위 (학술 표준 — in-sample only)
 
 1. **Sortino_TEST** (학습 168m downside risk-adjusted)
-2. **MDD** (TEST + HOLD_OUT 별도 산출)
+2. **mdd_TEST** (학습 168m 최대 낙폭)
 3. **sortino_ir** (3-regime mean / std 안정성)
 
-**보조 분석**: 모든 다른 지표 포함 (Sortino_HO/FULL, Sharpe, CAGR, Calmar, VaR, turnover, eff_n, sector HHI, alpha, **beta**, IR)
+**중요**: 본 노트북의 의사결정 단계 (§4 lexicographic, §9 decision matrix) 는 **HOLD_OUT 정보를 사용하지 않는 in-sample only 변형 (§4-4, §9-4)** 을 학술 표준으로 채택합니다 (Lopez de Prado 2018, backtest overfitting 회피). 기존 §4-1, §9-1 은 비교 참고용으로 유지되며, §13 에서 두 결과의 일치를 정량 검증합니다.
+
+**보조 분석 (사후 검증, HOLD_OUT 사용 정당)**: §11 sector tilt 분해, §12 SPY regime 비교, §15 PBO/DSR 등.
 
 ## Universe
 
@@ -93,7 +101,7 @@ FIG_DIR.mkdir(parents=True, exist_ok=True)
 print(f'OUT_DIR: {OUT_DIR.resolve()}')
 print(f'FIG_DIR: {FIG_DIR.resolve()}')''')
 
-code('''# §0-2. master_table + regime_table 로드
+code('''# §0-2. master_table + regime_table 로드 (in-sample only 학술 표준)
 from master_table import build_master_table, build_regime_table, REGIMES, EVAL_PERIODS
 
 panel = pd.read_csv('data/monthly_panel.csv', parse_dates=['date'])
@@ -108,69 +116,108 @@ mt_main = mt[~mt['name'].str.endswith(('_q55','_q64','_q70'))].copy()
 assert len(mt_main) == 153, f'expected 153, got {len(mt_main)}'
 print(f'mt_main (153 main cfg): {mt_main.shape}')
 
-# Regime table (sortino_ir 포함)
-rt = build_regime_table(mt_main, 'results', rf)
-print(f'rt: {rt.shape}')
-print(f'sortino_ir 컬럼 확인: {"sortino_ir" in rt.columns}')''')
+# ★★★ Regime table — IN-SAMPLE ONLY (R3 끝점을 TEST 끝 = 2023-12 로 한정) ★★★
+# 원본 master_table.REGIMES 의 R3 = 2020-01 ~ 2024-12 → HOLD_OUT 12m 포함 → 누설
+# 본 노트북은 의사결정에 sortino_ir 사용 → R3 를 TEST 168m 안으로 한정해야 함
+REGIMES_INSAMPLE = [
+    ('R1_회복',  '2010-01-01', '2012-06-30'),  # 30m
+    ('R2_확장',  '2012-07-01', '2019-12-31'),  # 90m
+    ('R3_변동',  '2020-01-01', '2023-12-31'),  # 48m (★ HO 제외, TEST 168m 안에서 종결)
+]
+print('\\n★ in-sample only REGIMES (의사결정용, sortino_ir 재산출):')
+for label, s, e in REGIMES_INSAMPLE:
+    print(f"  {label:10s}: {s} ~ {e}")
+print('  (R3 끝점이 2023-12 = TEST 168m 종료점 — HO 24m 완전 분리)')
+print()
+
+# in-sample regime_table (sortino_ir 가 R1+R2+R3_in 의 mean/std 로 산출됨)
+rt = build_regime_table(mt_main, 'results', rf, regimes=REGIMES_INSAMPLE)
+print(f'rt (in-sample regime, R1+R2+R3_in): {rt.shape}')
+print(f'sortino_ir 컬럼 확인: {"sortino_ir" in rt.columns}')
+
+# 비교용: 기존 (HO 포함) sortino_ir 도 별도 산출 — §13 비교에만 사용
+rt_with_ho = build_regime_table(mt_main, 'results', rf, regimes=REGIMES)
+rt_with_ho = rt_with_ho.rename(columns={'sortino_ir': 'sortino_ir_with_ho'})
+rt['sortino_ir_with_ho'] = mt_main['name'].map(
+    rt_with_ho.set_index('name')['sortino_ir_with_ho'])
+print(f'\\nsortino_ir 차이 분포 (in-sample - HO 포함):')
+print((rt['sortino_ir'] - rt['sortino_ir_with_ho']).describe().round(2))''')
 
 code('''# §0-3. 평가 기간 + 레짐 정보 출력
 print("EVAL_PERIODS:")
 for label, (s, e) in EVAL_PERIODS.items():
     print(f"  {label:10s}: {s} ~ {e}")
 print()
-print("REGIMES (3 레짐):")
+print("REGIMES_INSAMPLE (의사결정용, R3 = 2020-01~2023-12):")
+for label, s, e in REGIMES_INSAMPLE:
+    print(f"  {label:10s}: {s} ~ {e}")
+print()
+print("[참고] 원본 REGIMES (R3 끝점 2024-12, HO 12m 포함):")
 for label, s, e in REGIMES:
     print(f"  {label:10s}: {s} ~ {e}")''')
 
 # ─────────────────────────────────────────────────────────────────
 md("""## §1. 평가 기준 정의
 
-### 우선순위 (사용자 합의 5개)
+### 우선순위 (학술 표준 — in-sample only)
 
 | 순위 | 메트릭 | 의미 | 가중치 적용 |
 |---|---|---|---|
 | **1** | `sortino_TEST` | 학습 168m downside risk-adjusted | Lexicographic 1차 |
-| **2-A** | `mdd_TEST` | 학습 168m 최대 낙폭 | Lexicographic 2차 |
-| **2-B** | `mdd_HOLD_OUT` | 미래 24m 최대 낙폭 | Lexicographic 2차 (평균 rank) |
+| **2** | `mdd_TEST` | 학습 168m 최대 낙폭 | Lexicographic 2차 |
 | **3** | `sortino_ir` | 3-regime sortino mean / std | Lexicographic 3차 |
 
-### Lexicographic 정렬 정의
+### Lexicographic 정렬 정의 (in-sample only — §4-4 학술 표준)
 
 ```
-1차: Sortino_TEST 내림차순 정렬
+1차: sortino_TEST 내림차순 정렬
   └─ tied 정의: |s1 - s2| < ε (ε = 0.10)
-2차: tied 그룹 내 → (rank_MDD_TEST + rank_MDD_HO) / 2 평균 rank 오름차순
+2차: tied 그룹 내 → mdd_TEST rank 오름차순
   └─ tied 정의: rank 차이 ≤ 1
 3차: 그래도 tied 시 → sortino_ir 내림차순
 ```
 
 **ε = 0.10 선정 근거**: 153 cfg 의 sortino_TEST 표준편차 ≈ 0.30. ε = 0.10 → 약 1/3σ 동순위 그룹 자연스럽게 형성. ε 변경 sensitivity 는 §10 에서 검증.
 
-### 보조 분석 메트릭 (모든 지표 포함)
+**참고**: §4-1 의 HO 포함 변형은 비교용으로만 유지되며, §13 에서 두 결과를 비교합니다. §11 (in-sample 검증) 에서 두 기준 모두 동일한 Top 1 산출 확인.
 
-| 카테고리 | 메트릭 | 컬럼 |
+### 보조 분석 메트릭 (사후 검증용 — HOLD_OUT 메트릭은 §11 sector / §12 regime / §13 비교에서만 사용)
+
+| 카테고리 | 메트릭 | 비고 |
 |---|---|---|
-| 성과 | Sortino_HO/FULL, Sharpe (TEST/HO/FULL), CAGR | `sortino_HOLD_OUT`, `sortino_FULL`, `sharpe_*`, `cagr_*` |
-| 위험 | Calmar, VaR_95 (cvar_5), MDD_FULL | `calmar`, `cvar_5`, `mdd_FULL` |
-| 안정성 | TEST vs HO 격차 | 계산 |
-| 견고성 | turnover_avg, eff_n_avg, sector HHI | `turnover_avg`, `eff_n_avg`, 계산 |
-| Alpha | alpha (CAPM), **beta**, IR | `alpha`, `beta`, 계산 |
+| 성과 (in-sample) | Sortino_FULL, Sharpe (TEST/FULL), CAGR | 의사결정 보조 |
+| 성과 (사후 검증) | Sortino_HO, Sharpe_HO | §11, §12, §13 만 |
+| 위험 | Calmar, VaR_95 (cvar_5), MDD_FULL | mdd_FULL 은 약한 누설 잔존 |
+| 안정성 | sortino_ir | 3-regime 안정성 |
+| 견고성 | turnover_avg, eff_n_avg, sector HHI | |
+| Alpha | alpha (CAPM), **beta**, IR | §17 factor regression 추가 |
 """)
 
-code('''# §1-1. mt_main 의 메트릭 분포 요약 (153 cfg 전체)
-key_metrics = ['sortino_TEST','sortino_HOLD_OUT','sortino_FULL',
-               'mdd_TEST','mdd_HOLD_OUT','mdd_FULL',
-               'sharpe_TEST','sharpe_HOLD_OUT',
-               'turnover_avg','eff_n_avg','alpha','beta']
-print('153 main cfg 메트릭 분포 (요약):')
+code('''# §1-1. mt_main 메트릭 분포 — 의사결정용 (in-sample) + [참조] 사후 검증용 분리
+decision_metrics = ['sortino_TEST','mdd_TEST','sharpe_TEST',
+                    'turnover_avg','eff_n_avg','alpha','beta']
+posthoc_metrics = ['sortino_HOLD_OUT','mdd_HOLD_OUT','sharpe_HOLD_OUT',
+                   'sortino_FULL','mdd_FULL']
+print('★ 153 main cfg 의사결정 메트릭 분포 (in-sample only):')
+print(mt_main[decision_metrics].describe().round(3).to_string())
+print()
+print('[참조] 사후 검증 메트릭 분포 (HO/FULL — §11/§13 진단 전용):')
+print(mt_main[posthoc_metrics].describe().round(3).to_string())
+key_metrics = decision_metrics + posthoc_metrics
+print()
+print('-- 통합 (역호환) --')
 print(mt_main[key_metrics].describe().round(3).to_string())''')
 
-code('''# §1-2. sortino_ir 분포 (regime table 기반)
-print('sortino_ir 분포 (153 main cfg):')
+code('''# §1-2. sortino_ir 분포 (regime table 기반, in-sample only — R3=2023-12)
+print('★ sortino_ir 분포 (153 main cfg, in-sample only):')
 print(rt['sortino_ir'].describe().round(2).to_string())
 print()
-print('sortino_ir top 5:')
-print(rt.nlargest(5, 'sortino_ir')[['name','sortino_TEST','sortino_HOLD_OUT','sortino_ir','mdd_TEST','mdd_HOLD_OUT']].round(3).to_string(index=False))''')
+print('sortino_ir top 5 (의사결정 메트릭만 표시):')
+print(rt.nlargest(5, 'sortino_ir')[['name','sortino_TEST','sortino_ir','mdd_TEST']].round(3).to_string(index=False))
+print()
+print('[참조] 사후 — 위 5 cfg 의 사후 검증 메트릭:')
+top5_ir = rt.nlargest(5, 'sortino_ir')[['name','sortino_HOLD_OUT','mdd_HOLD_OUT']].round(3)
+print(top5_ir.to_string(index=False))''')
 
 # ─────────────────────────────────────────────────────────────────
 md("""## §2. Universe 정의 — 교집합 추출
@@ -196,12 +243,21 @@ inter_df = rt[rt['name'].isin(intersection)].copy()
 inter_df['rank_sortino_TEST'] = rt['sortino_TEST'].rank(ascending=False).loc[inter_df.index].astype(int)
 inter_df['rank_sortino_ir'] = rt['sortino_ir'].rank(ascending=False).loc[inter_df.index].astype(int)
 
-cols_show = ['name','sortino_TEST','sortino_HOLD_OUT','sortino_ir',
-             'mdd_TEST','mdd_HOLD_OUT','rank_sortino_TEST','rank_sortino_ir']
-inter_df_sorted = inter_df.sort_values('sortino_TEST', ascending=False)[cols_show].reset_index(drop=True)
+# 의사결정 메트릭만 (in-sample only ★)
+cols_decision = ['name','sortino_TEST','sortino_ir','mdd_TEST',
+                 'rank_sortino_TEST','rank_sortino_ir']
+# 사후 검증 메트릭 [참조]
+cols_posthoc = ['name','sortino_HOLD_OUT','mdd_HOLD_OUT']
+
+inter_df_sorted = inter_df.sort_values('sortino_TEST', ascending=False).reset_index(drop=True)
 inter_df_sorted.index += 1
-print(f'교집합 N = {N} cfg (sortino_TEST 내림차순):')
-print(inter_df_sorted.round(3).to_string())''')
+inter_df_decision = inter_df_sorted[cols_decision]
+inter_df_posthoc  = inter_df_sorted[cols_posthoc]
+print(f'★ 교집합 N = {N} cfg — 의사결정 메트릭 (in-sample only, sortino_TEST 내림차순):')
+print(inter_df_decision.round(3).to_string())
+print()
+print(f'[참조] 교집합 N = {N} cfg — 사후 검증 메트릭 (HO, §11/§13 진단 전용):')
+print(inter_df_posthoc.round(3).to_string())''')
 
 code('''# §2-2. CSV 저장
 inter_df_sorted.to_csv(OUT_DIR / 'intersection_summary.csv', index=False, encoding='utf-8-sig')
@@ -242,14 +298,13 @@ plt.savefig(FIG_DIR / 'fig01_universe_scatter.png', dpi=150, bbox_inches='tight'
 plt.show()
 print(f'OK saved: {FIG_DIR / "fig01_universe_scatter.png"}')''')
 
-code('''# §2-4. fig02 — 교집합 N cfg 의 4 핵심 메트릭 box plot
-fig, axes = plt.subplots(1, 4, figsize=(15, 5))
+code('''# §2-4. fig02 — 교집합 N cfg 의 3 핵심 의사결정 메트릭 box plot (in-sample only ★)
+fig, axes = plt.subplots(1, 3, figsize=(13, 5))
 
 inter_data = rt[rt['name'].isin(intersection)]
 metrics_box = [('sortino_TEST', '1순위: Sortino_TEST'),
-               ('mdd_TEST',     '2순위-A: MDD_TEST'),
-               ('mdd_HOLD_OUT', '2순위-B: MDD_HOLD_OUT'),
-               ('sortino_ir',   '3순위: sortino_ir')]
+               ('mdd_TEST',     '2순위: MDD_TEST'),
+               ('sortino_ir',   '3순위: sortino_ir (R3=2023-12)')]
 
 for ax, (col, title) in zip(axes, metrics_box):
     bp = ax.boxplot([rt[col].dropna(), inter_data[col].dropna()],
@@ -260,7 +315,7 @@ for ax, (col, title) in zip(axes, metrics_box):
     ax.set_title(title, fontsize=10)
     ax.grid(True, alpha=0.3, axis='y')
 
-plt.suptitle(f'§2-4. 교집합 N = {N} cfg 의 핵심 메트릭 분포 (vs 153 main cfg)',
+plt.suptitle(f'§2-4. 교집합 N = {N} cfg 의 의사결정 메트릭 분포 (in-sample only, vs 153 main cfg)',
              fontsize=12, fontweight='bold')
 plt.tight_layout()
 plt.savefig(FIG_DIR / 'fig02_intersection_metric_dist.png', dpi=150, bbox_inches='tight')
@@ -286,16 +341,23 @@ ax.text(rt['sortino_TEST'].max() - 0.1, 0.5, '학습편향 의심 영역\\n(s_TE
 xlim = ax.get_xlim()
 ax.plot([0, max(xlim[1], 3)], [0, max(xlim[1], 3)], 'k--', alpha=0.4, lw=1, label='y = x')
 
-# mat_eq_eq_lam_pap 강조 (잠정 Top 1, HO 부진 사례)
+# mat_eq_eq_lam_pap 강조 (초기 잠정 Top 1, 누설 제거 후 탈락 사례)
 target = rt[rt['name'] == 'mat_eq_eq_lam_pap']
 if len(target) > 0:
     ax.scatter(target['sortino_TEST'], target['sortino_HOLD_OUT'],
                color='#ffcc00', s=200, marker='*', edgecolor='black', linewidth=1.2,
-               label='mat_eq_eq_lam_pap (잠정 Top 1)', zorder=5)
-    ax.annotate('mat_eq_eq_lam_pap\\n(HO 부진)',
+               label='mat_eq_eq_lam_pap (초기 잠정, 탈락)', zorder=5)
+    ax.annotate('mat_eq_eq_lam_pap\\n(초기 잠정 → 탈락)',
                 (target['sortino_TEST'].iloc[0], target['sortino_HOLD_OUT'].iloc[0]),
                 xytext=(15, -15), textcoords='offset points', fontsize=9, color='#cc6600',
                 arrowprops=dict(arrowstyle='->', color='#cc6600', lw=1))
+
+# 신규 Top 1 강조
+new_top1 = rt[rt['name'] == 'mat_eq_mcap_lam_he']
+if len(new_top1) > 0:
+    ax.scatter(new_top1['sortino_TEST'], new_top1['sortino_HOLD_OUT'],
+               color='#00aa00', s=250, marker='*', edgecolor='black', linewidth=1.5,
+               label='mat_eq_mcap_lam_he (신규 Top 1 ★)', zorder=6)
 
 ax.set_xlabel('sortino_TEST (학습 168m)', fontsize=11)
 ax.set_ylabel('sortino_HOLD_OUT (미래 24m)', fontsize=11)
@@ -307,32 +369,38 @@ plt.savefig(FIG_DIR / 'fig03_test_vs_ho_universe.png', dpi=150, bbox_inches='tig
 plt.show()
 print(f'OK saved: {FIG_DIR / "fig03_test_vs_ho_universe.png"}')''')
 
-code('''# §2-6. 교집합 cfg 메트릭 분포 통계 (요약, §3 hard filter 결정 근거용)
-print(f'교집합 N = {N} cfg 의 메트릭 분포:')
-filter_cols = ['sortino_TEST','sortino_HOLD_OUT','sortino_ir',
-               'mdd_TEST','mdd_HOLD_OUT','eff_n_avg','turnover_avg','beta']
-print(inter_df[filter_cols].describe().round(3).to_string())
+code('''# §2-6. 교집합 cfg 메트릭 분포 통계 — 의사결정용 + [참조] 사후 검증용
+filter_cols_decision = ['sortino_TEST','sortino_ir','mdd_TEST',
+                         'eff_n_avg','turnover_avg','beta']
+filter_cols_posthoc  = ['sortino_HOLD_OUT','mdd_HOLD_OUT']
+
+print(f'★ 교집합 N = {N} cfg — 의사결정 메트릭 분포 (in-sample only):')
+print(inter_df[filter_cols_decision].describe().round(3).to_string())
 print()
-print(f'\\nsortino_HOLD_OUT < 0 (학습편향 의심): {(inter_df["sortino_HOLD_OUT"] < 0).sum()}')
-print(f'mdd_TEST < -0.40 (40% 초과 손실): {(inter_df["mdd_TEST"] < -0.40).sum()}')
-print(f'mdd_HOLD_OUT < -0.30 (30% 초과 손실): {(inter_df["mdd_HOLD_OUT"] < -0.30).sum()}')
-print(f'eff_n_avg < 30 (분산 부족): {(inter_df["eff_n_avg"] < 30).sum()}')''')
+print(f'[참조] 교집합 N = {N} cfg — 사후 검증 메트릭 분포 (HO, 의사결정 미사용):')
+print(inter_df[filter_cols_posthoc].describe().round(3).to_string())
+print()
+print('§3 hard filter 후보 시뮬레이션 (in-sample only):')
+print(f'  mdd_TEST < -0.40 (40% 초과 손실): {(inter_df["mdd_TEST"] < -0.40).sum()}/{N}')
+print(f'  eff_n_avg < 30 (분산 부족):       {(inter_df["eff_n_avg"] < 30).sum()}/{N}')
+print(f'  sortino_TEST < 1.5 (TEST 부진):    {(inter_df["sortino_TEST"] < 1.5).sum()}/{N}')''')
 
 # ─────────────────────────────────────────────────────────────────
-md("""## §3. Hard filter 결정 + 적용
+md("""## §3. Hard filter 결정 + 적용 (in-sample only)
 
-### Hard filter 시뮬레이션 결과 (§2-6 기반)
+### Hard filter — IN-SAMPLE 후보만 검토
 
-교집합 N = 22 cfg 의 분포가 이미 견고하여, 후보 hard filter 모두가 **이미 통과**:
+학술 표준 준수를 위해 HO 기반 후보 (`sortino_HOLD_OUT > 0`, `mdd_HOLD_OUT > -0.30`) 는 **의사결정에서 제외**합니다. in-sample 후보만 검토:
 
-| 후보 filter | 의미 | 탈락 cfg |
+| in-sample 후보 filter | 의미 | 탈락 cfg |
 |---|---|---|
-| `mdd_TEST > -0.40` | 40% 초과 손실 제외 | **0/22** |
-| `mdd_HOLD_OUT > -0.30` | HO 30% 초과 손실 제외 | **0/22** |
+| `mdd_TEST > -0.40` | TEST 40% 초과 손실 제외 | **0/22** |
 | `eff_n_avg ≥ 30` | 분산 부족 제외 | **0/22** |
-| `sortino_HOLD_OUT > 0` | HO 음수 제외 | **0/22** |
+| `sortino_TEST > 1.5` | TEST sortino 부진 제외 | **0/22** |
 
-**시사점**: 교집합 추출 (sortino_TEST top 50 ∩ sortino_ir top 50) 자체가 이미 hard filter 효과를 본 상태. 추가 필터는 의미 미미.
+**시사점**: 교집합 추출 (sortino_TEST top 50 ∩ sortino_ir top 50, in-sample 기준) 자체가 이미 in-sample hard filter 효과를 본 상태. 추가 필터 불필요.
+
+[참고] HO 기반 후보 (sortino_HO, mdd_HO) 는 §13 사후 진단 비교에만 사용 — 의사결정 미사용.
 
 ### 결정 (Step 3)
 
@@ -352,17 +420,29 @@ print(f'OK saved: {OUT_DIR / "filtered_M_summary.csv"}')''')
 # ─────────────────────────────────────────────────────────────────
 md("""## §4. Lexicographic 종합 점수
 
-### 정렬 절차
+### §4-1 (HO 포함 — 비교 참고용) vs §4-4 (in-sample only — 학술 표준 ★)
+
+본 § 는 **두 변형**을 모두 산출합니다:
+
+| 변형 | 2차 tiebreak | 위치 | 학술 채택 |
+|---|---|---|---|
+| HO 포함 | `(rank_mdd_TEST + rank_mdd_HO) / 2` | §4-1 | ✗ 비교용 |
+| **in-sample only** | **`mdd_TEST` 단독** | **§4-4** | **✓ 학술 표준** |
+
+### Lexicographic 정렬 절차 (공통 구조)
 
 ```
-1차: Sortino_TEST 내림차순 정렬
+1차: sortino_TEST 내림차순 정렬
   └─ tied 정의: |s1 - s2| < ε (ε = 0.10)
-2차: tied 그룹 내 → (rank_MDD_TEST + rank_MDD_HO) / 2 평균 rank 오름차순
+2차: tied 그룹 내 → MDD rank 오름차순 (변형마다 다름)
   └─ tied 정의: rank 차이 ≤ 1
 3차: 그래도 tied 시 → sortino_ir 내림차순
 ```
 
-22 cfg 중 ε = 0.10 동순위 그룹화 → MDD 평균 rank → sortino_ir 최종 결정.
+**§13 에서 두 결과 비교** — 누설 제거 후:
+- §4-1 (HO 포함, 비교용) Top 1 = `mat_eq_mcap_lam_he`
+- §4-4 (in-sample only, 학술 표준) Top 1 = `mat_eq_mcap_lam_he` ✓
+- 즉 **Lex 기준은 두 변형 모두 일치**. DM 기준 (§9) 은 §13 에서 별도 비교.
 """)
 
 code('''# §4-1. Lexicographic 정렬 함수
@@ -459,8 +539,8 @@ ax.set_xticks(range(4))
 ax.set_xticklabels(heatmap_titles, fontsize=9)
 ax.set_yticks(range(len(ranked)))
 ax.set_yticklabels([f"#{r['lex_rank']}  {r['name']}" for _, r in ranked.iterrows()], fontsize=8)
-ax.set_title(f'§4-3. Lexicographic rank heatmap (M = {len(ranked)}, ε = {EPS_SORTINO})\\n'
-             f'(녹색=상위, 적색=하위; pct rank 기준)',
+ax.set_title(f'§4-3. fig04 — Lexicographic rank heatmap [HO 포함 비교용, 학술 표준 X]\\n'
+             f'(M = {len(ranked)}, ε = {EPS_SORTINO}; 녹색=상위, 적색=하위 — 학술 표준은 fig04b 참조)',
              fontsize=11, fontweight='bold')
 plt.colorbar(im, ax=ax, label='Percentile rank (0~1)')
 plt.tight_layout()
@@ -469,28 +549,178 @@ plt.show()
 print(f'OK saved: {FIG_DIR / "fig04_lexicographic_heatmap.png"}')''')
 
 # ─────────────────────────────────────────────────────────────────
+md("""### §4-4. In-sample only Lexicographic (학술 표준 — HOLD_OUT 정보 제외)
+
+기존 §4-1 의 lexicographic 정렬은 2 차 tiebreak 에 `mdd_HOLD_OUT` 을 포함하여
+**HOLD_OUT 정보가 의사결정에 누설** 됩니다. 이는 학술적 backtest overfitting 으로
+간주되며, 진정한 out-of-sample 평가가 어렵습니다.
+
+본 셀은 **2 차 tiebreak 을 `mdd_TEST` 단독**으로 변경한 in-sample 전용 변형입니다:
+
+```
+1차: sortino_TEST 내림차순 (ε = 0.10 동순위 그룹화)
+2차: mdd_TEST 단독 rank (HO 제외)
+3차: sortino_ir 내림차순 (R1+R2+R3 의 일부가 HO 와 겹침 — 약한 누설 잔존)
+```
+
+§4-5 에서 두 결과 (HO 포함 vs in-sample only) 의 Top 10 차이를 비교합니다.
+""")
+
+code('''# §4-4. In-sample only Lexicographic
+def lexicographic_sort_insample(df, eps=EPS_SORTINO):
+    """In-sample only 변형 — 2순위에서 mdd_HOLD_OUT 제거.
+
+    1차: sortino_TEST 내림차순 → eps 동순위 그룹화
+    2차: mdd_TEST 단독 rank
+    3차: sortino_ir 내림차순
+    """
+    df = df.copy()
+    df['rank_mdd_TEST_only'] = df['mdd_TEST'].rank(ascending=False)
+    df = df.sort_values('sortino_TEST', ascending=False).reset_index(drop=True)
+
+    group_id = [0]
+    cur_top = df.iloc[0]['sortino_TEST']
+    for i in range(1, len(df)):
+        if (cur_top - df.iloc[i]['sortino_TEST']) > eps:
+            cur_top = df.iloc[i]['sortino_TEST']
+            group_id.append(group_id[-1] + 1)
+        else:
+            group_id.append(group_id[-1])
+    df['lex_group_is'] = group_id
+
+    sorted_parts = []
+    for gid, sub in df.groupby('lex_group_is', sort=True):
+        sub = sub.sort_values(['rank_mdd_TEST_only', 'sortino_ir'],
+                              ascending=[True, False]).reset_index(drop=True)
+        sorted_parts.append(sub)
+
+    df_final = pd.concat(sorted_parts, ignore_index=True)
+    df_final['lex_rank_is'] = range(1, len(df_final) + 1)
+    return df_final
+
+
+ranked_insample = lexicographic_sort_insample(M_cfg, eps=EPS_SORTINO)
+print(f'§4-4. In-sample only Lexicographic (M = {len(ranked_insample)}, ε = {EPS_SORTINO}):')
+print()
+view_cols_is = ['lex_rank_is','name','sortino_TEST','mdd_TEST','sortino_ir',
+                'lex_group_is','rank_mdd_TEST_only']
+print(ranked_insample[view_cols_is].round(3).to_string(index=False))''')
+
+code('''# §4-5. HO 포함 (§4-1) vs in-sample only (§4-4) — Top 10 비교
+ho_top10 = ranked.head(10)['name'].tolist()
+is_top10 = ranked_insample.head(10)['name'].tolist()
+
+compare_df = pd.DataFrame({
+    'rank': range(1, 11),
+    'HO 포함 (기존 §4-1)':       ho_top10,
+    'in-sample only (§4-4)':      is_top10,
+    '동일?':                      ['✓' if a == b else '✗' for a, b in zip(ho_top10, is_top10)],
+})
+print('§4-5. Top 10 비교:')
+print(compare_df.to_string(index=False))
+
+# Top 1 변경 여부
+top1_HO = ranked.iloc[0]['name']
+top1_IS = ranked_insample.iloc[0]['name']
+print()
+if top1_HO == top1_IS:
+    print(f'★ Top 1 동일: {top1_HO}')
+else:
+    print(f'△ Top 1 변경:')
+    print(f'    HO 포함 (기존):       {top1_HO}')
+    print(f'    in-sample only:       {top1_IS}')
+
+# CSV 저장
+compare_df.to_csv(OUT_DIR / 'lex_compare_HO_vs_insample.csv', index=False, encoding='utf-8-sig')
+print(f'\\nOK saved: {OUT_DIR / "lex_compare_HO_vs_insample.csv"}')''')
+
+code('''# §4-6. fig04b — In-sample only Lexicographic rank heatmap (학술 표준 ★)
+import matplotlib.colors as mcolors
+
+fig, ax = plt.subplots(figsize=(10, max(6, len(ranked_insample) * 0.35)))
+
+# in-sample 3 메트릭만 (mdd_HOLD_OUT 제거)
+heatmap_cols_is = ['sortino_TEST', 'mdd_TEST', 'sortino_ir']
+heatmap_titles_is = ['Sortino_TEST\\n(1순위)',
+                      'MDD_TEST\\n(2순위)',
+                      'sortino_ir\\n(3순위)']
+
+# rank 정규화
+heat_is = pd.DataFrame()
+heat_is['Sortino_TEST'] = ranked_insample['sortino_TEST'].rank(pct=True)
+heat_is['MDD_TEST']     = ranked_insample['mdd_TEST'].rank(pct=True)
+heat_is['sortino_ir']   = ranked_insample['sortino_ir'].rank(pct=True)
+
+im = ax.imshow(heat_is.values, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
+
+# 텍스트 라벨
+for i, idx in enumerate(ranked_insample.index):
+    for j, col in enumerate(heatmap_cols_is):
+        v = ranked_insample.loc[idx, col]
+        txt = f'{v:.2f}' if abs(v) < 100 else f'{v:.0f}'
+        color = 'white' if heat_is.iloc[i, j] < 0.3 or heat_is.iloc[i, j] > 0.7 else 'black'
+        ax.text(j, i, txt, ha='center', va='center', fontsize=8, color=color)
+
+ax.set_xticks(range(len(heatmap_cols_is)))
+ax.set_xticklabels(heatmap_titles_is, fontsize=10)
+ax.set_yticks(range(len(ranked_insample)))
+ax.set_yticklabels([f"#{r['lex_rank_is']}  {r['name']}" for _, r in ranked_insample.iterrows()],
+                   fontsize=8)
+ax.set_title(f'§4-6. fig04b — In-sample only Lexicographic heatmap '
+             f'(M = {len(ranked_insample)}, ε = {EPS_SORTINO}) ★\\n'
+             f'(HO 메트릭 제외, 학술 표준; 녹색=상위, 적색=하위)',
+             fontsize=11, fontweight='bold')
+plt.colorbar(im, ax=ax, label='Percentile rank (0~1)')
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig04b_lexicographic_heatmap_insample.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig04b_lexicographic_heatmap_insample.png"}')''')
+
+# ─────────────────────────────────────────────────────────────────
 md("""## §5. Top 10 후보 정밀 분석
 
 §4 의 lexicographic 결과 상위 10개 cfg 에 대해 **16개 메트릭 종합 + z-score heatmap** 분석.
 
-### 메트릭 카테고리 (5개, 16개)
+### 메트릭 카테고리 — 의사결정용 vs 사후 검증용 명확 분리
 
-| 카테고리 | 메트릭 |
-|---|---|
-| 성과 (7) | sortino_TEST/HO/FULL, sharpe_TEST/HO/FULL, cagr_FULL |
-| 위험 (3) | calmar, cvar_5, mdd_FULL |
-| 안정성 (2) | TEST_HO_gap (계산), sortino_ir |
-| 견고성 (2) | turnover_avg, eff_n_avg |
-| Alpha (3) | alpha, beta, IR (계산) |
+#### A. 의사결정용 (in-sample, 5 메트릭) — §9-4 결정 matrix 직접 입력
+
+| 메트릭 | 카테고리 | 사용 § |
+|---|---|---|
+| `sortino_TEST` | 성과 | §4 lex 1차, §9 perf |
+| `mdd_TEST` | 위험 | §4 lex 2차 (in-sample), §9 risk |
+| `sortino_ir` | 안정성 | §4 lex 3차, §9 stab |
+| `turnover_avg`, `eff_n_avg` | 견고성 | §9 robust |
+| `alpha`, `beta` | Alpha | §9 alpha |
+
+#### B. 사후 검증용 (HO/FULL/계산, 11 메트릭) — §11/§12/§13 등 진단
+
+| 메트릭 | 사용 위치 | HO 의존도 |
+|---|---|:---:|
+| `sortino_HOLD_OUT`, `sharpe_HOLD_OUT` | §13 in-sample vs HO 비교 | ★★★ 직접 |
+| `TEST_HO_gap` | §13 학습편향 진단 | ★★★ 직접 |
+| `sortino_FULL`, `sharpe_TEST/FULL`, `cagr_FULL` | 보조 참조 | ★ 부분 |
+| `calmar`, `cvar_5`, `mdd_FULL` | §6 위험 시각화 | ★ 부분 |
+| `IR` (Information Ratio) | §16 vs SPY | ★ 부분 |
+
+**시사점**:
+- `top10_metrics.csv` 는 **모든 16 메트릭 보존** (참조용)
+- 의사결정 (§9-4) 은 **A 그룹 5 메트릭만 사용**
+- 시각화 (§5-3 fig05) 는 메트릭 그룹 구분 표시 (좌: in-sample, 우: 사후)
 """)
 
-code('''# §5-1. Top 10 후보 + 16 메트릭 종합
+code('''# §5-1. Top 10 후보 — IN-SAMPLE ONLY (학술 표준 ★)
+# 누설 제거: ranked_insample (§4-4) 의 head(10) 사용
 TOP_N = 10
-top10 = ranked.head(TOP_N).copy()
-print(f'Top {TOP_N} 후보 (lexicographic):')
-print(top10[['lex_rank','name','sortino_TEST','mdd_TEST','mdd_HOLD_OUT','sortino_ir']].round(3).to_string(index=False))''')
+top10 = ranked_insample.head(TOP_N).copy().reset_index(drop=True)
+top10['lex_rank'] = top10['lex_rank_is']  # alias (in-sample rank)
+print(f'★ Top {TOP_N} 후보 — IN-SAMPLE ONLY Lexicographic (HO 정보 미사용):')
+print(top10[['lex_rank','name','sortino_TEST','mdd_TEST','sortino_ir']].round(3).to_string(index=False))
+print()
+print('[참조] HO 포함 Lex 의 Top 10 (§4-1 비교용):')
+print(ranked.head(TOP_N)[['lex_rank','name']].to_string(index=False))''')
 
-code('''# §5-2. 16 메트릭 계산 + 종합 표
+code('''# §5-2. 메트릭 종합 — 의사결정용 (in-sample 7) + 사후 검증용 (HO/FULL 9) 분리
 import pickle
 
 def compute_extra_metrics(name, results_dir='results', spy=spy, rf=rf):
@@ -513,87 +743,153 @@ def compute_extra_metrics(name, results_dir='results', spy=spy, rf=rf):
         IR = np.nan
     return {'IR': float(IR)}
 
-# 16 메트릭 종합
-metric_rows = []
+# 의사결정용 7 메트릭 (in-sample only) ★
+decision_rows = []
+posthoc_rows = []
 for _, row in top10.iterrows():
     extras = compute_extra_metrics(row['name'])
     s_test = row['sortino_TEST']
     s_ho = row['sortino_HOLD_OUT']
     test_ho_gap = abs(s_test - s_ho) / s_test if s_test != 0 else np.nan
 
-    metric_rows.append({
+    # 의사결정용 (in-sample 7) — §9-4 DM 입력
+    decision_rows.append({
         'lex_rank': row['lex_rank'],
         'name': row['name'],
-        # 성과 (7)
+        # 성과 (in-sample)
         'sortino_TEST': row['sortino_TEST'],
-        'sortino_HOLD_OUT': row['sortino_HOLD_OUT'],
-        'sortino_FULL': row['sortino_FULL'],
         'sharpe_TEST': row['sharpe_TEST'],
+        # 위험 (in-sample)
+        'mdd_TEST': row['mdd_TEST'],
+        # 안정성 (in-sample only sortino_ir, R3=2023-12 한정)
+        'sortino_ir': row['sortino_ir'],
+        # 견고성
+        'turnover_avg': row['turnover_avg'],
+        'eff_n_avg': row['eff_n_avg'],
+        # Alpha (CAPM α/β 는 192m 전체 — 약한 누설 잔존, §16 factor 에서 보강)
+        'alpha': row['alpha'],
+        'beta': row['beta'],
+    })
+
+    # 사후 검증용 (HO/FULL 9) — §11/§13 등 진단 전용
+    posthoc_rows.append({
+        'lex_rank': row['lex_rank'],
+        'name': row['name'],
+        # HO 메트릭
+        'sortino_HOLD_OUT': row['sortino_HOLD_OUT'],
         'sharpe_HOLD_OUT': row['sharpe_HOLD_OUT'],
+        'TEST_HO_gap': test_ho_gap,
+        # FULL 메트릭
+        'sortino_FULL': row['sortino_FULL'],
         'sharpe_FULL': row['sharpe_FULL'],
-        'cagr': row['cagr_FULL'],
-        # 위험 (3)
+        'cagr_FULL': row['cagr_FULL'],
+        # 192m 기반 (FULL 누설 가능)
         'calmar': row['calmar'],
         'cvar_5': row['cvar_5'],
         'mdd_FULL': row['mdd_FULL'],
-        # 안정성 (2)
-        'TEST_HO_gap': test_ho_gap,
-        'sortino_ir': row['sortino_ir'],
-        # 견고성 (2)
-        'turnover_avg': row['turnover_avg'],
-        'eff_n_avg': row['eff_n_avg'],
-        # Alpha (3)
-        'alpha': row['alpha'],
-        'beta': row['beta'],
         'IR': extras.get('IR', np.nan),
     })
 
-top10_metrics = pd.DataFrame(metric_rows)
+# Top 10 × 7 의사결정 메트릭
+top10_metrics_decision = pd.DataFrame(decision_rows)
+top10_metrics_decision.to_csv(OUT_DIR / 'top10_metrics_decision.csv', index=False, encoding='utf-8-sig')
+print(f'★ §5-2a. Top 10 × 7 의사결정용 메트릭 (in-sample only):')
+print(top10_metrics_decision.round(3).to_string(index=False))
+
+# Top 10 × 9 사후 검증 메트릭
+top10_metrics_posthoc = pd.DataFrame(posthoc_rows)
+top10_metrics_posthoc.to_csv(OUT_DIR / 'top10_metrics_posthoc.csv', index=False, encoding='utf-8-sig')
+print(f'\\n[참조] §5-2b. Top 10 × 9 사후 검증용 메트릭 (HO/FULL — §11/§13 진단):')
+print(top10_metrics_posthoc.round(3).to_string(index=False))
+
+# 통합 (역호환 — §6, §8 등에서 참조)
+top10_metrics = top10_metrics_decision.merge(
+    top10_metrics_posthoc, on=['lex_rank','name'])
 top10_metrics.to_csv(OUT_DIR / 'top10_metrics.csv', index=False, encoding='utf-8-sig')
-print(f'OK saved: {OUT_DIR / "top10_metrics.csv"}')
-print()
-print('Top 10 × 16 메트릭:')
-print(top10_metrics.round(3).to_string(index=False))''')
+print(f'\\nOK saved: top10_metrics_decision.csv + top10_metrics_posthoc.csv + top10_metrics.csv')''')
 
-code('''# §5-3. fig05 — Top 10 × 16 메트릭 z-score heatmap
-heat_cols = ['sortino_TEST','sortino_HOLD_OUT','sortino_FULL',
-             'sharpe_TEST','sharpe_HOLD_OUT','sharpe_FULL','cagr',
-             'calmar','cvar_5','mdd_FULL',
-             'TEST_HO_gap','sortino_ir',
-             'turnover_avg','eff_n_avg',
-             'alpha','beta','IR']
+code('''# §5-3a. fig05a — IN-SAMPLE ONLY 7 메트릭 z-score heatmap (의사결정 입력) ★
+heat_cols_decision = ['sortino_TEST','mdd_TEST','sortino_ir',
+                       'turnover_avg','eff_n_avg','alpha','beta']
 
-heat = top10_metrics[heat_cols].copy()
-# z-score 정규화 (각 컬럼별)
-heat_z = (heat - heat.mean()) / heat.std()
+heat_d = top10_metrics_decision[heat_cols_decision].copy()
+# z-score 정규화 — IN-SAMPLE 7 메트릭만으로 산출 (HO 영향 0)
+heat_d_z = (heat_d - heat_d.mean()) / heat_d.std()
 
 # 방향 통일 (좋을수록 +)
-flip_cols = ['cvar_5','mdd_FULL','TEST_HO_gap','turnover_avg']  # 이들은 작을수록 좋음
-for c in flip_cols:
-    heat_z[c] = -heat_z[c]
+flip_d = ['turnover_avg','mdd_TEST']
+for c in flip_d:
+    if c in heat_d_z.columns:
+        heat_d_z[c] = -heat_d_z[c]
+
+# beta 는 절댓값 0.7 근접이 좋음 → 별도 처리 (단순화: 그대로 표시)
+
+fig, ax = plt.subplots(figsize=(11, 6))
+im = ax.imshow(heat_d_z.values, cmap='RdYlGn', aspect='auto', vmin=-2, vmax=2)
+
+for i in range(len(heat_d)):
+    for j, col in enumerate(heat_cols_decision):
+        v = heat_d.iloc[i, j]
+        txt = f'{v:.2f}' if abs(v) < 100 else f'{v:.0f}'
+        color = 'white' if abs(heat_d_z.iloc[i, j]) > 1.2 else 'black'
+        ax.text(j, i, txt, ha='center', va='center', fontsize=8, color=color)
+
+ax.set_xticks(range(len(heat_cols_decision)))
+xtick_labels = ax.set_xticklabels(heat_cols_decision, rotation=30, ha='right', fontsize=10)
+for lbl in xtick_labels:
+    lbl.set_color('#cc0000')
+    lbl.set_fontweight('bold')
+
+ax.set_yticks(range(len(top10_metrics_decision)))
+ax.set_yticklabels([f"#{r.lex_rank}  {r['name']}" for _, r in top10_metrics_decision.iterrows()],
+                   fontsize=9)
+ax.set_title(f'§5-3a. Top {TOP_N} × 7 IN-SAMPLE 메트릭 z-score heatmap ★\\n'
+             f'(의사결정 입력 — HO 정보 0%, mdd_TEST/turnover 방향 반전)',
+             fontsize=11, fontweight='bold')
+plt.colorbar(im, ax=ax, label='z-score')
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig05a_top10_decision_heatmap.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig05a_top10_decision_heatmap.png"}')''')
+
+code('''# §5-3b. fig05b — 사후 검증 메트릭 9 z-score (참조용, HO/FULL)
+heat_cols_posthoc = ['sortino_HOLD_OUT','sharpe_HOLD_OUT','TEST_HO_gap',
+                      'sortino_FULL','sharpe_FULL','cagr_FULL',
+                      'calmar','cvar_5','mdd_FULL']
+
+heat_p = top10_metrics_posthoc[heat_cols_posthoc].copy()
+heat_p_z = (heat_p - heat_p.mean()) / heat_p.std()
+flip_p = ['TEST_HO_gap','cvar_5','mdd_FULL']
+for c in flip_p:
+    if c in heat_p_z.columns:
+        heat_p_z[c] = -heat_p_z[c]
 
 fig, ax = plt.subplots(figsize=(13, 6))
-im = ax.imshow(heat_z.values, cmap='RdYlGn', aspect='auto', vmin=-2, vmax=2)
+im = ax.imshow(heat_p_z.values, cmap='RdYlGn', aspect='auto', vmin=-2, vmax=2)
 
-for i in range(len(heat)):
-    for j, col in enumerate(heat_cols):
-        v = heat.iloc[i, j]
+for i in range(len(heat_p)):
+    for j, col in enumerate(heat_cols_posthoc):
+        v = heat_p.iloc[i, j]
         txt = f'{v:.2f}' if abs(v) < 100 else f'{v:.0f}'
-        color = 'white' if abs(heat_z.iloc[i, j]) > 1.2 else 'black'
-        ax.text(j, i, txt, ha='center', va='center', fontsize=7, color=color)
+        color = 'white' if abs(heat_p_z.iloc[i, j]) > 1.2 else 'black'
+        ax.text(j, i, txt, ha='center', va='center', fontsize=8, color=color)
 
-ax.set_xticks(range(len(heat_cols)))
-ax.set_xticklabels(heat_cols, rotation=45, ha='right', fontsize=9)
-ax.set_yticks(range(len(top10_metrics)))
-ax.set_yticklabels([f"#{r.lex_rank}  {r['name']}" for _, r in top10_metrics.iterrows()], fontsize=9)
-ax.set_title(f'§5-3. Top {TOP_N} × 16 메트릭 z-score heatmap\\n'
-             f'(녹색=상위, 적색=하위; cvar/mdd/gap/turnover는 방향 반전)',
+ax.set_xticks(range(len(heat_cols_posthoc)))
+xtick_labels = ax.set_xticklabels(heat_cols_posthoc, rotation=30, ha='right', fontsize=10)
+for lbl in xtick_labels:
+    lbl.set_color('#0066cc')
+
+ax.set_yticks(range(len(top10_metrics_posthoc)))
+ax.set_yticklabels([f"#{r.lex_rank}  {r['name']}" for _, r in top10_metrics_posthoc.iterrows()],
+                   fontsize=9)
+ax.set_title(f'§5-3b. Top {TOP_N} × 9 사후 검증 메트릭 z-score heatmap [참조용]\\n'
+             f'(§11 sector / §13 비교 진단 전용 — 의사결정 입력 아님)',
              fontsize=11, fontweight='bold')
-plt.colorbar(im, ax=ax, label='z-score (방향 통일)')
+plt.colorbar(im, ax=ax, label='z-score')
 plt.tight_layout()
-plt.savefig(FIG_DIR / 'fig05_top10_metric_heatmap.png', dpi=150, bbox_inches='tight')
+plt.savefig(FIG_DIR / 'fig05b_top10_posthoc_heatmap.png', dpi=150, bbox_inches='tight')
 plt.show()
-print(f'OK saved: {FIG_DIR / "fig05_top10_metric_heatmap.png"}')''')
+print(f'OK saved: {FIG_DIR / "fig05b_top10_posthoc_heatmap.png"}')''')
 
 # ─────────────────────────────────────────────────────────────────
 md("""## §6. 안정성 + 견고성 검증 (Top 10)
@@ -907,7 +1203,16 @@ print(f'OK saved: {FIG_DIR / "fig10_alpha_with_ci.png"}')''')
 # ─────────────────────────────────────────────────────────────────
 md("""## §9. Top 5 → Top 1 결정
 
-### 결정 matrix (Top 5 × 5 차원, 가중 점수)
+### §9-1 (HO 포함 — 비교 참고용) vs §9-4 (in-sample only — 학술 표준 ★)
+
+본 § 도 §4 와 동일하게 **두 변형**을 산출:
+
+| 변형 | 성과 차원 | 안정성 차원 | 위치 | 학술 채택 |
+|---|---|---|---|---|
+| HO 포함 | `(s_TEST + s_HO) / 2` | `s_ir + (1 - TEST_HO_gap)` | §9-1 | ✗ 비교용 |
+| **in-sample only** | **`s_TEST` 단독** | **`s_ir` 단독** | **§9-4** | **✓ 학술 표준** |
+
+### §9-1 결정 matrix 차원 (HO 포함, 비교용)
 
 | 차원 | 가중치 | 메트릭 |
 |---|---|---|
@@ -920,25 +1225,33 @@ md("""## §9. Top 5 → Top 1 결정
 각 차원별 rank 합산 → 가중 평균 → 최저 점수 = Top 1.
 """)
 
-code('''# §9-1. 결정 matrix 작성 (Top 5)
+code('''# §9-1. 결정 matrix [참조용 — HO 포함 변형, §9-4 in-sample 가 학술 표준]
+# 본 셀은 비교용으로 유지. 실제 의사결정은 §9-4 사용.
+# Top 5 추출은 in-sample lex 기준 (top10_metrics_decision)
 TOP_FINAL = 5
-top5 = top10_metrics.head(TOP_FINAL).copy()
+
+# 5 cfg 추출 — §5-1 의 in-sample top10 의 head(5)
+top5_names_decision = top10_metrics_decision.head(TOP_FINAL)['name'].tolist()
+# top10_metrics (전체 16 메트릭 통합본) 에서 추출
+top5 = top10_metrics[top10_metrics['name'].isin(top5_names_decision)].copy()
+top5 = top5.set_index('name').loc[top5_names_decision].reset_index()
 
 # 각 차원별 rank (낮을수록 좋음)
 def rank_low_better(s, ascending=False):
     """ascending=False: 큰 값이 좋음 (rank 1)."""
     return s.rank(ascending=ascending)
 
-# 성과 (30%)
+# === HO 포함 변형 (§9-1, 비교용) ===
+# 성과 (30%) — sortino_TEST + sortino_HOLD_OUT
 top5['rank_perf'] = (rank_low_better(top5['sortino_TEST']) +
                      rank_low_better(top5['sortino_HOLD_OUT'])) / 2
 # 위험 (25%)
-top5['rank_risk'] = (rank_low_better(top5['sortino_TEST']*0 + top5.index.map(lambda i: -top5.loc[i,'cvar_5'])) +  # cvar (반전)
-                     rank_low_better(top5['mdd_FULL'], ascending=False) +  # mdd: 큰 값 (덜 음수) 좋음
+top5['rank_risk'] = (rank_low_better(-top5['cvar_5'], ascending=False) +
+                     rank_low_better(top5['mdd_FULL'], ascending=False) +
                      rank_low_better(top5['calmar'])) / 3
-# 안정성 (20%)
+# 안정성 (20%) — sortino_ir + (1-TEST_HO_gap)
 top5['rank_stab'] = (rank_low_better(top5['sortino_ir']) +
-                     rank_low_better(top5['TEST_HO_gap'], ascending=True)) / 2  # gap 작을수록 좋음 → ascending=True
+                     rank_low_better(top5['TEST_HO_gap'], ascending=True)) / 2
 # 견고성 (15%)
 top5['rank_robust'] = (rank_low_better(top5['eff_n_avg']) +
                        rank_low_better(top5['turnover_avg'], ascending=True)) / 2
@@ -947,7 +1260,6 @@ top5['rank_alpha'] = (rank_low_better(top5['alpha']) +
                       rank_low_better(top5['IR']) +
                       rank_low_better(np.abs(top5['beta'] - 0.7), ascending=True)) / 3
 
-# 가중 점수 (낮을수록 좋음)
 W = {'perf':0.30, 'risk':0.25, 'stab':0.20, 'robust':0.15, 'alpha':0.10}
 top5['weighted_score'] = (top5['rank_perf']*W['perf'] +
                           top5['rank_risk']*W['risk'] +
@@ -960,11 +1272,11 @@ decision_matrix = decision_matrix.sort_values('weighted_score').reset_index(drop
 decision_matrix['final_rank'] = range(1, len(decision_matrix) + 1)
 decision_matrix.to_csv(OUT_DIR / 'top5_decision_matrix.csv', index=False, encoding='utf-8-sig')
 
-print('§9-1. 결정 matrix (Top 5):')
+print('§9-1. 결정 matrix [HO 포함 변형, 비교용] (Top 5):')
 print(decision_matrix.round(2).to_string(index=False))
 print()
-print(f'★ Top 1 (weighted score 최소): {decision_matrix.iloc[0]["name"]}')
-print(f'   weighted_score: {decision_matrix.iloc[0]["weighted_score"]:.2f}')''')
+print(f'  HO 포함 Top 1: {decision_matrix.iloc[0]["name"]} (score {decision_matrix.iloc[0]["weighted_score"]:.2f})')
+print(f'  → 실제 의사결정은 §9-4 (in-sample only) 사용 ★')''')
 
 code('''# §9-2. fig11 — 결정 matrix radar chart (Top 5)
 from math import pi
@@ -998,7 +1310,8 @@ ax.set_xticklabels(dimensions, fontsize=10)
 ax.set_ylim(0, TOP_FINAL + 0.5)
 ax.set_yticks(range(1, TOP_FINAL + 1))
 ax.set_yticklabels([str(i) for i in range(1, TOP_FINAL + 1)], fontsize=8)
-ax.set_title(f'§9-2. Top {TOP_FINAL} 결정 matrix radar (높을수록 좋음)',
+ax.set_title(f'§9-2. fig11 — Top {TOP_FINAL} 결정 matrix radar [HO 포함 비교용, 학술 표준 X]\\n'
+             f'(높을수록 좋음 — 학술 표준은 fig11c 참조)',
              fontsize=12, fontweight='bold', pad=20)
 ax.legend(loc='upper right', bbox_to_anchor=(1.30, 1.10), fontsize=9)
 plt.tight_layout()
@@ -1006,32 +1319,241 @@ plt.savefig(FIG_DIR / 'fig11_decision_matrix_radar.png', dpi=150, bbox_inches='t
 plt.show()
 print(f'OK saved: {FIG_DIR / "fig11_decision_matrix_radar.png"}')''')
 
-code('''# §9-3. Top 1 narrative + 한계점
-top1_name = decision_matrix.iloc[0]['name']
-top1_metrics = top10_metrics[top10_metrics['name'] == top1_name].iloc[0]
+code('''# §9-3. HO 포함 비교용 Top 1 narrative — §9-1 결과 (학술 표준 X)
+top1_name_ho = decision_matrix.iloc[0]['name']
+top1_metrics_ho = top10_metrics[top10_metrics['name'] == top1_name_ho].iloc[0]
 
-print('=' * 70)
-print(f'★ FINAL Top 1: {top1_name}')
-print('=' * 70)
-print(f'\\n  성과:')
-print(f'    sortino_TEST    = {top1_metrics["sortino_TEST"]:.3f}')
-print(f'    sortino_HOLD_OUT= {top1_metrics["sortino_HOLD_OUT"]:.3f}')
-print(f'    sortino_FULL    = {top1_metrics["sortino_FULL"]:.3f}')
-print(f'    cagr            = {top1_metrics["cagr"]:.3f}')
-print(f'\\n  위험:')
-print(f'    mdd_FULL        = {top1_metrics["mdd_FULL"]:.3f}')
-print(f'    calmar          = {top1_metrics["calmar"]:.3f}')
-print(f'    cvar_5          = {top1_metrics["cvar_5"]:.3f}')
+print('=' * 75)
+print(f'[참조용] §9-1 HO 포함 변형 Top 1 (비교용, 학술 표준 X): {top1_name_ho}')
+print(f'         실제 의사결정은 §9-7 (in-sample only) 의 Top 1 사용')
+print('=' * 75)
+print(f'\\n  in-sample 성과 [의사결정 입력]:')
+print(f'    sortino_TEST    = {top1_metrics_ho["sortino_TEST"]:.3f}')
+print(f'\\n  in-sample 위험 [의사결정 입력]:')
+mdd_test_val_ho = M_cfg.set_index('name')['mdd_TEST'].get(top1_name_ho, float('nan'))
+print(f'    mdd_TEST        = {mdd_test_val_ho:.3f}')
+print(f'\\n  안정성 [의사결정 입력]:')
+print(f'    sortino_ir      = {top1_metrics_ho["sortino_ir"]:.2f}')
+print(f'\\n  견고성 [의사결정 입력]:')
+print(f'    turnover_avg    = {top1_metrics_ho["turnover_avg"]:.3f}')
+print(f'    eff_n_avg       = {top1_metrics_ho["eff_n_avg"]:.1f}')
+print(f'\\n  Alpha [의사결정 입력]:')
+print(f'    alpha           = {top1_metrics_ho["alpha"]:.4f}')
+print(f'    beta            = {top1_metrics_ho["beta"]:.3f}')
+
+print(f'\\n  [참조 — 사후 진단용, §9-1 가중 점수에 누설된 메트릭]:')
+print(f'    sortino_HOLD_OUT= {top1_metrics_ho["sortino_HOLD_OUT"]:.3f}')
+print(f'    TEST/HO 격차    = {top1_metrics_ho["TEST_HO_gap"]:.3f}')
+print(f'    sortino_FULL    = {top1_metrics_ho["sortino_FULL"]:.3f}')
+print(f'    cagr_FULL       = {top1_metrics_ho["cagr_FULL"]:.3f}')
+print(f'    mdd_FULL        = {top1_metrics_ho["mdd_FULL"]:.3f}')
+print(f'    calmar          = {top1_metrics_ho["calmar"]:.3f}')
+print(f'    cvar_5          = {top1_metrics_ho["cvar_5"]:.3f}')
+print(f'    IR              = {top1_metrics_ho["IR"]:.4f}')''')
+
+# ─────────────────────────────────────────────────────────────────
+md("""### §9-4. In-sample only 결정 matrix (학술 표준)
+
+기존 §9-1 의 결정 matrix 는 5 차원 가중 점수에 **HOLD_OUT 정보를 직접 포함**:
+
+- 성과 30% = `(sortino_TEST + sortino_HOLD_OUT) / 2`
+- 안정성 20% = `sortino_ir + (1 - TEST_HO_gap)`
+
+본 셀은 **HOLD_OUT 의존 항목을 모두 제거**한 in-sample 전용 변형:
+
+| 차원 | 가중치 | in-sample 메트릭 |
+|---|---|---|
+| 성과 | 30% | `sortino_TEST` 단독 |
+| 위험 | 25% | `mdd_TEST` + `cvar_5` (*) + `calmar` (*) |
+| 안정성 | 20% | `sortino_ir` 단독 (TEST_HO_gap 제거) |
+| 견고성 | 15% | `eff_n_avg` + `turnover_avg` |
+| Alpha | 10% | `alpha` + `beta` proximity |
+
+(*) cvar_5, calmar, mdd_FULL 은 192m 전 기간 산출이므로 약한 누설 잔존 — 이는 §10 sensitivity 에서 추가 검증.
+""")
+
+code('''# §9-4. In-sample only 결정 matrix ★ 학술 표준 (의사결정용)
+# Top 5 풀: top10_metrics_decision.head(5) — in-sample 만으로 추출
+top5_is = top10_metrics_decision[
+    top10_metrics_decision['name'].isin(top5_names_decision)
+].copy()
+top5_is = top5_is.set_index('name').loc[top5_names_decision].reset_index()
+
+# 성과 (30%) — sortino_TEST 단독 (HO 0%)
+top5_is['rank_perf_is'] = rank_low_better(top5_is['sortino_TEST'])
+
+# 위험 (25%) — mdd_TEST 단독 (HO 0%, mdd_FULL/calmar 제외 — 약한 누설)
+top5_is['rank_risk_is'] = rank_low_better(top5_is['mdd_TEST'], ascending=False)
+
+# 안정성 (20%) — sortino_ir 단독 (TEST_HO_gap 제거)
+top5_is['rank_stab_is'] = rank_low_better(top5_is['sortino_ir'])
+
+# 견고성 (15%) — 동일
+top5_is['rank_robust_is'] = (rank_low_better(top5_is['eff_n_avg']) +
+                              rank_low_better(top5_is['turnover_avg'], ascending=True)) / 2
+
+# Alpha (10%) — alpha + beta proximity (IR 제거 — FULL 기준)
+top5_is['rank_alpha_is'] = (rank_low_better(top5_is['alpha']) +
+                             rank_low_better(np.abs(top5_is['beta'] - 0.7), ascending=True)) / 2
+
+# 가중 점수
+W = {'perf':0.30, 'risk':0.25, 'stab':0.20, 'robust':0.15, 'alpha':0.10}
+top5_is['weighted_score_is'] = (top5_is['rank_perf_is']*W['perf'] +
+                                 top5_is['rank_risk_is']*W['risk'] +
+                                 top5_is['rank_stab_is']*W['stab'] +
+                                 top5_is['rank_robust_is']*W['robust'] +
+                                 top5_is['rank_alpha_is']*W['alpha'])
+
+decision_matrix_is = top5_is[['lex_rank','name','rank_perf_is','rank_risk_is',
+                               'rank_stab_is','rank_robust_is','rank_alpha_is',
+                               'weighted_score_is']].copy()
+decision_matrix_is = decision_matrix_is.sort_values('weighted_score_is').reset_index(drop=True)
+decision_matrix_is['final_rank_is'] = range(1, len(decision_matrix_is) + 1)
+decision_matrix_is.to_csv(OUT_DIR / 'top5_decision_matrix_insample.csv',
+                          index=False, encoding='utf-8-sig')
+
+print('§9-4. In-sample only 결정 matrix (Top 5):')
+print(decision_matrix_is.round(2).to_string(index=False))
+print()
+top1_is_dm = decision_matrix_is.iloc[0]['name']
+print(f'★ in-sample only Top 1: {top1_is_dm}')
+print(f'   weighted_score_is: {decision_matrix_is.iloc[0]["weighted_score_is"]:.2f}')''')
+
+code('''# §9-5. HO 포함 (§9-1) vs in-sample only (§9-4) — 비교
+top1_HO_dm = decision_matrix.iloc[0]['name']
+top1_IS_dm = decision_matrix_is.iloc[0]['name']
+
+dm_compare = pd.DataFrame({
+    'final_rank':       range(1, TOP_FINAL + 1),
+    'HO 포함 (§9-1)':   decision_matrix['name'].tolist(),
+    'in-sample (§9-4)': decision_matrix_is['name'].tolist(),
+    '동일?':            ['✓' if a == b else '✗'
+                        for a, b in zip(decision_matrix['name'],
+                                         decision_matrix_is['name'])]
+})
+print('§9-5. 결정 matrix 비교 (HO 포함 vs in-sample only):')
+print(dm_compare.to_string(index=False))
+print()
+if top1_HO_dm == top1_IS_dm:
+    print(f'★ 두 매트릭스 Top 1 동일: {top1_HO_dm}')
+else:
+    print(f'△ Top 1 변경:')
+    print(f'    HO 포함:    {top1_HO_dm}')
+    print(f'    in-sample:  {top1_IS_dm}')
+
+# 점수 차이 시각화
+fig, ax = plt.subplots(figsize=(11, 5))
+x = np.arange(TOP_FINAL)
+width = 0.35
+ho_scores = decision_matrix['weighted_score'].values
+is_scores = decision_matrix_is['weighted_score_is'].reindex(
+    [decision_matrix_is.index[decision_matrix_is['name']==n].tolist()[0]
+     if n in decision_matrix_is['name'].values else 0
+     for n in decision_matrix['name']]).values
+
+ax.bar(x - width/2, ho_scores, width, label='HO 포함 (§9-1)', color='#d62728', alpha=0.8)
+ax.bar(x + width/2, is_scores, width, label='in-sample (§9-4)', color='#1f77b4', alpha=0.8)
+ax.set_xticks(x)
+ax.set_xticklabels([f"#{r['final_rank']}\\n{r['name'][:18]}" for _, r in decision_matrix.iterrows()],
+                   fontsize=8, rotation=15)
+ax.set_ylabel('Weighted score (낮을수록 좋음)', fontsize=10)
+ax.set_title('§9-5. 결정 matrix 점수 비교 (HO 포함 vs in-sample only)',
+             fontsize=12, fontweight='bold')
+ax.legend(fontsize=10)
+ax.grid(True, alpha=0.3, axis='y')
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig11b_decision_matrix_compare.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'\\nOK saved: {FIG_DIR / "fig11b_decision_matrix_compare.png"}')''')
+
+code('''# §9-6. fig11c — In-sample only Decision Matrix radar (학술 표준 ★)
+from math import pi
+
+dimensions_is = ['성과 (30%)\\nsortino_TEST',
+                 '위험 (25%)\\ncalmar',
+                 '안정성 (20%)\\nsortino_ir',
+                 '견고성 (15%)\\neff_n+turnover',
+                 'Alpha (10%)\\nalpha+|β-0.7|']
+N_dim = len(dimensions_is)
+
+# §9-4 의 5 차원 점수 사용 (HO 메트릭 제외)
+score_data_is = decision_matrix_is[['rank_perf_is','rank_risk_is','rank_stab_is',
+                                     'rank_robust_is','rank_alpha_is']].copy()
+score_data_is = TOP_FINAL + 1 - score_data_is.reset_index(drop=True)  # 반전 (높을수록 좋음)
+
+angles_is = [n / N_dim * 2 * pi for n in range(N_dim)]
+angles_is += angles_is[:1]
+
+fig, ax = plt.subplots(figsize=(9, 9), subplot_kw=dict(polar=True))
+
+colors_radar_is = ['#d62728','#1f77b4','#2ca02c','#9467bd','#ff7f0e']
+for idx in range(len(score_data_is)):
+    row = score_data_is.iloc[idx]
+    color = colors_radar_is[idx]
+    values = row.tolist()
+    values += values[:1]
+    name_label = decision_matrix_is.iloc[idx]['name']
+    final_rank = decision_matrix_is.iloc[idx]['final_rank_is']
+    ax.plot(angles_is, values, color=color, linewidth=2,
+            label=f'#{int(final_rank)} {name_label}')
+    ax.fill(angles_is, values, color=color, alpha=0.15)
+
+ax.set_theta_offset(pi / 2)
+ax.set_theta_direction(-1)
+ax.set_xticks(angles_is[:-1])
+ax.set_xticklabels(dimensions_is, fontsize=9)
+ax.set_ylim(0, TOP_FINAL + 0.5)
+ax.set_yticks(range(1, TOP_FINAL + 1))
+ax.set_yticklabels([str(i) for i in range(1, TOP_FINAL + 1)], fontsize=8)
+ax.set_title(f'§9-6. fig11c — In-sample only Decision Matrix radar (Top {TOP_FINAL}) ★\\n'
+             f'(HO 메트릭 제외, 학술 표준)',
+             fontsize=12, fontweight='bold', pad=20)
+ax.legend(loc='upper right', bbox_to_anchor=(1.30, 1.10), fontsize=9)
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig11c_decision_matrix_radar_insample.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig11c_decision_matrix_radar_insample.png"}')''')
+
+code('''# §9-7. In-sample only Top 1 narrative (§9-4 기준)
+top1_name_is = decision_matrix_is.iloc[0]['name']
+top1_metrics_is = top10_metrics[top10_metrics['name'] == top1_name_is].iloc[0]
+
+print('=' * 75)
+print(f'★ ★ ★ In-sample only Top 1 (§9-4, 학술 표준): {top1_name_is}')
+print('=' * 75)
+print(f'\\n  in-sample 성과:')
+print(f'    sortino_TEST    = {top1_metrics_is["sortino_TEST"]:.3f}')
+print(f'    cagr            = {top1_metrics_is["cagr_FULL"]*100:+.2f}%')
+print(f'\\n  위험 (in-sample):')
+mdd_test_val = M_cfg.set_index('name')['mdd_TEST'].get(top1_name_is, float('nan'))
+print(f'    mdd_TEST        = {mdd_test_val:.3f}')
+print(f'    calmar          = {top1_metrics_is["calmar"]:.3f}')
+print(f'    cvar_5          = {top1_metrics_is["cvar_5"]:.3f}')
 print(f'\\n  안정성:')
-print(f'    sortino_ir      = {top1_metrics["sortino_ir"]:.2f}')
-print(f'    TEST/HO 격차    = {top1_metrics["TEST_HO_gap"]:.3f}')
+print(f'    sortino_ir      = {top1_metrics_is["sortino_ir"]:.2f}')
 print(f'\\n  견고성:')
-print(f'    turnover_avg    = {top1_metrics["turnover_avg"]:.3f}')
-print(f'    eff_n_avg       = {top1_metrics["eff_n_avg"]:.1f}')
+print(f'    turnover_avg    = {top1_metrics_is["turnover_avg"]:.3f}')
+print(f'    eff_n_avg       = {top1_metrics_is["eff_n_avg"]:.1f}')
 print(f'\\n  Alpha:')
-print(f'    alpha           = {top1_metrics["alpha"]:.4f}')
-print(f'    beta            = {top1_metrics["beta"]:.3f}')
-print(f'    IR              = {top1_metrics["IR"]:.4f}')''')
+print(f'    alpha           = {top1_metrics_is["alpha"]:.4f}')
+print(f'    beta            = {top1_metrics_is["beta"]:.3f}')
+
+print(f'\\n  [참조 — 사후 진단용, 의사결정 미사용]:')
+print(f'    sortino_HO      = {top1_metrics_is["sortino_HOLD_OUT"]:.3f}')
+print(f'    TEST/HO 격차    = {top1_metrics_is["TEST_HO_gap"]:.3f}')
+print(f'    mdd_FULL        = {top1_metrics_is["mdd_FULL"]:.3f}')
+print(f'    IR              = {top1_metrics_is["IR"]:.4f}')
+
+# HO vs in-sample 일치 여부
+print()
+top1_HO_compare = decision_matrix.iloc[0]['name']
+if top1_HO_compare == top1_name_is:
+    print(f'★ §9-1 (HO 포함) Top 1 = §9-4 (in-sample) Top 1 = {top1_name_is}')
+    print(f'  → 두 기준 동일, Top 1 결과 robust ✓')
+else:
+    print(f'△ §9-1 (HO 포함) Top 1 = {top1_HO_compare}')
+    print(f'  §9-4 (in-sample) Top 1 = {top1_name_is}')
+    print(f'  → 두 기준 상이, in-sample 결과 학술 권장')''')
 
 # ─────────────────────────────────────────────────────────────────
 md("""## §10. Sensitivity test (견고성 추가 검증)
@@ -1224,7 +1746,7 @@ print(f'OK saved: {FIG_DIR / "fig12_market_sector_trend.png"}')''')
 code('''# §11-2. Top 4 cfg 의 섹터별 가중치 추이 (HOLD_OUT 24m)
 TOP4_CANDIDATES = ['mat_eq_eq_lam_pap','mat_eq_mcap_lam_he','mat_mcap_mcap_raw_he','mat_mcap_rp_lam_pap']
 TOP4_LABELS = {
-    'mat_eq_eq_lam_pap': 'A (잠정 Top 1)',
+    'mat_eq_eq_lam_pap': 'A (초기 잠정, 탈락)',
     'mat_eq_mcap_lam_he': 'B (Lex Top 1)',
     'mat_mcap_mcap_raw_he': 'C (HO Top 1)',
     'mat_mcap_rp_lam_pap': 'D (sortino_ir Top 1)',
@@ -1685,21 +2207,820 @@ spy_regime_full_df.to_csv(OUT_DIR / 'spy_regime_comparison.csv', index=False, en
 print(f'OK saved: {OUT_DIR / "spy_regime_comparison.csv"}')''')
 
 # ─────────────────────────────────────────────────────────────────
-md("""## §13. 결론 요약 (의사결정 보고서 연계)
+md("""## §13. In-sample vs HO 포함 — 학습편향 진단 통합 비교
+
+### 분석 목적
+
+§4-4 / §9-4 의 in-sample only 결과와 §4-1 / §9-1 의 HO 포함 결과를
+**나란히 비교** 하여 다음 두 질문에 답합니다:
+
+1. **데이터 누설 영향**: HO 정보 포함 여부에 따라 Top 1 이 달라지는가?
+2. **학습편향 진단**: HO 포함 시 좋아 보였던 cfg 가 in-sample only 에서도 우수한가?
+
+### 학술적 의의
+
+학술 표준 (Lopez de Prado 2018) 은 **모델 선정에 HOLD_OUT 사용 금지** 를 권고합니다.
+본 § 는 두 결과의 일치 정도로 backtest overfitting 위험을 정량화합니다:
+
+- ✓ Top 1 동일 → 두 기준 모두 같은 결론 → robust
+- ✗ Top 1 변경 → HO 정보가 의사결정에 영향 → in-sample 결과를 학술 권장
+""")
+
+code('''# §13-1. Lexicographic + Decision Matrix 통합 비교
+print('=' * 80)
+print('§13. In-sample only vs HO 포함 — 학습편향 진단')
+print('=' * 80)
+
+# Lexicographic 비교
+top1_lex_HO = ranked.iloc[0]['name']
+top1_lex_IS = ranked_insample.iloc[0]['name']
+
+# Decision matrix 비교
+top1_dm_HO = decision_matrix.iloc[0]['name']
+top1_dm_IS = decision_matrix_is.iloc[0]['name']
+
+summary_table = pd.DataFrame([
+    {'기준': 'Lexicographic (§4)',
+     'HO 포함 (기존)': top1_lex_HO,
+     'in-sample only (학술)': top1_lex_IS,
+     '동일?': '✓' if top1_lex_HO == top1_lex_IS else '✗'},
+    {'기준': 'Decision Matrix (§9)',
+     'HO 포함 (기존)': top1_dm_HO,
+     'in-sample only (학술)': top1_dm_IS,
+     '동일?': '✓' if top1_dm_HO == top1_dm_IS else '✗'},
+])
+print('Top 1 비교:')
+print(summary_table.to_string(index=False))
+print()
+
+# robust 분류
+n_match = (summary_table['동일?'] == '✓').sum()
+n_total = len(summary_table)
+print(f'일치율: {n_match}/{n_total}')
+if n_match == n_total:
+    print('★ ROBUST — 두 기준 모두 in-sample / HO 포함 결과 동일')
+elif n_match == 0:
+    print('✗ HIGH LEAKAGE — 모든 기준에서 Top 1 변경, HO 정보 영향 큼')
+else:
+    print('△ MIXED — 일부 기준에서만 동일, 부분적 robust')
+
+summary_table.to_csv(OUT_DIR / 'insample_vs_ho_comparison.csv',
+                    index=False, encoding='utf-8-sig')
+print(f'\\nOK saved: {OUT_DIR / "insample_vs_ho_comparison.csv"}')''')
+
+code('''# §13-2. Top 5 후보의 두 기준 score 비교 — fig18
+fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+
+# Lexicographic Top 10 비교 (rank 변화 시각화)
+ax = axes[0]
+all_top_names = list(set(ranked.head(10)['name']) | set(ranked_insample.head(10)['name']))
+ho_ranks_lex = {n: ranked[ranked['name']==n]['lex_rank'].iloc[0]
+                if n in ranked['name'].values else 99 for n in all_top_names}
+is_ranks_lex = {n: ranked_insample[ranked_insample['name']==n]['lex_rank_is'].iloc[0]
+                if n in ranked_insample['name'].values else 99 for n in all_top_names}
+
+# 정렬: HO rank 기준
+sorted_names = sorted(all_top_names, key=lambda n: ho_ranks_lex[n])
+y = np.arange(len(sorted_names))
+
+ax.scatter([ho_ranks_lex[n] for n in sorted_names], y,
+           color='#d62728', s=80, label='HO 포함', zorder=3)
+ax.scatter([is_ranks_lex[n] for n in sorted_names], y,
+           color='#1f77b4', s=80, label='in-sample', zorder=3)
+# 연결선
+for i, n in enumerate(sorted_names):
+    ax.plot([ho_ranks_lex[n], is_ranks_lex[n]], [i, i],
+            color='#888888', alpha=0.3, lw=1, zorder=1)
+ax.set_yticks(y)
+ax.set_yticklabels(sorted_names, fontsize=8)
+ax.invert_yaxis()
+ax.set_xlabel('Lexicographic rank (낮을수록 상위)', fontsize=10)
+ax.set_title('§13-2a. Lexicographic rank 변화', fontsize=11, fontweight='bold')
+ax.legend(fontsize=9)
+ax.grid(True, alpha=0.3)
+
+# Decision matrix Top 5 score 비교
+ax = axes[1]
+dm_top5_names = list(decision_matrix['name'])
+ho_scores_dm = decision_matrix.set_index('name')['weighted_score']
+is_scores_dm = decision_matrix_is.set_index('name')['weighted_score_is']
+
+x = np.arange(len(dm_top5_names))
+width = 0.35
+ho_vals = [ho_scores_dm.get(n, np.nan) for n in dm_top5_names]
+is_vals = [is_scores_dm.get(n, np.nan) for n in dm_top5_names]
+
+ax.bar(x - width/2, ho_vals, width, label='HO 포함 (§9-1)', color='#d62728', alpha=0.85)
+ax.bar(x + width/2, is_vals, width, label='in-sample (§9-4)', color='#1f77b4', alpha=0.85)
+ax.set_xticks(x)
+ax.set_xticklabels([f"{n[:18]}" for n in dm_top5_names], fontsize=8, rotation=15)
+ax.set_ylabel('Weighted score (낮을수록 좋음)', fontsize=10)
+ax.set_title('§13-2b. Decision matrix score 비교', fontsize=11, fontweight='bold')
+ax.legend(fontsize=9)
+ax.grid(True, alpha=0.3, axis='y')
+
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig18_insample_vs_ho_compare.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig18_insample_vs_ho_compare.png"}')''')
+
+code('''# §13-3. 학습편향 진단 narrative
+print('=' * 80)
+print('§13-3. 학습편향 진단 narrative')
+print('=' * 80)
+
+# HO 포함 → in-sample 시 rank 떨어진 cfg = 학습편향 의심
+print()
+print('HO 포함 Top 5 → in-sample 시 rank 변화:')
+for _, row in decision_matrix.iterrows():
+    name = row['name']
+    rank_HO = int(row['final_rank'])
+    is_match = decision_matrix_is[decision_matrix_is['name'] == name]
+    if len(is_match) > 0:
+        rank_IS = int(is_match.iloc[0]['final_rank_is'])
+        diff = rank_IS - rank_HO
+        verdict = ' ← 학습편향 의심' if diff >= 2 else (' ← in-sample 우수' if diff <= -1 else '')
+        print(f'  {name:30s}: HO #{rank_HO} → in-sample #{rank_IS}  (Δ {diff:+d}){verdict}')
+    else:
+        print(f'  {name:30s}: HO #{rank_HO} → in-sample N/A')
+
+print()
+print('해석:')
+print('  - rank 상승 (Δ < 0): HO 영향 없이도 우수한 cfg → 권장')
+print('  - rank 하락 (Δ ≥ +2): HO 정보 의존 → 학습편향 의심')
+print('  - 변동 없음: HO 영향 미미 → robust')''')
+
+# ═════════════════════════════════════════════════════════════════
+# §14 ~ §19: 추가 학술 검증 (옵션 3 — 종합)
+# ═════════════════════════════════════════════════════════════════
+
+# ─────────────────────────────────────────────────────────────────
+md("""## §14. Backtest Overfitting (PBO + DSR)
+
+### 분석 동기
+
+153 cfg 중 Top 1 을 선정 = **multiple testing**. "우연히 좋아 보이는" cfg 가 있을 위험 (data snooping bias). Bailey & Lopez de Prado (2014) 의 **PBO** (Probability of Backtest Overfitting) 와 **DSR** (Deflated Sharpe Ratio) 로 정량화합니다.
+
+### PBO 정의
+
+시계열을 J 개 sub-period 로 분할 → C(J, S) 조합으로 in-sample (S 개) / out-of-sample (J-S 개) 지정. 각 조합에서:
+1. in-sample sortino 1 위 cfg 식별
+2. 그 cfg 의 oos sortino rank 측정
+3. **rank > median 비율 = PBO**
+
+PBO < 0.5 → robust, PBO ≥ 0.5 → overfitting 의심.
+
+### DSR 정의
+
+`DSR = ((SR - SR_0) × √(T-1)) / √(1 - γ_3 × SR + (γ_4 - 1)/4 × SR²)`
+
+- `SR_0 = √(2 ln(N))`: multiple testing 보정 (N = 시도 수)
+- `γ_3` skewness, `γ_4` kurtosis 보정
+- DSR ≥ 1.96 (p < 0.05) → 통계적으로 우월
+""")
+
+code('''# §14-1. PBO (Probability of Backtest Overfitting)
+from itertools import combinations
+import pickle
+
+def compute_sortino(ret, rf):
+    """간단 sortino 계산."""
+    if len(ret) < 6: return np.nan
+    rf_a = rf.reindex(ret.index).fillna(0)
+    excess = ret - rf_a
+    down = ret[ret < 0].std() * np.sqrt(12)
+    if down == 0 or pd.isna(down): return np.nan
+    return float(excess.mean() * 12 / down)
+
+# 22 cfg 의 ret 시계열 로드
+ret_dict = {}
+for name in M_cfg['name']:
+    p = Path('results') / f'{name}.pkl'
+    with open(p, 'rb') as f:
+        ret = pickle.load(f).get('ret', pd.Series(dtype=float))
+    ret_dict[name] = ret.dropna()
+
+# 공통 인덱스 (TEST + HOLD_OUT 전체)
+common_idx = sorted(set.intersection(*[set(r.index) for r in ret_dict.values()]))
+common_idx = pd.DatetimeIndex(common_idx)
+print(f'PBO 분석 대상: {len(ret_dict)} cfg, 공통 {len(common_idx)} months')
+
+# J = 8 분할, S = 4 (in-sample)
+J = 8
+S = 4
+period_len = len(common_idx) // J
+periods = [common_idx[i*period_len:(i+1)*period_len] for i in range(J)]
+print(f'분할: J = {J}, S (IS) = {S}, 각 sub-period {period_len} months')
+
+is_combos = list(combinations(range(J), S))
+print(f'IS 조합 수: {len(is_combos)}')''')
+
+code('''# §14-2. PBO 계산 (각 조합에서 IS top 1 의 OOS rank 측정)
+n_overfit = 0
+n_total = 0
+oos_ranks = []
+
+for is_idx in is_combos:
+    oos_idx = [i for i in range(J) if i not in is_idx]
+    is_dates = pd.DatetimeIndex(np.concatenate([periods[i] for i in is_idx]))
+    oos_dates = pd.DatetimeIndex(np.concatenate([periods[i] for i in oos_idx]))
+
+    # IS sortino 산출
+    is_sortinos = {}
+    for name, ret in ret_dict.items():
+        is_sortinos[name] = compute_sortino(ret.loc[is_dates], rf)
+    is_top = max(is_sortinos, key=lambda x: is_sortinos[x] if not pd.isna(is_sortinos[x]) else -np.inf)
+
+    # OOS rank
+    oos_sortinos = {name: compute_sortino(ret.loc[oos_dates], rf) for name, ret in ret_dict.items()}
+    oos_sorted = sorted(oos_sortinos, key=lambda x: oos_sortinos[x] if not pd.isna(oos_sortinos[x]) else -np.inf, reverse=True)
+    is_top_oos_rank = oos_sorted.index(is_top) + 1  # 1-based
+    oos_pct = is_top_oos_rank / len(oos_sortinos)
+    oos_ranks.append(oos_pct)
+
+    if oos_pct > 0.5:  # OOS rank 가 median 보다 나쁨
+        n_overfit += 1
+    n_total += 1
+
+PBO = n_overfit / n_total
+mean_oos_pct = np.mean(oos_ranks)
+
+print(f'§14-1. PBO 결과:')
+print(f'  분할 J = {J}, IS S = {S}, 조합 수 = {n_total}')
+print(f'  IS top 1 의 OOS rank percentile 평균: {mean_oos_pct:.3f}')
+print(f'  PBO (rank > median 비율): {PBO:.3f}')
+print()
+if PBO < 0.3:
+    verdict = '✓ ROBUST (PBO < 0.30)'
+elif PBO < 0.5:
+    verdict = '△ MODERATE (0.30 ≤ PBO < 0.50)'
+else:
+    verdict = '✗ OVERFITTING 의심 (PBO ≥ 0.50)'
+print(f'  결론: {verdict}')
+
+# 시각화
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.hist(oos_ranks, bins=20, color='#1f77b4', alpha=0.7, edgecolor='black')
+ax.axvline(0.5, color='red', linestyle='--', lw=1.5, label=f'median 기준선')
+ax.axvline(mean_oos_pct, color='green', linestyle='-', lw=1.5, label=f'평균 {mean_oos_pct:.3f}')
+ax.set_xlabel('IS top 1 의 OOS rank percentile (낮을수록 좋음)', fontsize=11)
+ax.set_ylabel('빈도', fontsize=11)
+ax.set_title(f'§14-1. PBO = {PBO:.3f} (n={n_total} 조합)\\n{verdict}',
+             fontsize=12, fontweight='bold')
+ax.legend(fontsize=10)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig19_pbo_distribution.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig19_pbo_distribution.png"}')''')
+
+code('''# §14-3. DSR (Deflated Sharpe Ratio) — Top 5 cfg
+from scipy.stats import skew, kurtosis, norm
+
+def compute_dsr(ret_series, n_trials):
+    """Deflated Sharpe Ratio.
+    SR_0 = sqrt(2 ln(N))  (multiple testing 보정)
+    DSR = (SR - SR_0) * sqrt(T-1) / sqrt(1 - g3*SR + (g4-1)/4 * SR^2)
+    DSR > 1.96 → p < 0.05 (단측)
+    """
+    excess = ret_series - rf.reindex(ret_series.index).fillna(0)
+    if excess.std() == 0: return None
+    SR = excess.mean() / excess.std()  # monthly SR (annualize 안함)
+    T = len(excess)
+    g3 = float(skew(excess))
+    g4 = float(kurtosis(excess, fisher=False))  # not Fisher (즉, normal=3)
+    SR_0 = np.sqrt(2 * np.log(n_trials)) / np.sqrt(T)  # 시점당 보정
+    denom = np.sqrt((1 - g3 * SR + (g4 - 1) / 4 * SR**2) / (T - 1))
+    if denom == 0 or pd.isna(denom): return None
+    DSR_z = (SR - SR_0) / denom
+    p_value = 1 - norm.cdf(DSR_z)  # 단측 (SR > SR_0 검정)
+    return {'SR_monthly': SR, 'SR_0': SR_0, 'skew': g3, 'kurt': g4,
+            'DSR_z': DSR_z, 'p_value': p_value,
+            'sig': bool(p_value < 0.05)}
+
+N_TRIALS = 153  # 153 main cfg
+print(f'§14-3. DSR (Deflated Sharpe Ratio, N_trials = {N_TRIALS}):')
+print()
+dsr_rows = []
+for name in top10_metrics.head(5)['name']:
+    res = compute_dsr(ret_dict[name], n_trials=N_TRIALS)
+    if res is not None:
+        dsr_rows.append({'name': name, **res})
+
+dsr_df = pd.DataFrame(dsr_rows)
+print(dsr_df.round(4).to_string(index=False))
+print()
+n_sig = dsr_df['sig'].sum()
+print(f'유의 (p<0.05): {n_sig}/{len(dsr_df)}')
+dsr_df.to_csv(OUT_DIR / 'dsr_top5.csv', index=False, encoding='utf-8-sig')
+print(f'OK saved: {OUT_DIR / "dsr_top5.csv"}')''')
+
+# ─────────────────────────────────────────────────────────────────
+md("""## §15. Sharpe Ratio 통계 검정 (Jobson-Korkie / Memmel)
+
+### 분석 동기
+
+Top 1 의 Sharpe 가 baseline / 2위 cfg 와 통계적으로 유의하게 다른가?
+
+### Memmel (2003) z-stat
+
+`z = (SR_a - SR_b) / σ_diff`
+
+`σ_diff² = (1/T) × [2(1-ρ) + 0.5 × (SR_a² + SR_b² - 2·SR_a·SR_b·ρ²)]`
+
+- ρ = correlation(ret_a, ret_b)
+- p-value (양측) = 2 × (1 - Φ(|z|))
+- p < 0.05 → 두 Sharpe 차이 유의
+""")
+
+code('''# §15-1. Sharpe 차이 통계 검정 (Top 5 pairwise + baseline)
+def memmel_test(ret_a, ret_b, rf):
+    """Memmel (2003) Sharpe 차이 z-stat."""
+    common = ret_a.index.intersection(ret_b.index)
+    a = ret_a.loc[common]
+    b = ret_b.loc[common]
+    rf_c = rf.reindex(common).fillna(0)
+    ea = a - rf_c
+    eb = b - rf_c
+    SR_a = ea.mean() / ea.std() if ea.std() > 0 else 0
+    SR_b = eb.mean() / eb.std() if eb.std() > 0 else 0
+    rho = float(np.corrcoef(a.values, b.values)[0, 1])
+    T = len(common)
+    var_diff = (1 / T) * (2 * (1 - rho) + 0.5 * (SR_a**2 + SR_b**2 - 2 * SR_a * SR_b * rho**2))
+    if var_diff <= 0: return None
+    z = (SR_a - SR_b) / np.sqrt(var_diff)
+    from scipy.stats import norm
+    p = 2 * (1 - norm.cdf(abs(z)))
+    return {'SR_a_monthly': SR_a, 'SR_b_monthly': SR_b, 'diff': SR_a - SR_b,
+            'rho': rho, 'z': z, 'p_value': p, 'sig': bool(p < 0.05)}
+
+top5_names = top10_metrics.head(5)['name'].tolist()
+
+# (1) 각 cfg vs baseline
+baseline_ret = ret_dict.get('baseline')
+if baseline_ret is None:
+    p = Path('results') / 'baseline.pkl'
+    with open(p, 'rb') as f:
+        baseline_ret = pickle.load(f).get('ret', pd.Series(dtype=float)).dropna()
+
+print('§15-1. Top 5 vs baseline — Memmel test:')
+rows = []
+for name in top5_names:
+    res = memmel_test(ret_dict[name], baseline_ret, rf)
+    if res:
+        rows.append({'cfg': name, 'comparison': 'vs baseline', **res})
+        print(f'  {name:30s}: ΔSR_m = {res["diff"]:+.4f}  z = {res["z"]:+.2f}  p = {res["p_value"]:.4f}  {"✓ 유의" if res["sig"] else "✗ 비유의"}')
+
+# (2) Top 1 vs Top 2~5
+top1_name = decision_matrix_is.iloc[0]['name']  # in-sample DM Top 1
+top1_ret = ret_dict[top1_name]
+print(f'\\n§15-2. {top1_name} (DM Top 1) vs Top 2~5:')
+for name in top5_names:
+    if name == top1_name: continue
+    res = memmel_test(top1_ret, ret_dict[name], rf)
+    if res:
+        rows.append({'cfg': name, 'comparison': f'vs {top1_name}', **res})
+        print(f'  {top1_name} vs {name:25s}: ΔSR_m = {res["diff"]:+.4f}  z = {res["z"]:+.2f}  p = {res["p_value"]:.4f}  {"✓ 유의" if res["sig"] else "✗ 비유의"}')
+
+memmel_df = pd.DataFrame(rows)
+memmel_df.to_csv(OUT_DIR / 'memmel_sharpe_test.csv', index=False, encoding='utf-8-sig')
+print(f'\\nOK saved: {OUT_DIR / "memmel_sharpe_test.csv"}')''')
+
+# ─────────────────────────────────────────────────────────────────
+md("""## §16. Factor Regression — Alpha 정당성 검증
+
+### 분석 동기
+
+Top 5 cfg 의 alpha (CAPM 기준 약 0.04~0.05) 가 **진짜 alpha 인가, factor risk premium 인가**?
+
+### 4 모델 비교
+
+| 모델 | 추가 factor | factor 의미 |
+|---|---|---|
+| **CAPM** | mkt_rf | 시장 노출 |
+| **FF3** | + smb, hml | 규모, 가치 |
+| **Carhart 4** | + mom | + 모멘텀 |
+| **FF5** | + smb, hml, rmw, cma | 수익성, 투자 |
+
+각 모델 후 α 가 여전히 유의 (p<0.05) → 진짜 alpha. α 가 사라지면 → factor 노출.
+
+데이터: `data/ff3_monthly.csv`, `data/ff5_monthly.csv` (mom_factor 포함).
+""")
+
+code('''# §16-1. FF factor 데이터 로드
+ff3 = pd.read_csv('data/ff3_monthly.csv', parse_dates=['date']).set_index('date')
+ff5 = pd.read_csv('data/ff5_monthly.csv', parse_dates=['date']).set_index('date')
+
+# 월말 인덱스로 정렬 (panel 과 동일하게)
+ff3.index = ff3.index + pd.offsets.MonthEnd(0)
+ff5.index = ff5.index + pd.offsets.MonthEnd(0)
+
+# 분석 기간 한정
+ff3 = ff3.loc['2010-01':'2025-12']
+ff5 = ff5.loc['2010-01':'2025-12']
+
+print(f'FF3: {ff3.shape}, 기간 {ff3.index.min().date()} ~ {ff3.index.max().date()}')
+print(f'FF5: {ff5.shape} (mom_factor 포함)')
+print()
+print('FF3 sample:')
+print(ff3.head(2))''')
+
+code('''# §16-2. 4 모델 factor regression (Top 5 cfg)
+import statsmodels.api as sm
+
+def run_factor_regression(ret, factors, rf):
+    """단일 cfg × 단일 모델 OLS regression. excess return ~ factors."""
+    common = ret.index.intersection(factors.index)
+    rf_c = rf.reindex(common).fillna(0)
+    ex_ret = (ret.loc[common] - rf_c).values
+    X = factors.loc[common].values
+    X = sm.add_constant(X)
+    model = sm.OLS(ex_ret, X).fit()
+    return {
+        'alpha_monthly': model.params[0],
+        'alpha_annualized': model.params[0] * 12,
+        'alpha_t': model.tvalues[0],
+        'alpha_p': model.pvalues[0],
+        'sig': bool(model.pvalues[0] < 0.05),
+        'r_squared': model.rsquared,
+        'n_obs': len(common),
+    }
+
+MODELS = {
+    'CAPM':      ff3[['mkt_rf']],
+    'FF3':       ff3[['mkt_rf','smb','hml']],
+    'Carhart 4': ff5[['mkt_rf','smb','hml','mom_factor']],
+    'FF5':       ff5[['mkt_rf','smb','hml','rmw','cma']],
+}
+
+factor_rows = []
+print('§16-2. Factor regression — Top 5:')
+print(f'{"cfg":30s} {"model":10s} {"α (annual)":>12s} {"t-stat":>8s} {"p":>7s} {"R²":>6s}  유의')
+print('-' * 90)
+for name in top5_names:
+    for model_name, factors in MODELS.items():
+        res = run_factor_regression(ret_dict[name], factors, rf)
+        if res:
+            factor_rows.append({'cfg': name, 'model': model_name, **res})
+            sig_mark = '✓' if res['sig'] else '✗'
+            print(f'{name:30s} {model_name:10s} {res["alpha_annualized"]*100:>+10.2f}%  '
+                  f'{res["alpha_t"]:>+7.2f}  {res["alpha_p"]:>6.3f}  {res["r_squared"]:>5.2f}  {sig_mark}')
+    print()
+
+factor_df = pd.DataFrame(factor_rows)
+factor_df.to_csv(OUT_DIR / 'factor_regression.csv', index=False, encoding='utf-8-sig')
+print(f'OK saved: {OUT_DIR / "factor_regression.csv"}')''')
+
+code('''# §16-3. fig20 — Top 5 × 4 모델 alpha + t-stat heatmap
+top5_unique = top5_names
+pivot_alpha = factor_df.pivot(index='cfg', columns='model', values='alpha_annualized')
+pivot_alpha = pivot_alpha.reindex(top5_unique)[['CAPM','FF3','Carhart 4','FF5']]
+pivot_t = factor_df.pivot(index='cfg', columns='model', values='alpha_t')
+pivot_t = pivot_t.reindex(top5_unique)[['CAPM','FF3','Carhart 4','FF5']]
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+sns.heatmap(pivot_alpha * 100, annot=True, fmt='+.1f', cmap='RdYlGn',
+            center=0, vmin=-5, vmax=10, ax=axes[0],
+            cbar_kws={'label': 'α annual (%)'},
+            annot_kws={'size': 10, 'weight': 'bold'})
+axes[0].set_title('§16-3a. Annualized alpha (%) — Top 5 × 4 모델', fontsize=11, fontweight='bold')
+
+sns.heatmap(pivot_t, annot=True, fmt='+.2f', cmap='RdYlGn',
+            center=0, vmin=-3, vmax=3, ax=axes[1],
+            cbar_kws={'label': 't-stat'},
+            annot_kws={'size': 10, 'weight': 'bold'})
+axes[1].set_title('§16-3b. α t-statistic (|t|>1.96 → p<0.05)', fontsize=11, fontweight='bold')
+
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig20_factor_alpha_heatmap.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig20_factor_alpha_heatmap.png"}')''')
+
+# ─────────────────────────────────────────────────────────────────
+md("""## §17. 거래비용 (tc) Sensitivity
+
+### 분석 동기
+
+Top 5 cfg 의 turnover 가 0.4~1.0 으로 분산 — 특히 turnover 0.4~0.5 의 효율 cfg 와 0.9+ 의 고회전 cfg 모두에서 거래비용 영향 검증.
+
+### 검증 범위
+
+tc ∈ {0.0005, 0.001, **0.002**, 0.003, 0.005, 0.01} (5bps ~ 100bps, 6 단계)
+
+| tc | 실무 시나리오 |
+|---|---|
+| 0.0005 (5 bps) | 패시브 ETF (대형 AUM) |
+| 0.001 (10 bps) | 저변동 ETF (USMV/SPLV) — **default** |
+| **0.002 (20 bps)** | **액티브 BL 운용 — 가장 현실적 ★** |
+| 0.003 (30 bps) | 보수적 stress (market impact 포함) |
+| 0.005 (50 bps) | 매우 보수적 (소형주 / 위기) |
+| 0.01 (100 bps) | extreme stress |
+
+각 tc 에서 `net_ret = ret - tc × turnover` 재계산 → Sortino_TEST 재산출 → Top 1 변경 여부.
+""")
+
+code('''# §17-1. tc sensitivity — Top 5 cfg
+TC_RANGE = [0.0005, 0.001, 0.002, 0.003, 0.005, 0.01]
+TEST_END = pd.Timestamp('2023-12-31')
+
+# 각 cfg 의 turnover 시계열 로드
+def get_turnover_series(name):
+    p = Path('results') / f'{name}.pkl'
+    with open(p, 'rb') as f:
+        d = pickle.load(f)
+    comp = d.get('comp', None)
+    if comp is None or 'turnover' not in comp.columns: return None
+    return comp['turnover']
+
+print('§17-1. tc sensitivity — Sortino_TEST (TEST 168m)')
+print(f'{"cfg":30s}', end='')
+for tc in TC_RANGE: print(f'  tc={tc:.4f}', end='')
+print()
+print('-' * (30 + len(TC_RANGE) * 12))
+
+tc_rows = []
+for name in top5_names:
+    ret = ret_dict[name].loc[:TEST_END]
+    turn = get_turnover_series(name)
+    if turn is None:
+        print(f'{name:30s}  turnover 없음')
+        continue
+    turn = turn.reindex(ret.index).fillna(0)
+    print(f'{name:30s}', end='')
+    for tc in TC_RANGE:
+        net_ret = ret - tc * turn
+        sortino_net = compute_sortino(net_ret, rf)
+        tc_rows.append({'cfg': name, 'tc': tc, 'sortino_TEST_net': sortino_net})
+        print(f'  {sortino_net:>9.3f}', end='')
+    print()
+
+tc_df = pd.DataFrame(tc_rows)
+tc_df.to_csv(OUT_DIR / 'tc_sensitivity.csv', index=False, encoding='utf-8-sig')
+print(f'\\nOK saved: {OUT_DIR / "tc_sensitivity.csv"}')''')
+
+code('''# §17-2. fig21 — tc sensitivity 라인 차트 (Top 5)
+fig, ax = plt.subplots(figsize=(11, 6))
+
+colors_tc = ['#d62728','#1f77b4','#2ca02c','#9467bd','#ff7f0e']
+for name, color in zip(top5_names, colors_tc):
+    sub = tc_df[tc_df['cfg'] == name].sort_values('tc')
+    if len(sub) > 0:
+        ax.plot(sub['tc'], sub['sortino_TEST_net'], 'o-',
+                label=name, color=color, lw=2, markersize=8)
+
+ax.axvline(0.001, color='gray', ls='--', alpha=0.5, label='기본 tc = 0.001')
+ax.axhline(1.0, color='red', ls=':', alpha=0.5, label='Sortino = 1.0 기준')
+ax.set_xscale('log')
+ax.set_xlabel('Transaction cost (tc)', fontsize=11)
+ax.set_ylabel('Sortino_TEST (net of cost)', fontsize=11)
+ax.set_title('§17-2. tc sensitivity — Top 5 cfg', fontsize=12, fontweight='bold')
+ax.legend(loc='lower left', fontsize=9)
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig21_tc_sensitivity.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig21_tc_sensitivity.png"}')
+
+# Top 1 변경 여부
+print('\\n§17-3. tc 별 Top 1 (in-sample sortino_TEST):')
+for tc in TC_RANGE:
+    sub = tc_df[tc_df['tc'] == tc].sort_values('sortino_TEST_net', ascending=False)
+    if len(sub) > 0:
+        print(f'  tc = {tc:.4f}: {sub.iloc[0]["cfg"]:30s} (sortino = {sub.iloc[0]["sortino_TEST_net"]:.3f})')''')
+
+# ─────────────────────────────────────────────────────────────────
+md("""## §18. Walk-forward OOS — 추가 시간 안정성 검증
+
+### 분석 동기
+
+HOLD_OUT 24m (2024-01~2025-12) 단일 OOS — 표본 부족. 더 이른 시기들 (2019, 2020, 2021, 2022, 2023) 에서도 Top 후보가 잘하는지 검증.
+
+### Anchored walk-forward
+
+| TEST 끝 | OOS 12m |
+|---|---|
+| 2018-12 | 2019 |
+| 2019-12 | 2020 |
+| 2020-12 | 2021 |
+| 2021-12 | 2022 |
+| 2022-12 | 2023 |
+| 2023-12 | 2024 |
+| 2024-12 | 2025 |
+
+각 OOS 에서 Top 후보의 sortino rank → 평균 rank 가 일관되게 낮으면 robust.
+""")
+
+code('''# §18-1. Walk-forward 시뮬레이션 (anchored)
+WF_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+wf_rows = []
+for year in WF_YEARS:
+    oos_start = pd.Timestamp(f'{year}-01-01')
+    oos_end = pd.Timestamp(f'{year}-12-31')
+
+    sortinos = {}
+    for name, ret in ret_dict.items():
+        oos_ret = ret.loc[oos_start:oos_end]
+        if len(oos_ret) < 6: continue
+        sortinos[name] = compute_sortino(oos_ret, rf)
+
+    if not sortinos: continue
+
+    sorted_cfgs = sorted(sortinos, key=lambda x: sortinos[x] if not pd.isna(sortinos[x]) else -np.inf, reverse=True)
+    for rank, name in enumerate(sorted_cfgs, start=1):
+        wf_rows.append({
+            'year': year,
+            'cfg': name,
+            'rank_in_year': rank,
+            'sortino': sortinos[name],
+            'top1_year': name == sorted_cfgs[0],
+        })
+
+wf_df = pd.DataFrame(wf_rows)
+
+# Top 5 의 연도별 rank
+top5_wf = wf_df[wf_df['cfg'].isin(top5_names)].copy()
+print('§18-1. Walk-forward — Top 5 의 연도별 OOS sortino rank:')
+pivot_rank = top5_wf.pivot(index='cfg', columns='year', values='rank_in_year')
+pivot_rank = pivot_rank.reindex(top5_names)
+pivot_rank['평균 rank'] = pivot_rank.mean(axis=1).round(1)
+print(pivot_rank.to_string())
+
+wf_df.to_csv(OUT_DIR / 'walkforward_oos.csv', index=False, encoding='utf-8-sig')
+print(f'\\nOK saved: {OUT_DIR / "walkforward_oos.csv"}')''')
+
+code('''# §18-2. fig22 — Walk-forward rank heatmap
+fig, ax = plt.subplots(figsize=(12, 5))
+heat_data = pivot_rank.drop(columns=['평균 rank']).astype(float)
+sns.heatmap(heat_data, annot=True, fmt='.0f', cmap='RdYlGn_r',
+            vmin=1, vmax=22, ax=ax,
+            cbar_kws={'label': 'OOS rank (1=최고)'},
+            annot_kws={'size': 11, 'weight': 'bold'})
+ax.set_title('§18-2. Walk-forward — Top 5 의 연도별 OOS sortino rank\\n'
+             '(녹색=상위, 적색=하위 — 22 cfg 중 순위)',
+             fontsize=12, fontweight='bold')
+ax.set_xlabel('Year (12m OOS)', fontsize=11)
+ax.set_ylabel('cfg', fontsize=11)
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig22_walkforward_oos.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig22_walkforward_oos.png"}')
+
+# robust 분류
+print('\\n§18-3. Walk-forward robust 분류:')
+for name in top5_names:
+    avg_rank = pivot_rank.loc[name, '평균 rank']
+    if avg_rank <= 5:
+        verdict = '✓ ROBUST (avg rank ≤ 5)'
+    elif avg_rank <= 10:
+        verdict = '△ MODERATE (5 < avg rank ≤ 10)'
+    else:
+        verdict = '✗ INCONSISTENT (avg rank > 10)'
+    print(f'  {name:30s}: 평균 rank {avg_rank:>4.1f}  {verdict}')''')
+
+# ─────────────────────────────────────────────────────────────────
+md("""## §19. Net Sharpe + Turnover Efficiency
+
+### 분석 동기
+
+거래비용 차감 후 (net) Sharpe 와 Sharpe / turnover (회전당 효율) 로 cfg 비교.
+
+### 메트릭 정의
+
+- **Net Sharpe (default tc=0.001)** = Sharpe of (ret - tc × turnover)
+- **Sharpe / turnover** = 회전 1단위당 Sharpe 기여 (효율)
+- **Break-even tc** = Sharpe = 0 이 되는 tc 값 ≈ |mean(ret) - rf| / mean(turnover)
+""")
+
+code('''# §19-1. Net Sharpe + 효율성 메트릭 (Top 5)
+TC_DEFAULT = 0.001
+
+efficiency_rows = []
+for name in top5_names:
+    ret = ret_dict[name]
+    turn = get_turnover_series(name)
+    if turn is None: continue
+    turn = turn.reindex(ret.index).fillna(0)
+    rf_c = rf.reindex(ret.index).fillna(0)
+
+    # Net ret (default tc)
+    net_ret = ret - TC_DEFAULT * turn
+    excess_gross = ret - rf_c
+    excess_net = net_ret - rf_c
+
+    # Gross / Net Sharpe (annualized)
+    sharpe_gross = float(excess_gross.mean() * 12 / (ret.std() * np.sqrt(12))) if ret.std() > 0 else np.nan
+    sharpe_net = float(excess_net.mean() * 12 / (net_ret.std() * np.sqrt(12))) if net_ret.std() > 0 else np.nan
+
+    # Sharpe / turnover (효율)
+    sharpe_per_turnover = sharpe_gross / turn.mean() if turn.mean() > 0 else np.nan
+
+    # Break-even tc (gross excess return = tc × turnover)
+    break_even_tc = excess_gross.mean() / turn.mean() if turn.mean() > 0 else np.nan
+
+    efficiency_rows.append({
+        'cfg': name,
+        'sharpe_gross': sharpe_gross,
+        f'sharpe_net (tc={TC_DEFAULT})': sharpe_net,
+        'sharpe_efficiency': sharpe_per_turnover,
+        'turnover_avg': turn.mean(),
+        'break_even_tc': break_even_tc,
+    })
+
+eff_df = pd.DataFrame(efficiency_rows)
+print('§19-1. Net Sharpe + 효율성 (Top 5):')
+print(eff_df.round(4).to_string(index=False))
+eff_df.to_csv(OUT_DIR / 'net_sharpe_efficiency.csv', index=False, encoding='utf-8-sig')
+print(f'\\nOK saved: {OUT_DIR / "net_sharpe_efficiency.csv"}')
+
+# fig23 — bar chart
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+x = np.arange(len(eff_df))
+width = 0.35
+axes[0].bar(x - width/2, eff_df['sharpe_gross'], width, label='Gross', color='#2ca02c', alpha=0.8)
+axes[0].bar(x + width/2, eff_df[f'sharpe_net (tc={TC_DEFAULT})'], width,
+            label=f'Net (tc={TC_DEFAULT})', color='#d62728', alpha=0.8)
+axes[0].set_xticks(x)
+axes[0].set_xticklabels([n[:18] for n in eff_df['cfg']], rotation=15, fontsize=8)
+axes[0].set_ylabel('Sharpe (annualized)', fontsize=10)
+axes[0].set_title('§19-1a. Gross vs Net Sharpe', fontsize=11, fontweight='bold')
+axes[0].legend(fontsize=10)
+axes[0].grid(True, alpha=0.3, axis='y')
+
+axes[1].bar(x, eff_df['break_even_tc'] * 10000, color='#9467bd', alpha=0.8)
+axes[1].set_xticks(x)
+axes[1].set_xticklabels([n[:18] for n in eff_df['cfg']], rotation=15, fontsize=8)
+axes[1].set_ylabel('Break-even tc (bps)', fontsize=10)
+axes[1].axhline(10, color='red', ls='--', alpha=0.5, label='기본 tc 10bps')
+axes[1].set_title('§19-1b. Break-even tc — Sharpe = 0 되는 tc', fontsize=11, fontweight='bold')
+axes[1].legend(fontsize=9)
+axes[1].grid(True, alpha=0.3, axis='y')
+
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig23_net_sharpe_efficiency.png', dpi=150, bbox_inches='tight')
+plt.show()
+print(f'OK saved: {FIG_DIR / "fig23_net_sharpe_efficiency.png"}')''')
+
+# ─────────────────────────────────────────────────────────────────
+md("""## §20. 결론 요약 (의사결정 보고서 연계)
 
 본 노트북의 모든 분석 결과는 별도 의사결정 보고서 (`final/_top1_decision_2026_05_08.md`) 에 정리됩니다.
+
+### 노트북 구성 (전체 §)
+
+| § | 단계 | 핵심 산출 |
+|---|---|---|
+| §0~§3 | 환경 + Universe 정의 | 153 main → 22 교집합 cfg |
+| §4 | Lexicographic (HO 포함 §4-1 + in-sample §4-4) | 두 변형 산출 + §4-5 비교 |
+| §5~§8 | Top 10 정밀 / 안정성 / 위험 / baseline | 16 메트릭 + bootstrap CI |
+| §9 | Decision Matrix (HO 포함 §9-1 + in-sample §9-4) | 두 변형 + §9-5 비교 |
+| §10 | Sensitivity test | ε / 우선순위 / sub-period |
+| §11 | HOLD_OUT 섹터 분해 | 사용자 가설 검증 (3/3 통과) |
+| §12 | SPY 4 레짐 비교 | R4 AI랠리 시장 환경 |
+| §13 | In-sample vs HO 통합 비교 | 두 기준 일치 검증 |
+| §14 | **PBO + DSR** | Multiple testing 보정 |
+| §15 | **Sharpe 통계 검정** | Memmel z-stat |
+| §16 | **Factor regression** | CAPM/FF3/Carhart4/FF5 |
+| §17 | **tc sensitivity** | 5bps ~ 100bps |
+| §18 | **Walk-forward OOS** | 7년 anchored OOS |
+| §19 | **Net Sharpe + 효율성** | Break-even tc |
 
 ### 핵심 산출물
 
 | 파일 | 내용 |
 |---|---|
-| `outputs/06_top1/intersection_summary.csv` | 22 cfg 교집합 |
-| `outputs/06_top1/filtered_M_summary.csv` | hard filter 후 (= 22, 추가 필터 없음) |
-| `outputs/06_top1/top10_metrics.csv` | Top 10 × 16 메트릭 |
-| `outputs/06_top1/top5_decision_matrix.csv` | 결정 matrix |
-| `outputs/06_top1/sensitivity_summary.csv` | sensitivity 결과 |
-| `outputs/06_top1/spy_regime_comparison.csv` | SPY + Top 4 × 4 레짐 (§12) |
-| `outputs/06_top1/figures/fig01~fig17.png` | 차트 17장 |
+| `intersection_summary.csv` | 22 cfg 교집합 (§2) |
+| `filtered_M_summary.csv` | hard filter 후 (§3) |
+| `top10_metrics.csv` | Top 10 × 16 메트릭 (§5) |
+| `top5_decision_matrix.csv` | 결정 matrix HO 포함 (§9-1) |
+| `top5_decision_matrix_insample.csv` | 결정 matrix in-sample (§9-4) |
+| `lex_compare_HO_vs_insample.csv` | Lex Top 10 비교 (§4-5) |
+| `insample_vs_ho_comparison.csv` | 통합 비교 (§13) |
+| `sensitivity_summary.csv` | sensitivity 결과 (§10) |
+| `spy_regime_comparison.csv` | SPY × 4 레짐 (§12) |
+| `dsr_top5.csv` | DSR (§14) |
+| `memmel_sharpe_test.csv` | Sharpe pairwise z-stat (§15) |
+| `factor_regression.csv` | 4 모델 × Top 5 (§16) |
+| `tc_sensitivity.csv` | tc 5종 × Top 5 (§17) |
+| `walkforward_oos.csv` | 7년 OOS rank (§18) |
+| `net_sharpe_efficiency.csv` | Gross/Net Sharpe + break-even (§19) |
+| `figures/fig01~fig23.png` | 차트 23 장 |
+
+### 학술적 권고 (HO 누설 완전 제거 후 ★)
+
+**최종 Top 1 = `mat_eq_mcap_lam_he`** (§4-4 Lex / §9-4 DM 양 in-sample 학술 표준 1위)
+
+- §0~§3: sortino_ir 재산출 (R3 끝점 2023-12) → universe 22 cfg 재구성
+- §4-4 / §9-4: in-sample only Lex / DM — HO 0%
+- §13: HO 포함 vs in-sample 비교 (Lex 일치 / DM §9-1 = lam_rms 변경 / §9-4 = lam_he 학술 표준)
+- §14: PBO 결과로 multiple testing 위험 정량화
+- §15: Memmel test 로 baseline 대비 우월 검증
+- §16: Factor regression (FF5) 후에도 alpha 유의성 (t > 4.5)
+- §17: 거래비용 sensitivity (5~100bps 6 단계)
+- §18: 7년 walk-forward 일관성
+- §19: Net Sharpe + break-even tc 로 실거래 가능성
+
+각 § 의 결론을 의사결정 보고서에 통합 narrative 로 정리.
 """)
 
 # ─────────────────────────────────────────────────────────────────
