@@ -609,6 +609,90 @@ def render_holdings_history(
 
 
 # ======================================================================
+# 영역 6.5: 시점별 Top N 합 vs Others 시계열 (시점별 동적 — 영역 6 보완)
+# ======================================================================
+
+def render_top_n_share_timeseries(
+    comp: pd.DataFrame,
+    weights: pd.DataFrame,
+) -> None:
+    """
+    각 시점별 Top N 합 (시점별 동적 ticker) + Others 시계열.
+
+    영역 6 vs 본 영역의 차이:
+      - 영역 6 = 선택 시점 Top N ticker 의 전 기간 weight (정적 ticker, 동적 weight)
+      - 본 영역 = 각 시점의 Top N 합 (동적 ticker, 시점별 합)
+      → 펀드 집중도의 시점별 동적 추세 (final.comp.top10_share 직접 정합)
+
+    Args:
+        comp: pd.DataFrame (final 산출 — top1_weight, top10_share 활용)
+        weights: pd.DataFrame (Top 5 / 20 직접 산출 시 fallback)
+    """
+    cols_t = st.columns([1.5, 5])
+    with cols_t[0]:
+        n = st.selectbox(
+            "Top N",
+            options=[1, 5, 10, 20],
+            index=2,  # default 10
+            key="holdings_topn_share",
+            help="N 별 시점별 합 시계열 — 펀드 집중도 동적 추세",
+        )
+
+    # 시점별 Top N 합 산출 — final 정합 우선, 부재 시 직접 산출
+    if n == 10 and "top10_share" in comp.columns:
+        top_share = comp["top10_share"]  # final 직접 사용
+        source_label = "final.comp.top10_share"
+    elif n == 1 and "top1_weight" in comp.columns:
+        top_share = comp["top1_weight"]
+        source_label = "final.comp.top1_weight"
+    else:
+        # 직접 산출 (Top 5 / 20)
+        top_share = pd.Series({
+            t: float(weights.loc[t][weights.loc[t] > 0].nlargest(n).sum())
+            for t in weights.index
+        })
+        source_label = f"직접 산출 — 각 시점 Top {n} weight 합"
+
+    others = 1 - top_share
+
+    # 100%-stacked area — 두 면적 누적, 경계선이 Top N 합을 자연 표현
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=top_share.index, y=top_share.values,
+        name=f"Top {n} 합",
+        stackgroup="one",
+        line=dict(color=COLORS["primary"], width=2),
+        fillcolor=f"rgba(59, 130, 246, 0.55)",  # primary blue 반투명
+        hovertemplate=f"%{{x|%Y-%m}}<br><b>Top {n} 합</b>: %{{y:.2%}}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=others.index, y=others.values,
+        name="Others",
+        stackgroup="one",
+        line=dict(color=COLORS["text_muted"], width=1, dash="dot"),
+        fillcolor=f"rgba(156, 163, 175, 0.30)",  # text_muted 반투명
+        hovertemplate="%{x|%Y-%m}<br>Others: %{y:.2%}<extra></extra>",
+    ))
+
+    fig = add_regime_backgrounds(fig, with_labels=False)
+    fig = add_event_annotations(fig)
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+        font_color=COLORS["text"],
+        xaxis_title="시점",
+        yaxis_title="시점별 weight 누적 (Top N + Others = 100%)",
+        yaxis=dict(tickformat=".0%", range=[0, 1]),
+        height=400, hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=30, l=0, r=0, b=0),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"데이터 출처: {source_label}")
+
+
+# ======================================================================
 # 영역 7: 종목별 기여도 분석 (Tornado Chart)
 # ======================================================================
 

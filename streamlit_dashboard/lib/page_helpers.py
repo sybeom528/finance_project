@@ -152,12 +152,12 @@ def _render_model_selector() -> None:
     구성:
       1. selectbox (검색 가능, 156 config 중 선택)
       2. expander "📊 156 config 메트릭 비교 표"
-         - 정렬 가능 DataFrame (CAGR/Vol/MDD/Sharpe/Sortino/Beta)
-         - 검색 텍스트 필터 (config 이름 contains)
-         - default 모델 (mat_eq_eq_raw_pap) 강조 표시
 
-    main 의 default 모델 = mat_eq_eq_raw_pap. 다른 모델 선택 시
-    모든 페이지 (Performance / Risk / Holdings 등) 메트릭이 자동 반영됨.
+    페이지 간 선택 유지를 위한 설계 (streamlit multipage quirk 회피):
+      - logical key   = `st.session_state.config_name` (페이지 entry 들이 읽음)
+      - widget key    = `model_selector_widget` (selectbox 자체)
+      - 변경 시점에 logical ← widget 명시 동기화
+      → page_link 이동으로 widget instance 가 다시 그려져도 logical key 유지
     """
     from lib.data_loader import list_available_configs, load_all_config_metrics
 
@@ -165,18 +165,29 @@ def _render_model_selector() -> None:
     st.caption("`model-comparison` branch 에서만 표시 — main 은 mat_eq_eq_raw_pap 단일 모델")
 
     configs = list_available_configs()
-    current = st.session_state.get("config_name", "mat_eq_eq_raw_pap")
-    if current not in configs:
-        current = configs[0] if configs else "mat_eq_eq_raw_pap"
 
-    # selectbox — Streamlit 자체 typeable 검색 지원
-    selected = st.selectbox(
+    # logical key 보장
+    if "config_name" not in st.session_state or st.session_state.config_name not in configs:
+        st.session_state.config_name = (
+            "mat_eq_eq_raw_pap" if "mat_eq_eq_raw_pap" in configs else configs[0]
+        )
+    current = st.session_state.config_name
+
+    # selectbox — widget key 분리 + 변경 시 logical key 동기화 (callback)
+    def _sync_logical_from_widget() -> None:
+        st.session_state.config_name = st.session_state.model_selector_widget
+
+    st.selectbox(
         "모델 선택",
         options=configs,
-        index=configs.index(current) if current in configs else 0,
-        key="config_name",
+        index=configs.index(current),
+        key="model_selector_widget",
+        on_change=_sync_logical_from_widget,
         help="텍스트 입력으로 검색 가능 (예: 'lstm', 'mat_eq', 'capm_mcap')",
     )
+
+    # 디버그 표시 — 현재 활성 모델 (페이지 이동해도 유지되는지 확인용)
+    st.caption(f"활성 모델: `{st.session_state.config_name}`")
 
     # 메트릭 비교 표 (expander)
     with st.expander("📊 156 config 메트릭 비교 표", expanded=False):

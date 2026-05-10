@@ -125,13 +125,27 @@ def load_sp500_membership() -> dict:
 @st.cache_data
 def load_fund_results(config_name: str = "mat_eq_eq_raw_pap") -> dict:
     """
-    펀드 backtest 결과 (Top 1 = mat_eq_eq_raw_pap).
+    펀드 backtest 결과. 대시보드 사본 (Top 1) 우선, 없으면 final 원본 fallback.
 
-    pkl 구조 (예상):
-      {"weights": pd.DataFrame, "returns": pd.Series, "dates": ..., ...}
+    pkl 구조: {"weights": DataFrame, "ret": Series, "spy_ret": Series,
+              "comp": DataFrame, "config": dict, "meta": DataFrame, ...}
+
+    model-comparison branch 에서 156 config 자유 선택 가능 (final 원본 fallback).
     """
-    with open(RESULTS_DIR / f"{config_name}.pkl", "rb") as f:
-        return pickle.load(f)
+    local = RESULTS_DIR / f"{config_name}.pkl"
+    if local.exists():
+        with open(local, "rb") as f:
+            return pickle.load(f)
+
+    original = ORIGINAL_RESULTS_DIR / f"{config_name}.pkl"
+    if original.exists():
+        with open(original, "rb") as f:
+            return pickle.load(f)
+
+    raise FileNotFoundError(
+        f"Config '{config_name}' pkl 을 찾을 수 없습니다.\n"
+        f"  확인한 경로:\n  - {local}\n  - {original}"
+    )
 
 
 @st.cache_data
@@ -165,20 +179,8 @@ def list_available_configs() -> list[str]:
     return names
 
 
-@st.cache_data
-def load_fund_results_any(config_name: str) -> dict:
-    """
-    config_name 기준 fund pkl 로드 — main 사본 (Top 1) 우선, 없으면 final 원본.
-
-    이 함수가 model-comparison branch 의 핵심: pkl 파일명만 바뀌면
-    fund.weights / fund.comp / fund.ret / fund.spy_ret 등 모두 동일 형식이므로
-    모든 페이지의 메트릭 / 차트가 자동 반영됨.
-    """
-    local = RESULTS_DIR / f"{config_name}.pkl"
-    if local.exists():
-        with open(local, "rb") as f:
-            return pickle.load(f)
-    return load_other_config_results(config_name)
+# load_fund_results_any 는 load_fund_results 의 alias (fallback 통합 후 동일 기능)
+load_fund_results_any = load_fund_results
 
 
 @st.cache_data
