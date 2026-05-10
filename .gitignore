@@ -33,8 +33,8 @@ wheels/
 # 핵심 패널 / 일별 수익률 (대용량 — git push 시 1회 transfer)
 !streamlit_dashboard/data/monthly_panel.csv
 !streamlit_dashboard/data/daily_returns.pkl
-# Top 1 모델 결과
-!streamlit_dashboard/data/results/mat_eq_mcap_raw_rms.pkl
+# Top 1 모델 결과 + 156 config sensitivity (Backtesting 페이지 영역 6)
+!streamlit_dashboard/data/results/*.pkl
 
 # Jupyter Notebook
 .ipynb_checkpoints/

@@ -1325,3 +1325,181 @@ def calc_sector_decomposition(
 
     df = pd.DataFrame(rows).sort_values("Weight", ascending=False).reset_index(drop=True)
     return df
+
+
+# ======================================================================
+# Backtesting 페이지 전용 (Phase 3.2)
+# ======================================================================
+# decisionlog 08_backtesting.md BT-Q1:
+#   - Regime 12 메트릭 (영역 4)
+#   - 4 Sub-events (영역 5)
+#   - 156 config Sensitivity (영역 6)
+#   - 모든 메트릭 final/master_table 정합 또는 학술 표준 (출처 명시)
+
+
+def calc_test_ho_gap(ret: pd.Series, rf: pd.Series) -> float:
+    """TEST/HO Gap = TEST Sortino - HO Sortino. 작을수록 학습편향 ↓ (robust)."""
+    s_test = calc_sortino_subperiod(ret, rf, "2010-01-01", "2023-12-31")
+    s_ho = calc_sortino_subperiod(ret, rf, "2024-01-01", "2025-12-31")
+    if pd.isna(s_test) or pd.isna(s_ho):
+        return np.nan
+    return float(s_test - s_ho)
+
+
+def calc_regime_consistency_score(ret: pd.Series, rf: pd.Series) -> dict:
+    """
+    Regime 일관성 = R1/R2/R3/HO Sortino mean / std.
+    높을수록 모든 시기에서 일관된 성과 (안정).
+    """
+    regimes = {
+        "R1": ("2010-01-01", "2012-06-30"),
+        "R2": ("2012-07-01", "2019-12-31"),
+        "R3": ("2020-01-01", "2023-12-31"),
+        "HO": ("2024-01-01", "2025-12-31"),
+    }
+    sortinos = {label: calc_sortino_subperiod(ret, rf, s, e) for label, (s, e) in regimes.items()}
+    valid = [v for v in sortinos.values() if not pd.isna(v)]
+    if len(valid) < 2:
+        return {"sortinos": sortinos, "mean": np.nan, "std": np.nan, "score": np.nan}
+    mean = float(np.mean(valid))
+    std = float(np.std(valid, ddof=1))
+    score = mean / std if std > 0 else np.nan
+    return {"sortinos": sortinos, "mean": mean, "std": std, "score": score}
+
+
+# 영역 5 — Sub-events (4 위기) 정의 (변경 용이성 위해 외부 dict)
+SUB_EVENTS: list[dict] = [
+    {"name": "2018 Q4 Sell-off", "start": "2018-09-30", "end": "2018-12-31"},
+    {"name": "COVID-19 Crash",    "start": "2020-02-29", "end": "2020-03-31"},
+    {"name": "2022 Inflation Bear", "start": "2022-01-31", "end": "2022-10-31"},
+    {"name": "2024-12 Sector Rotation", "start": "2024-11-30", "end": "2024-12-31"},
+]
+
+
+def calc_sub_event_metrics(ret: pd.Series, spy: pd.Series, rf: pd.Series) -> pd.DataFrame:
+    """
+    4 Sub-events 별 Fund / SPY / Active Return / MDD / Recovery Time 산출.
+
+    각 위기 기간 동안:
+      - Fund 누적 수익률 / SPY 누적 수익률 / Active = Fund - SPY
+      - Fund MDD 기간 내
+      - Recovery Time = trough → 신고가 회복 (위기 종료 후 N 개월)
+    """
+    rows = []
+    ret_clean = ret.dropna()
+    full_cum = (1 + ret_clean).cumprod()  # 시작 시점부터 누적
+
+    for ev in SUB_EVENTS:
+        s, e = pd.Timestamp(ev["start"]), pd.Timestamp(ev["end"])
+        sub_ret = ret[(ret.index >= s) & (ret.index <= e)].dropna()
+        sub_spy = spy[(spy.index >= s) & (spy.index <= e)].dropna()
+        if len(sub_ret) == 0:
+            continue
+        fund_cum = float((1 + sub_ret).prod() - 1)
+        spy_cum = float((1 + sub_spy).prod() - 1) if len(sub_spy) > 0 else np.nan
+        active = fund_cum - spy_cum if not pd.isna(spy_cum) else np.nan
+        # MDD (위기 기간만)
+        cum_in = (1 + sub_ret).cumprod()
+        mdd = float((cum_in / cum_in.cummax() - 1).min())
+
+        # Recovery — 위기 시작 직전 peak (전체 누적) → 위기 종료 후 신고가 회복
+        before = full_cum[full_cum.index < s]
+        if len(before) == 0:
+            recovery = None
+        else:
+            peak_pre = float(before.iloc[-1])
+            after_e = full_cum[full_cum.index > e]
+            recovered = after_e[after_e >= peak_pre]
+            if len(recovered) > 0:
+                rec_t = recovered.index[0]
+                # 위기 종료 시점부터 회복 시점까지의 개월 수
+                recovery = (rec_t.year - e.year) * 12 + (rec_t.month - e.month)
+                recovery = max(0, int(recovery))
+            else:
+                recovery = None
+
+        rows.append({
+            "Event": ev["name"],
+            "Period": f"{s.strftime('%Y-%m')} ~ {e.strftime('%Y-%m')}",
+            "Fund": fund_cum,
+            "SPY": spy_cum,
+            "Active": active,
+            "MDD": mdd,
+            "Recovery_months": recovery,
+        })
+    return pd.DataFrame(rows)
+
+
+def calc_avg_recovery_time(sub_event_df: pd.DataFrame) -> float:
+    """4 Sub-events 의 평균 Recovery Time (개월). NaN 제외."""
+    if "Recovery_months" not in sub_event_df.columns:
+        return np.nan
+    rec = sub_event_df["Recovery_months"].dropna()
+    return float(rec.mean()) if len(rec) > 0 else np.nan
+
+
+# 영역 4 — Regime 12 메트릭 정의 (변경 용이)
+REGIME_METRICS: list[str] = [
+    "CAGR", "Sortino", "Sharpe", "MDD", "Volatility",
+    "Active_Return", "IR", "Win_Rate", "Calmar",
+    "VaR_5", "CVaR_5", "Beta",
+]
+
+REGIME_PERIODS: dict[str, tuple[str, str]] = {
+    "R1 회복": ("2010-01-01", "2012-06-30"),
+    "R2 확장": ("2012-07-01", "2019-12-31"),
+    "R3 변동": ("2020-01-01", "2023-12-31"),
+    "HO 24m": ("2024-01-01", "2025-12-31"),
+    "FULL":   ("2010-01-01", "2025-12-31"),
+}
+
+
+def calc_regime_full_metrics(
+    ret: pd.Series, spy: pd.Series, rf: pd.Series
+) -> pd.DataFrame:
+    """
+    영역 4 — Regime × 12 메트릭 표.
+    행: Regime / 컬럼: 메트릭. 모두 final 정합 함수 사용.
+    """
+    rows = []
+    for label, (s, e) in REGIME_PERIODS.items():
+        sub_ret = ret[(ret.index >= s) & (ret.index <= e)].dropna()
+        sub_spy = spy[(spy.index >= s) & (spy.index <= e)].dropna()
+        sub_rf = rf.reindex(sub_ret.index).fillna(0)
+        if len(sub_ret) < 6:
+            continue
+        cum = (1 + sub_ret).cumprod()
+        spy_cum = (1 + sub_spy).cumprod() if len(sub_spy) > 0 else None
+
+        cagr_val = calc_cagr_subperiod(ret, s, e)
+        sortino_val = calc_sortino_subperiod(ret, rf, s, e)
+        sharpe_val = calc_sharpe_subperiod(ret, rf, s, e)
+        mdd_val = calc_mdd_subperiod(ret, s, e)
+        vol_val = float(sub_ret.std() * np.sqrt(12))
+        active_ret = (
+            float(cum.iloc[-1] - 1) - float(spy_cum.iloc[-1] - 1)
+            if spy_cum is not None and len(spy_cum) > 0
+            else np.nan
+        )
+        # IR = Active Return / Tracking Error
+        if len(sub_spy) > 0:
+            common = sub_ret.index.intersection(sub_spy.index)
+            te = float((sub_ret.reindex(common) - sub_spy.reindex(common)).std() * np.sqrt(12))
+            ir_val = (active_ret * (12 / len(sub_ret))) / te if te > 0 else np.nan
+        else:
+            ir_val = np.nan
+        win_rate = calc_win_rate(sub_ret)
+        calmar = (cagr_val / abs(mdd_val)) if (not pd.isna(mdd_val) and mdd_val != 0) else np.nan
+        var_5 = float(sub_ret.quantile(0.05))
+        cvar_5 = calc_cvar(sub_ret, alpha=0.05)
+        beta_val = calc_beta(sub_ret, sub_spy, sub_rf) if len(sub_spy) > 0 else np.nan
+
+        rows.append({
+            "Regime": label,
+            "CAGR": cagr_val, "Sortino": sortino_val, "Sharpe": sharpe_val,
+            "MDD": mdd_val, "Volatility": vol_val,
+            "Active_Return": active_ret, "IR": ir_val,
+            "Win_Rate": win_rate, "Calmar": calmar,
+            "VaR_5": var_5, "CVaR_5": cvar_5, "Beta": beta_val,
+        })
+    return pd.DataFrame(rows).set_index("Regime")

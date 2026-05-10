@@ -27,6 +27,46 @@
 - Walk-forward OOS 검증
 - Methodology 영역 8 한계 (Walk-forward 미적용) → **여기서 일부 적용**
 
+### 추가 결정 (BT-Q1, 2026-05-11): 메트릭 정합성 + 156 config 데이터 포함
+
+**배경**: Phase 3.2 구현 (Phase 2.1/2.2/2.3 동일 패턴 — 신모델 mat_eq_mcap_raw_rms 기준).
+
+**Final 정합 메트릭** (subperiod 함수 사용):
+- Regime별 CAGR / Sortino / Sharpe / MDD = `calc_*_subperiod` 함수 (master_table 1:1)
+- Volatility / Beta / VaR / CVaR / Win Rate = `calc_*` 함수 (compute_metrics 정합)
+
+**학술 표준 정의 (출처 명시)**:
+
+| 메트릭 | 정의 | 출처 |
+|---|---|---|
+| **TEST/HO Gap** | Sortino_TEST − Sortino_HO | 학습편향 검증 표준 |
+| **Regime 일관성 Score** | Sortino mean / std (R1/R2/R3/HO) | Reverse CV 표준 |
+| **Sub-events Recovery** | 위기 시작 직전 peak → 종료 후 신고가 회복 개월 수 | Magdon-Ismail & Atiya (2004) |
+| **Active Return** | Fund 누적 - SPY 누적 (위기 기간) | Active Management 표준 |
+| **IR (Information Ratio)** | Active Return / Tracking Error | Grinold & Kahn (1999) |
+| **Calmar** | CAGR / |MDD| | Young (1991) |
+| **156 config Sensitivity** | Sortino 분포 mean/std (= 1/CV) | Robustness 표준 |
+
+**데이터 의존성 결정 — 156 config 직접 git 포함**:
+- 156 pkl 합 ~145MB → GitHub 권장 한계 (1GB) 내
+- CSV summary 캐시 vs 156 pkl 직접 포함 비교 → **직접 포함 채택**
+- 사유: build 스크립트 불필요 + 메트릭 추가 자유 + pkl 내부 데이터 (weights/comp) 활용 가능
+- `.gitignore` 에 `!streamlit_dashboard/data/results/*.pkl` negation
+- `lib/data_loader.list_available_configs()` 추가 — main 에서도 156 config 접근 가능
+
+**검증 결과** (신모델 mat_eq_mcap_raw_rms):
+- TEST/HO Gap: 1.265
+- Regime 일관성 score: 2.73 (R1=2.23/R2=2.07/R3=1.86/HO=0.81)
+- Avg Recovery: 2.5 개월 (2024 IT Rotation = 7m, HO narrative)
+- 156 config Sortino Rank: **5/159 (Top 3.1%)** — 매우 우수 + robust
+- 156 config Sortino mean=1.59 / std=0.18 → Robustness=8.71 (안정)
+
+**결과 / 함의**:
+- `lib/metric_calculators.py` 보강 — 5 신규 함수 + REGIME_METRICS / SUB_EVENTS / REGIME_PERIODS 외부 dict (변경 용이)
+- `lib/backtesting_charts.py` 신규 — 4 영역 함수
+- 모든 결과 final 정합 또는 학술 출처 명시 → 정직성 확보
+- **초안** 으로 작성됨 — 향후 영역 추가 / 제거 / 메트릭 변경 용이한 구조 (모듈화)
+
 ### 페이지 메타 결정 (BT M-1 ~ M-4)
 
 #### BT M-1. 영역 개수

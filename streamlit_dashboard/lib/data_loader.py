@@ -235,11 +235,25 @@ def load_fund_results(config_name: str = "mat_eq_mcap_raw_rms") -> dict:
 @st.cache_data
 def load_other_config_results(config_name: str) -> dict:
     """
-    다른 155 config 결과 (Backtesting 영역 6 Sensitivity Test 시).
-    원본 final/results/ 에서 직접 참조 (대시보드 사본에는 Top 1 만 존재).
+    다른 155 config 결과 — Backtesting 영역 6 / model-comparison 등.
+    load_fund_results 와 동일한 fallback (사본 우선 → final 원본).
     """
-    with open(ORIGINAL_RESULTS_DIR / f"{config_name}.pkl", "rb") as f:
-        return pickle.load(f)
+    return load_fund_results(config_name)
+
+
+@st.cache_data
+def list_available_configs() -> list[str]:
+    """
+    streamlit_dashboard/data/results/ 의 모든 config pkl 이름 list.
+    부재 시 final/results/ fallback. Backtesting 페이지 영역 6 sensitivity 사용.
+    """
+    if RESULTS_DIR.exists():
+        names = sorted(p.stem for p in RESULTS_DIR.glob("*.pkl") if p.is_file())
+        if names:
+            return names
+    if ORIGINAL_RESULTS_DIR.exists():
+        return sorted(p.stem for p in ORIGINAL_RESULTS_DIR.glob("*.pkl") if p.is_file())
+    return ["mat_eq_mcap_raw_rms"]  # fallback
 
 
 # === Baseline 산출 (Overview 영역 3 비교 라인) ========================
