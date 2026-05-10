@@ -36,6 +36,46 @@
 
 → Sector Watch 페이지가 이 narrative 의 중심 (특히 영역 8)
 
+### 추가 결정 (Sector-Q1, 2026-05-10): final 정합 + 학술 표준 메트릭 매핑
+
+**배경**: 사용자 지시 — "본 페이지의 각 지표들도 final 과 비교하여 정확하게 동일한 결과가 나올 수 있도록 구성하고 검증까지 진행" (Phase 2.1 Risk-Q1 / Phase 2.2 Hold-Q1 동일 패턴).
+
+**Final 에 직접 산출된 메트릭**: 없음 (final 의 comp DataFrame 은 ticker level — sector level 메트릭은 별도 산출 필요)
+
+**학술 표준 정의 (출처 명시)**:
+
+| 메트릭 | 정의 | 출처 |
+|---|---|---|
+| **Sector HHI** | $\sum_s (\sum_{i \in s} w_i)^2$ — sector aggregate HHI | Hirschman (1945) "National Power and the Structure of Foreign Trade" |
+| **SPY Sector Weight** | $w_s^{SPY} = \frac{\sum_{i \in s, i \in SP500_{t-1}} \text{mcap}_i}{\sum_{i \in SP500_{t-1}} \text{mcap}_i}$ — mcap 가중 (look-ahead 회피) | Standard cap-weighted index methodology (S&P) |
+| **Sector Tilt** | $\text{Tilt}_s = w_s^{Fund} - w_s^{SPY}$ — Active Management 표준 | Active Management theory |
+| **Active Bets** | $\#\{s : \|\text{Tilt}_s\| > 1\%\}$ — 액티브 베팅 분산 | 표준 |
+| **Avg \|Tilt\|** | $\overline{\|\text{Tilt}\|}$ — 액티브 운용 강도 | 표준 |
+| **Sector Volatility/Beta** | sector 내 weight 정규화 가중 평균 | 표준 sector level 분석 |
+| **Sector Sharpe** | sector return / sector vol (rf 무시 단순 근사) | 표준 |
+| **Sector Carino Contribution** | groupby(sector).sum(Carino smoothed contribution) | Brinson 1986 + Carino 1999 |
+
+**HO 정당화 학술 출처**:
+- **Markowitz (1952)** "Portfolio Selection" — 평균-분산 이론
+- **Fama-French (1992)** "The Cross-Section of Expected Stock Returns" — factor diversification
+
+**SPY Sector Weight 산출 검증** (신모델 mat_eq_mcap_raw_rms, Latest 2025-12):
+- Fund Sector HHI: 0.1350
+- SPY  Sector HHI: 0.1742 (Fund 보다 집중도 ↑ — IT 집중)
+- **Most Underweight (Fund): Information Technology -33.31%** ★ HO narrative 핵심 검증
+- Active Bets: 11 (모든 섹터)
+
+**GICS 11 표준 정합화 (사전 작업)**:
+- universe.csv / monthly_panel.csv 에 yfinance 형식 (Healthcare/Technology/Consumer Defensive 등) 혼재
+- `lib/data_loader.GICS_SECTOR_NORMALIZATION` 으로 load 시점 자동 정합화 → 11 표준 통일
+- ticker_to_sector lookup: panel 우선 (실시점 GICS) + universe fallback
+
+**결과 / 함의**:
+- `lib/metric_calculators.py` 보강 — 4 신규 함수 (compute_spy_sector_weights / calc_sector_tilt / calc_active_bets / calc_sector_decomposition)
+- `lib/sector_charts.py` 신규 — 6 영역 함수
+- 모든 결과가 학술 출처 명시 → 정직성 확보
+- HO narrative 강화 (신모델 mat_eq_mcap_raw_rms 에서 -19.3%p 차이로 narrative 설득력 ↑)
+
 ### 페이지 메타 결정 (Sector M-1 ~ M-4)
 
 #### Sector M-1. 영역 개수

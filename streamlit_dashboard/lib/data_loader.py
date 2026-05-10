@@ -136,6 +136,42 @@ def load_ticker_company_map() -> pd.DataFrame | None:
 
 
 @st.cache_data
+def get_ticker_sector_map() -> dict[str, str]:
+    """
+    ticker → GICS 11 표준 sector dict.
+
+    lookup 우선순위 (정확도 ↑):
+      1. monthly_panel 의 ticker 별 최신 시점 gics_sector (실제 GICS)
+      2. universe.csv 의 gics_sector (panel 부재 시 fallback)
+      3. "Unknown" (둘 다 부재)
+
+    universe 의 "Unknown" 205 ticker 도 panel 에 있으면 정확 sector 산출 가능.
+    """
+    panel = load_monthly_panel()
+    universe = load_universe()
+
+    # 1) panel — 각 ticker 의 latest 시점 gics_sector (이미 normalize 됨)
+    panel_latest = (
+        panel.dropna(subset=["gics_sector"])
+        .sort_values("date")
+        .groupby("ticker")["gics_sector"]
+        .last()
+        .to_dict()
+    )
+
+    # 2) universe — panel 에 없는 ticker 보강
+    universe_map = dict(zip(universe["ticker"], universe["gics_sector"]))
+
+    # 통합 (panel 우선)
+    out: dict[str, str] = {}
+    all_tickers = set(panel_latest) | set(universe_map)
+    for t in all_tickers:
+        sector = panel_latest.get(t) or universe_map.get(t) or "Unknown"
+        out[t] = sector
+    return out
+
+
+@st.cache_data
 def get_ticker_company_dict() -> dict[str, str]:
     """
     ticker → company_name dict. 매핑 파일 부재 시 빈 dict.

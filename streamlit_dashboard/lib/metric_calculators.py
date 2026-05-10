@@ -1172,3 +1172,156 @@ def calc_delta_weight(
     curr = weights.loc[current_date].reindex(tickers).fillna(0)
     prev = weights.loc[prev_date].reindex(tickers).fillna(0)
     return curr - prev
+
+
+# ======================================================================
+# Sector Watch 페이지 전용 (Phase 2.3)
+# ======================================================================
+# decisionlog 06_sector_watch.md Sector-Q1:
+#   - SPY sector weight 산출: panel.log_mcap × sp500_membership[t-1] (look-ahead 회피)
+#   - Sector Tilt = Fund_w − SPY_w (Active Management)
+#   - Active Bets = (|Tilt| > 1%).sum()
+#   - HO 정당화 narrative: Markowitz (1952) + Fama-French (1992)
+
+
+def compute_spy_sector_weights(
+    panel: pd.DataFrame,
+    sp500_membership: dict,
+    date: pd.Timestamp,
+    ticker_to_sector: dict | None = None,
+) -> pd.Series:
+    """
+    SPY sector weight (mcap 가중) — date 시점 sp500_membership 의 mcap 가중 합.
+
+    학술 산출:
+      1. members = sp500_membership[date 직전] (look-ahead 회피)
+      2. mcap_i = exp(log_mcap_i)
+      3. sector_weight_s = Σ_{i ∈ s} mcap_i / Σ_all mcap_i
+
+    Args:
+        panel: monthly_panel (date, ticker, log_mcap, gics_sector)
+        sp500_membership: dict[Timestamp, frozenset[str]]
+        date: 산출 시점
+        ticker_to_sector: panel.gics_sector 외부 lookup (선택)
+
+    Returns:
+        pd.Series (index=sector, value=weight, sum=1)
+    """
+    sp_dates = sorted(sp500_membership.keys())
+    prior = [d for d in sp_dates if d <= date - pd.offsets.MonthEnd(1)]
+    if not prior:
+        prior = [d for d in sp_dates if d <= date]
+    if not prior:
+        return pd.Series(dtype=float)
+
+    members = list(sp500_membership[max(prior)])
+    rows = panel[(panel["date"] == date) & (panel["ticker"].isin(members))].copy()
+    rows = rows[rows["log_mcap"].notna()]
+    if len(rows) == 0:
+        return pd.Series(dtype=float)
+
+    rows["_mcap"] = np.exp(rows["log_mcap"])
+    if ticker_to_sector is not None:
+        rows["_sector"] = rows["ticker"].map(ticker_to_sector).fillna("Unknown")
+        sector_col = "_sector"
+    else:
+        sector_col = "gics_sector"
+
+    total = rows["_mcap"].sum()
+    if total <= 0:
+        return pd.Series(dtype=float)
+    return rows.groupby(sector_col)["_mcap"].sum() / total
+
+
+def calc_sector_weights_fund(
+    weights_row: pd.Series, ticker_to_sector: dict
+) -> pd.Series:
+    """단일 시점 Fund sector weight (Holdings calc_sector_weights 와 동일)."""
+    return calc_sector_weights(weights_row, ticker_to_sector)
+
+
+def calc_sector_tilt(
+    fund_sw: pd.Series, spy_sw: pd.Series
+) -> pd.Series:
+    """
+    Sector Tilt = Fund_w − SPY_w (Active Management 표준).
+    두 series 의 합집합 sector — 어느 쪽에만 있어도 0 보강 후 차이 산출.
+    """
+    all_sectors = sorted(set(fund_sw.index) | set(spy_sw.index))
+    tilt = pd.Series(
+        {s: float(fund_sw.get(s, 0)) - float(spy_sw.get(s, 0)) for s in all_sectors}
+    )
+    return tilt.sort_values(ascending=False)
+
+
+def calc_active_bets(tilt: pd.Series, threshold: float = 0.01) -> int:
+    """Active Bets = |Tilt| > threshold (default 1%) 의 sector 개수."""
+    return int((tilt.abs() > threshold).sum())
+
+
+def calc_sector_decomposition(
+    weights_row: pd.Series,
+    panel: pd.DataFrame,
+    date: pd.Timestamp,
+    ticker_to_sector: dict,
+    spy_sw: pd.Series,
+    fund_ret: pd.Series | None = None,
+) -> pd.DataFrame:
+    """
+    Sector level decomposition 표 — 9 컬럼 (영역 5 plan 정합).
+
+    컬럼: sector, weight, tilt, return_12m, n_holdings, vol, beta, sharpe, contribution
+
+    sector level 메트릭 산출 (가중 평균):
+      - return_12m: Σ_i (w_i × ret_12m_i) / sector_weight (sector-conditional)
+      - vol / beta: ticker level 의 가중 평균
+      - sharpe: (sector return - rf) / sector vol
+      - contribution: sector weight × sector return (단순)
+    """
+    w = weights_row.dropna()
+    w = w[w > 0]
+    if len(w) == 0:
+        return pd.DataFrame()
+
+    fund_sw = calc_sector_weights(weights_row, ticker_to_sector)
+
+    # 종목별 12m return + vol / beta (panel 기반)
+    ret_12m = get_12m_return_from_panel(panel, date, w.index.tolist())
+    panel_d = panel[panel["date"] == date].set_index("ticker")
+    vol_d = panel_d["vol_252d"].reindex(w.index)
+    beta_d = panel_d["beta_252d"].reindex(w.index)
+
+    # sector level groupby
+    sectors = w.index.to_series().map(ticker_to_sector).fillna("Unknown")
+    rows = []
+    for sec, group in pd.DataFrame({
+        "ticker": w.index, "weight": w.values,
+        "ret_12m": ret_12m.values, "vol": vol_d.values, "beta": beta_d.values,
+        "sector": sectors.values,
+    }).groupby("sector"):
+        sw = float(group["weight"].sum())
+        if sw <= 0:
+            continue
+        # sector-conditional 가중 평균
+        wts_norm = group["weight"] / sw
+        sec_ret_12m = float((wts_norm * group["ret_12m"]).sum(skipna=True))
+        sec_vol = float((wts_norm * group["vol"]).sum(skipna=True))
+        sec_beta = float((wts_norm * group["beta"]).sum(skipna=True))
+        # Sharpe (annualized) = sector return / sector vol (rf 무시 — 단순 근사)
+        sec_sharpe = sec_ret_12m / sec_vol if sec_vol > 0 else np.nan
+        # contribution = sector_weight × sector_return
+        sec_contribution = sw * sec_ret_12m
+        rows.append({
+            "Sector": sec,
+            "Weight": sw,
+            "Tilt": sw - float(spy_sw.get(sec, 0)),
+            "Return_12m": sec_ret_12m,
+            "N_Holdings": int(len(group)),
+            "Volatility": sec_vol,
+            "Beta": sec_beta,
+            "Sharpe": sec_sharpe,
+            "Contribution": sec_contribution,
+        })
+
+    df = pd.DataFrame(rows).sort_values("Weight", ascending=False).reset_index(drop=True)
+    return df
