@@ -269,40 +269,69 @@ def render_lstm_detail() -> None:
 # 영역 6: Factor 분석 (CAPM + FF5) — 조건부
 # ======================================================================
 
+def _ols_with_stats(y: np.ndarray, X: np.ndarray) -> dict:
+    """
+    numpy + scipy 만으로 OLS 회귀 + 표준 통계 (statsmodels 동등).
+
+    Returns: {beta, se, t_stat, p_value, ci_low, ci_high, r_squared, n}
+    각 array index 0 = const (intercept), 1+ = features.
+    """
+    X_full = np.column_stack([np.ones(len(X)), X])
+    beta, *_ = np.linalg.lstsq(X_full, y, rcond=None)
+    n, k = X_full.shape
+    y_hat = X_full @ beta
+    resid = y - y_hat
+    sse = float((resid ** 2).sum())
+    df = n - k
+    sigma2 = sse / df
+    cov_beta = sigma2 * np.linalg.inv(X_full.T @ X_full)
+    se = np.sqrt(np.diag(cov_beta))
+    t_stat = beta / se
+    p_value = 2 * (1 - scipy_stats.t.cdf(np.abs(t_stat), df=df))
+    t_crit = scipy_stats.t.ppf(0.975, df=df)
+    ci_low = beta - t_crit * se
+    ci_high = beta + t_crit * se
+    ss_total = float(((y - y.mean()) ** 2).sum())
+    r_squared = 1 - sse / ss_total if ss_total > 0 else np.nan
+    return {
+        "beta": beta, "se": se, "t_stat": t_stat, "p_value": p_value,
+        "ci_low": ci_low, "ci_high": ci_high, "r_squared": float(r_squared), "n": n,
+    }
+
+
 @st.cache_data
 def _run_factor_regression(
     fund_ret: pd.Series, ff5_df: pd.DataFrame, model: str = "CAPM"
 ) -> dict:
-    """CAPM 또는 FF5 OLS 회귀. statsmodels 활용."""
-    import statsmodels.api as sm
-
-    # FF5 데이터 정렬 (월말로)
+    """CAPM 또는 FF5 OLS 회귀 — numpy + scipy 만 사용 (statsmodels 의존성 X)."""
     ff5 = ff5_df.copy()
     ff5["date"] = pd.to_datetime(ff5["date"]) + pd.offsets.MonthEnd(0)
     ff5 = ff5.set_index("date")
 
-    # Fund excess return
     common = fund_ret.index.intersection(ff5.index)
     if len(common) < 24:
         return {}
-    y = fund_ret.loc[common] - ff5.loc[common, "rf"]
+    y = (fund_ret.loc[common] - ff5.loc[common, "rf"]).values
 
     if model == "CAPM":
-        X = ff5.loc[common, ["mkt_rf"]]
+        feature_names = ["mkt_rf"]
     else:  # FF5
-        X = ff5.loc[common, ["mkt_rf", "smb", "hml", "rmw", "cma"]]
+        feature_names = ["mkt_rf", "smb", "hml", "rmw", "cma"]
+    X = ff5.loc[common, feature_names].values
 
-    X = sm.add_constant(X)
-    res = sm.OLS(y, X).fit()
-    alpha_monthly = float(res.params["const"])
+    res = _ols_with_stats(y, X)
+
+    # const (index 0) = alpha (월별 → 연환산)
+    alpha_monthly = float(res["beta"][0])
     return {
         "model": model,
         "alpha_annual": alpha_monthly * 12,
-        "alpha_p": float(res.pvalues["const"]),
-        "alpha_ci": [float(c * 12) for c in res.conf_int().loc["const"]],
-        "params": res.params.drop("const").to_dict(),
-        "pvalues": res.pvalues.drop("const").to_dict(),
-        "rsquared": float(res.rsquared),
+        "alpha_p": float(res["p_value"][0]),
+        "alpha_ci": [float(res["ci_low"][0] * 12), float(res["ci_high"][0] * 12)],
+        # features (index 1+)
+        "params": {f: float(res["beta"][i + 1]) for i, f in enumerate(feature_names)},
+        "pvalues": {f: float(res["p_value"][i + 1]) for i, f in enumerate(feature_names)},
+        "rsquared": res["r_squared"],
         "n": len(common),
     }
 
