@@ -1,18 +1,19 @@
 """
-pages/05_Holdings.py — Holdings 페이지 (8 영역)
+pages/05_Holdings.py — Holdings 페이지 (9 영역)
 
-보유 종목 / 비중 / 시가총액 분포 / 변천사 / 기여도 분석 전담 페이지.
+보유 종목 / 비중 / 시가총액 분포 / 변천사 / 집중도 / 기여도 분석 전담 페이지.
 
-8 영역:
+9 영역:
   1. Header
   2. Sub-header
   3. Holdings Summary KPI 6개 (Number / Eff N / Single HHI / Sector HHI
                               / Top Weights / Avg Turnover)
   4. Top N Holdings 표 (10/20/50/All + 7컬럼 + Weight 막대 + 섹터 색상)
   5. 시가총액 분포 (Bubble + Treemap 탭, 시점 슬라이더)
-  6. 보유 종목 변천사 (Multi-line + 섹터/Top N 토글 + Regime + 마커)
-  7. 종목별 기여도 분석 (Tornado: Top + Bottom + Sector 합계 + 검증)
-  8. Footer (+ yfinance footnote)
+  6. 섹터 변천사 (11 GICS Multi-line + Regime + 이벤트 annotation)
+  7. 시점별 Top N 합 vs Others (집중도 동적 추세 — 100% stacked area + hover Top N)
+  8. 종목별 기여도 분석 (Tornado: Top + Bottom + Sector 합계 + 검증)
+  9. Footer (+ yfinance footnote)
 
 메트릭 = decisionlog/05_holdings.md Hold-Q1:
   - final 정합: comp.n_stocks / eff_n / top1_weight / top10_share / turnover
@@ -117,32 +118,29 @@ st.divider()
 
 
 # === 영역 6: 보유 종목 변천사 =========================================
-st.subheader("보유 종목 변천사 — Multi-line")
+st.subheader("섹터 변천사 — Multi-line")
 st.caption(
-    "시간에 따른 섹터/종목 비중 변화. 그룹화 토글 — "
-    "**섹터** (11 GICS 합계) / **Top N (선택 시점)** = 슬라이더 시점 Top N ticker 의 전 기간 시계열 "
-    "(슬라이더 변경 시 라인/legend 자체가 변경 — 시점별 변천 narrative 직접 탐색). "
-    "Others = 1 − 선택 시점 Top N 합 (정확한 보완). 슬라이더 시점에 점선 마커 표시. "
-    "시간 단위 토글 (월별 192 / 분기별 64). "
-    "Regime 배경색 (R1/R2/R3/HO) + COVID/2022 Bear 등 이벤트 annotation 포함."
+    "11 GICS 섹터별 weight 합계 시계열 — 섹터 단위 펀드 구성 변화. "
+    "종목 단위 동적 변천은 아래 영역 (Top N 합 vs Others) 에서 hover 로 확인. "
+    "시간 단위 토글 (월별 192 / 분기별 64) + Regime 배경색 (R1/R2/R3/HO) + COVID/2022 Bear 이벤트 annotation."
 )
 render_holdings_history(weights, universe)
 st.divider()
 
 
-# === 영역 6.5: 시점별 Top N 합 vs Others 시계열 ======================
+# === 영역 7: 시점별 Top N 합 vs Others (집중도 동적 추세) ============
 st.subheader("시점별 Top N 합 vs Others — 집중도 동적 추세")
 st.caption(
-    "각 시점에서의 Top N ticker (시점별 동적) 의 weight 합 시계열. "
-    "영역 6 (선택 시점 Top N 의 정적 추적) 의 보완 — 시점별로 다른 ticker 가 Top N 에 들어가더라도 그 시점의 합 자체를 그대로 사용. "
+    "각 시점에서의 Top N ticker (시점별 동적) 의 weight 합 시계열 — 종목 단위 변천 narrative. "
     "100%-stacked area: Top N (아래 파란 면적) + Others (위 회색 면적) 누적. "
+    "**hover 시 그 시점의 Top N 종목 list + 각 비중 표시**. "
     "Top 10 = `final.comp.top10_share` 직접 정합 / Top 1 = `final.comp.top1_weight` 정합 / Top 5·20 = 직접 산출."
 )
 render_top_n_share_timeseries(comp, weights)
 st.divider()
 
 
-# === 영역 7: 종목별 기여도 분석 (Tornado) =============================
+# === 영역 8: 종목별 기여도 분석 (Tornado) =============================
 st.subheader(f"종목별 기여도 분석 — {period}")
 st.caption(
     "Simple Contribution = Σ(w × R) per ticker (Brinson et al. 1986). "
@@ -153,7 +151,7 @@ st.caption(
 render_attribution_tornado(weights, panel, universe, ticker_company_map, fund_ret, period)
 
 
-# === 영역 8: Footer ===================================================
+# === 영역 9: Footer ===================================================
 st.caption(
     "※ 회사명 / 시가총액 / 섹터 매핑: yfinance 기반 "
     "(`data/ticker_company_map.csv` 캐시, 인수합병 옛 종목 4건은 ticker 자체로 fallback)."

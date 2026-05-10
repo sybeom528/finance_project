@@ -459,140 +459,42 @@ def render_holdings_history(
     universe: pd.DataFrame,
 ) -> None:
     """
-    Multi-line 변천사: 섹터 / Top N + Others 토글, 월별 / 분기별 토글,
-    Regime 배경 + 신규/제외 마커 + 이벤트 annotation.
+    섹터 단위 Multi-line 변천사: 11 GICS 섹터별 weight 합계 시계열.
+
+    종목 단위 동적 변천은 영역 6.5 (render_top_n_share_timeseries) 에서 보완.
+    본 영역은 섹터 narrative 에 집중 — 시간 단위 토글 + Regime 배경 + 이벤트 annotation.
     """
     ticker_to_sector = _build_ticker_to_sector(universe)
 
-    cols_t = st.columns(4)
+    cols_t = st.columns([1.5, 5])
     with cols_t[0]:
-        group_mode = st.selectbox(
-            "그룹화", options=["섹터", "Top 10 (선택 시점)", "Top 20 (선택 시점)"],
-            index=0, key="holdings_group_mode",
-            help="섹터 = 11 GICS 섹터별 합계 / Top N (선택 시점) = 슬라이더 시점의 Top N ticker 의 전 기간 시계열",
-        )
-    with cols_t[1]:
         time_mode = st.selectbox(
             "시간 단위", options=["월별", "분기별"], index=0, key="holdings_time_mode",
         )
-    with cols_t[2]:
-        show_others = st.checkbox(
-            "Others 표시", value=True, key="holdings_show_others",
-            help="Others = 1 − Top N 합 (선택 시점 Top N 의 전 기간 weight 합계 보완)",
-        )
-    with cols_t[3]:
-        show_markers = st.checkbox(
-            "신규/제외 마커", value=True, key="holdings_markers",
-            help="★ = 표시 종목의 신규 진입, ✗ = 이탈",
-        )
-
-    # Top N 모드일 때만 시점 슬라이더 활성
-    is_top_mode = group_mode != "섹터"
-    selected_date = None
-    if is_top_mode:
-        date_options = list(weights.index)
-        date_idx = st.select_slider(
-            "Top N 기준 시점",
-            options=list(range(len(date_options))),
-            value=len(date_options) - 1,  # default = Latest
-            format_func=lambda i: date_options[i].strftime("%Y-%m"),
-            key="holdings_history_slider",
-            help="이 시점의 Top N 종목으로 라인 구성 (legend 가 시점별로 변경됨)",
-        )
-        selected_date = date_options[date_idx]
 
     # 시간 단위 변환
-    if time_mode == "분기별":
-        weights_resampled = weights.resample("QE").last()
-    else:
-        weights_resampled = weights
+    weights_resampled = weights.resample("QE").last() if time_mode == "분기별" else weights
 
-    # 그룹화별 series 산출
-    if group_mode == "섹터":
-        # 섹터별 weight 합계 시계열
-        series_dict: dict[str, pd.Series] = {}
-        for sector in sorted(set(ticker_to_sector.values())):
-            sector_tickers = [t for t, s in ticker_to_sector.items() if s == sector]
-            sector_tickers = [t for t in sector_tickers if t in weights_resampled.columns]
-            if not sector_tickers:
-                continue
-            series_dict[sector] = weights_resampled[sector_tickers].sum(axis=1)
-        color_map = SECTOR_COLORS
-    else:
-        # Top N (선택 시점 기준) — 슬라이더 시점의 Top N ticker 의 전 기간 시계열
-        n = 10 if "10" in group_mode else 20
-        # selected_date 시점에서 weight > 0 종목 비중 내림차순
-        w_at = weights.loc[selected_date]
-        w_at = w_at[w_at > 0].sort_values(ascending=False)
-        top_n_tickers = w_at.head(n).index.tolist()
-
-        series_dict = {
-            t: weights_resampled[t] if t in weights_resampled.columns
-            else pd.Series(0, index=weights_resampled.index)
-            for t in top_n_tickers
-        }
-
-        # Others = 1 - sum(displayed Top N) (정확한 보완, 선택 시점 ticker 기준)
-        if show_others:
-            displayed = [t for t in top_n_tickers if t in weights_resampled.columns]
-            series_dict["Others"] = 1 - weights_resampled[displayed].sum(axis=1)
-
-        # 색상 = ticker 의 섹터 매핑
-        color_map = {
-            t: SECTOR_COLORS.get(ticker_to_sector.get(t, ""), None)
-            for t in top_n_tickers
-        }
-        color_map["Others"] = COLORS["text_muted"]
+    # 섹터별 weight 합계 시계열
+    series_dict: dict[str, pd.Series] = {}
+    for sector in sorted(set(ticker_to_sector.values())):
+        sector_tickers = [t for t, s in ticker_to_sector.items() if s == sector]
+        sector_tickers = [t for t in sector_tickers if t in weights_resampled.columns]
+        if not sector_tickers:
+            continue
+        series_dict[sector] = weights_resampled[sector_tickers].sum(axis=1)
 
     # === Plotly figure ===
     fig = go.Figure()
     for label, series in series_dict.items():
-        color = color_map.get(label, None)
-        # Top N 모드 시 hover 에 ticker 의 섹터 표시 (변천 narrative 보강)
-        if is_top_mode and label != "Others":
-            sector = ticker_to_sector.get(label, "—")
-            hover = f"%{{x|%Y-%m}}<br><b>{label}</b> ({sector}): %{{y:.2%}}<extra></extra>"
-        else:
-            hover = f"%{{x|%Y-%m}}<br>{label}: %{{y:.2%}}<extra></extra>"
+        color = SECTOR_COLORS.get(label, None)
         fig.add_trace(go.Scatter(
             x=series.index, y=series.values,
             mode="lines", name=label,
             line=dict(color=color) if color else dict(),
-            hovertemplate=hover,
+            hovertemplate=f"%{{x|%Y-%m}}<br>{label}: %{{y:.2%}}<extra></extra>",
         ))
 
-    # 신규/제외 마커 (Top 그룹 모드만)
-    if show_markers and is_top_mode:
-        for ticker in series_dict.keys():
-            if ticker == "Others":
-                continue
-            s = weights_resampled.get(ticker)
-            if s is None:
-                continue
-            # 신규: 0 → > 0 전환 시점
-            entry_dates = s.index[(s > 0) & (s.shift(1, fill_value=0) == 0)]
-            for d in entry_dates:
-                fig.add_trace(go.Scatter(
-                    x=[d], y=[s.loc[d]], mode="markers", showlegend=False,
-                    marker=dict(symbol="star", size=10, color=COLORS["accent_green"]),
-                    hovertemplate=f"★ {ticker} 신규: %{{x|%Y-%m}}<extra></extra>",
-                ))
-
-    # 선택 시점 vertical line (Top N 모드만) — Plotly 6.x annotation 분리 (datetime mean 버그 회피)
-    if is_top_mode and selected_date is not None:
-        fig.add_vline(
-            x=selected_date, line_dash="dash",
-            line_color=COLORS["primary"], line_width=1.5,
-        )
-        fig.add_annotation(
-            x=selected_date, y=1.02, yref="paper",
-            text=f"기준: {selected_date.strftime('%Y-%m')}",
-            showarrow=False,
-            font=dict(color=COLORS["primary"], size=11),
-            xanchor="center",
-        )
-
-    # Regime 배경 + 이벤트 annotation
     fig = add_regime_backgrounds(fig, with_labels=False)
     fig = add_event_annotations(fig)
 
@@ -600,9 +502,9 @@ def render_holdings_history(
         template="plotly_dark",
         paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
         font_color=COLORS["text"],
-        xaxis_title="시점", yaxis_title="비중",
-        yaxis=dict(tickformat=".1%"),
-        height=520, hovermode="x unified",
+        xaxis_title="시점", yaxis_title="섹터 weight 합",
+        yaxis=dict(tickformat=".0%"),
+        height=480, hovermode="x unified",
         legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -657,6 +559,18 @@ def render_top_n_share_timeseries(
 
     others = 1 - top_share
 
+    # 시점별 Top N 종목 list + weight (hover 정보)
+    hover_text_per_t: list[str] = []
+    for t in weights.index:
+        row = weights.loc[t]
+        row = row[row > 0].sort_values(ascending=False).head(n)
+        if len(row) == 0:
+            hover_text_per_t.append("")
+            continue
+        lines = [f"  {i+1}. <b>{tk}</b>: {w * 100:.2f}%"
+                 for i, (tk, w) in enumerate(row.items())]
+        hover_text_per_t.append("<br>".join(lines))
+
     # 100%-stacked area — 두 면적 누적, 경계선이 Top N 합을 자연 표현
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -665,7 +579,11 @@ def render_top_n_share_timeseries(
         stackgroup="one",
         line=dict(color=COLORS["primary"], width=2),
         fillcolor="rgba(59, 130, 246, 0.55)",  # primary blue 반투명
-        hovertemplate=f"%{{x|%Y-%m}}<br><b>Top {n} 합</b>: %{{y:.2%}}<extra></extra>",
+        customdata=hover_text_per_t,
+        hovertemplate=(
+            f"<b>%{{x|%Y-%m}} — Top {n} 합: %{{y:.2%}}</b>"
+            "<br>%{customdata}<extra></extra>"
+        ),
     ))
     fig.add_trace(go.Scatter(
         x=others.index, y=others.values,
@@ -673,7 +591,7 @@ def render_top_n_share_timeseries(
         stackgroup="one",
         line=dict(color=COLORS["text_muted"], width=1, dash="dot"),
         fillcolor="rgba(156, 163, 175, 0.30)",  # text_muted 반투명
-        hovertemplate="%{x|%Y-%m}<br>Others: %{y:.2%}<extra></extra>",
+        hovertemplate="Others: %{y:.2%}<extra></extra>",
     ))
 
     fig = add_regime_backgrounds(fig, with_labels=False)

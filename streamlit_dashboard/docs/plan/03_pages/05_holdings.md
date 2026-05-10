@@ -2,7 +2,7 @@
 
 > **관련 decisionlog**: `05_holdings.md`
 > **상태**: 확정
-> **결정 수**: 8 영역 (메타 Hold M-1~M-4 + 영역 1~8)
+> **결정 수**: 9 영역 (메타 Hold M-1~M-4 + 영역 1~9, 2026-05-10 영역 7 집중도 동적 추세 보강)
 
 ---
 
@@ -24,9 +24,10 @@
 3. Holdings Summary KPI 6개     (Number / Eff N / Single HHI / Sector HHI / Top Weights / Avg Turnover)
 4. Top N Holdings 표 + 비중     (현재 보유)
 5. 시가총액 분포 (Bubble / Treemap)
-6. 보유 종목 변천사 (Multi-line)
-7. 종목별 기여도 분석 (Tornado Chart)
-8. Footer                       (Overview 동일)
+6. 섹터 변천사 (Multi-line, 11 GICS 섹터)
+7. 시점별 Top N 합 vs Others (집중도 동적 추세, 100%-stacked area + hover Top N)
+8. 종목별 기여도 분석 (Tornado Chart)
+9. Footer                       (Overview 동일)
 ```
 
 ---
@@ -51,7 +52,7 @@ Holdings (보유 종목)
 사이드바에서 기간 + 비교 벤치마크 토글 가능.
 ```
 
-**Footnote** (영역 7 또는 영역 8): "※ 회사명 / 시가총액 / 섹터 매핑: yfinance 기반"
+**Footnote** (영역 8 또는 영역 9): "※ 회사명 / 시가총액 / 섹터 매핑: yfinance 기반"
 
 ---
 
@@ -246,7 +247,45 @@ Holdings (보유 종목)
 
 ---
 
-### 영역 7: 종목별 기여도 분석 (Performance Attribution)
+### 영역 7: 시점별 Top N 합 vs Others (집중도 동적 추세) — 2026-05-10 보강
+
+**결정사항** (H7c-1 ~ H7c-3):
+- 차트 종류: (b) 100%-stacked area (Top N + Others 누적 = 100%)
+- Top N 토글: 1 / 5 / 10 / 20
+- Hover: 시점별 Top N 종목 list + 각 비중 표시
+
+**시각화 예시**:
+
+```
+[보유 종목 변천사 (영역 6)]
+
+┌─ 시점별 Top N 합 vs Others — 집중도 동적 추세 ─────────┐
+│                                                         │
+│ [Top N: 1 / 5 / 10 / 20 ▼]                              │
+│                                                         │
+│ 100%┤████████████████████████████████████████ Others    │
+│  80%┤████████████  ░░  ████████  ░░░░  ████████ (회색)  │
+│  60%┤████  ░░░░░░░░░░░░  ░░░░░░░░░░░░  ░░░░░░░░         │
+│  40%┤  ░░░░  ░░░░░░░░░░░░░░░░░░░░░░░░░░  ░░░░  Top 10  │
+│  20%┤░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  (파랑 면적)│
+│   0%┴──────────────────────────────────────────         │
+│      2010    2014    2018    2022    2025               │
+│                                                         │
+│ Hover: "2015-05 — Top 10 합: 79.47%                     │
+│         1. ED: 10.00% / 2. DUK: 10.00% / ..."           │
+└─────────────────────────────────────────────────────────┘
+```
+
+**구현 체크리스트**:
+- [x] Plotly `go.Scatter(stackgroup='one', fill='tonexty')`
+- [x] Top 10 = `final.comp.top10_share` 직접 정합 (max diff 0)
+- [x] Top 1 = `final.comp.top1_weight` 직접 정합
+- [x] Top 5/20 = 직접 산출 (각 시점 nlargest sum)
+- [x] hovertemplate + customdata = 시점별 Top N 종목 list
+
+---
+
+### 영역 8: 종목별 기여도 분석 (Performance Attribution)
 
 **결정사항** (H7-1 ~ H7-6):
 - Attribution 방법: (a) Simple Contribution ($w \times R$)
@@ -295,7 +334,7 @@ Holdings (보유 종목)
 
 ---
 
-### 영역 8: Footer — Overview 동일 + Footnote (yfinance)
+### 영역 9: Footer — Overview 동일 + Footnote (yfinance)
 
 → `02_common.md` 의 `render_footer()` 호출
 
@@ -317,7 +356,7 @@ Holdings (보유 종목)
 - Pool-4 운용 효율성: Number / Effective N / Single HHI / Sector HHI / Avg Turnover
 - Pool-5 시장 비교 일부: Top Weights
 - 추가 (영역 4 컬럼): Market Cap / 12m Return / ΔWeight
-- 추가 (영역 7 기여도): Simple Contribution = $w \times R$
+- 추가 (영역 8 기여도): Simple Contribution = $w \times R$
 
 ---
 
@@ -329,7 +368,8 @@ Holdings (보유 종목)
 | 영역 4 (Top N 표) | ✗ (Latest only) | ✓ 종목 클릭 → detail |
 | 영역 5 (시가총액 분포) | 시점 슬라이더 | ✓ 종목 클릭 |
 | 영역 6 (변천사) | ✗ | ✓ 시점 클릭 → detail |
-| 영역 7 (기여도) | ✓ 기간 토글 | ✓ 종목 클릭 |
+| 영역 7 (집중도 동적) | ✗ | ✓ Hover 시 시점별 Top N 종목 list |
+| 영역 8 (기여도) | ✓ 기간 토글 | ✓ 종목 클릭 |
 
 ---
 
