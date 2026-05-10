@@ -1,21 +1,22 @@
 """
-pages/08_Backtesting.py — Backtesting 페이지 (7 영역, 초안)
+pages/08_Backtesting.py — Backtesting (Robustness & Validation) 페이지 (8 영역)
 
-검증 / 강건성 narrative 전담 페이지.
+학술 정직성 — 본 페이지는 백테스팅의 **검증 / 강건성 측면** 전담 (walk-forward
+/ stress test 의 정확한 시뮬레이션 어려움 → 가능한 검증만 표시).
 
-7 영역:
+8 영역:
   1. Header
-  2. Sub-header
-  3. Backtest Summary KPI 5개 (TEST/HO Gap / Sensitivity Robust / 4-slot Robust /
-                              Avg Recovery / Regime 일관성)
-  4. Regime 메트릭 자세한 비교 (12 메트릭 × 5 Regime + Sortino 막대)
-  5. Sub-events 분석 (4 위기 — 2018Q4 / COVID / 2022 Bear / 2024 IT Rotation)
-  6. Sensitivity Test (156 config Top 10 + 신모델 강조)
-  7. Footer
+  2. Sub-header (narrative 재정의 — Robustness & Validation)
+  3. Backtest Summary KPI 5
+  4. ★ 156 config 누적 수익률 비교 (Robustness 시각 — 신규)
+  5. Regime 메트릭 자세한 비교 (12 메트릭 × 5 Regime)
+  6. Sub-events 분석 (4 위기)
+  7. Sensitivity Test (156 config Top N)
+  8. Footer
 
-설계 원칙 (초안):
+설계 원칙 (초안 — 향후 변경 용이):
   - 영역별 독립 호출 (영역 추가/제거/변경 용이)
-  - 메트릭 / 위기 정의는 metric_calculators.py 의 외부 dict (변경 용이)
+  - 메트릭 / 위기 정의는 metric_calculators.py 의 외부 dict
   - 데이터: 우리 펀드 pkl + 156 config (이미 git 포함) + monthly_panel
 
 참조: docs/plan/03_pages/08_backtesting.md, decisionlog/08_backtesting.md
@@ -25,6 +26,7 @@ import streamlit as st
 
 from lib.backtesting_charts import (
     render_backtest_kpi,
+    render_cumulative_comparison,
     render_regime_detail_table,
     render_sensitivity_test,
     render_sub_events,
@@ -56,17 +58,18 @@ rf = panel.groupby("date")["rf_1m"].first()
 
 
 # === 영역 1: Header ===================================================
-render_page_header("Backtesting", "백테스트 검증")
+render_page_header("Backtesting", "Robustness & Validation")
 
 
-# === 영역 2: Sub-header ===============================================
+# === 영역 2: Sub-header (narrative 재정의) ============================
 render_subheader(
-    title_en="Backtesting",
-    title_ko="백테스트 검증",
+    title_en="Backtesting — Robustness & Validation",
+    title_ko="백테스트 검증 — 강건성 분석",
     description=(
-        "Regime / Sub-events / Sensitivity 분석 — **TEST 평가 168m + HOLD_OUT 24m walk-forward** 결과의 깊이 있는 검증. "
-        "다른 페이지가 \"결과 위주\" 라면 본 페이지는 **검증 / 강건성 narrative 전담**. "
-        "신모델 `mat_eq_mcap_raw_rms` 의 Robustness + Regime 일관성 + 위기 방어 + 156 config Top 위치 학술 검증."
+        "본 페이지는 백테스팅의 **검증 / 강건성 측면** 전담. "
+        "BL+LSTM 자체의 walk-forward 동작 + 누적 수익률은 **Methodology / Performance 페이지** 참조. "
+        "여기서는 **156 config Robustness + Regime 일관성 + 위기 방어 + 학습편향 검증** 에 집중. "
+        "학술 정직성 — Stress Test / Walk-forward 의 정확한 시뮬레이션 어려움으로 일부 의도적 제외 (Methodology 영역 8 한계 참조)."
     ),
 )
 
@@ -82,7 +85,19 @@ render_backtest_kpi(ret, spy, rf, current_config=config_name)
 st.divider()
 
 
-# === 영역 4: Regime 메트릭 자세한 비교 =================================
+# === 영역 4: 156 config 누적 수익률 비교 (★ 신규) =====================
+st.subheader("156 config 누적 수익률 비교 — Robustness 시각")
+st.caption(
+    "**156 config 의 누적 수익률 분포** + 신모델 ★ 강조 + SPY 비교. "
+    "Spaghetti (156 라인) 또는 Percentile (P5-P95 fill + median) 토글. "
+    "\"Backtesting = 과거 시뮬레이션\" 의 직관 표현 — 모든 config 가 어떻게 진행되었는지 한눈에. "
+    "**핵심 narrative**: 156 config 모두 SPY 수준 이상 + 신모델 Top 위치 = 모델 자체가 robust."
+)
+render_cumulative_comparison(ret, spy, current_config=config_name)
+st.divider()
+
+
+# === 영역 5: Regime 메트릭 자세한 비교 ================================
 st.subheader("Regime 메트릭 자세한 비교")
 st.caption(
     "12 메트릭 × 5 Regime (R1 회복 / R2 확장 / R3 변동 / HO 24m / FULL). "
@@ -93,7 +108,7 @@ render_regime_detail_table(ret, spy, rf)
 st.divider()
 
 
-# === 영역 5: Sub-events 분석 (4 위기) =================================
+# === 영역 6: Sub-events 분석 (4 위기) =================================
 st.subheader("Sub-events 분석 — 4 위기")
 st.caption(
     "**2018 Q4 Sell-off / COVID-19 / 2022 Inflation Bear / 2024 Sector Rotation** ★. "
@@ -104,7 +119,7 @@ render_sub_events(ret, spy, rf)
 st.divider()
 
 
-# === 영역 6: Sensitivity Test =========================================
+# === 영역 7: Sensitivity Test =========================================
 st.subheader("Sensitivity Test — 156 config 비교")
 st.caption(
     "**156 config 의 Sortino Top N + 신모델 ★ 강조**. "
@@ -115,5 +130,5 @@ render_sensitivity_test(current_config=config_name)
 st.divider()
 
 
-# === 영역 7: Footer ===================================================
+# === 영역 8: Footer ===================================================
 render_footer()

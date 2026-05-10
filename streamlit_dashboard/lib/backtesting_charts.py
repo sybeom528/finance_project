@@ -24,8 +24,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from lib import metric_calculators as mc
-from lib.colors import COLORS
+from lib.colors import BENCHMARK_COLORS, COLORS
 from lib.data_loader import list_available_configs, load_fund_results, load_monthly_panel
+from lib.plot_helpers import add_event_annotations, add_regime_backgrounds
 
 
 # ======================================================================
@@ -205,7 +206,144 @@ def render_backtest_kpi(
 
 
 # ======================================================================
-# 영역 4: Regime 메트릭 자세한 비교 (12 메트릭)
+# 영역 4: 156 config 누적 수익률 비교 (Robustness 시각)
+# ======================================================================
+
+@st.cache_data
+def _compute_all_config_cumulative(start: str = "2010-01-31") -> pd.DataFrame:
+    """
+    156 config × 시점 의 누적 수익률 matrix (initial=1).
+    cache 후 spaghetti / percentile 모두 활용.
+    """
+    configs = list_available_configs()
+    series_dict: dict[str, pd.Series] = {}
+    for cn in configs:
+        try:
+            d = load_fund_results(cn)
+            ret = d["ret"].dropna()
+            cum = (1 + ret).cumprod()
+            series_dict[cn] = cum
+        except Exception:
+            continue
+    df = pd.DataFrame(series_dict)
+    return df
+
+
+def render_cumulative_comparison(
+    fund_ret: pd.Series,
+    fund_spy: pd.Series,
+    current_config: str = "mat_eq_mcap_raw_rms",
+) -> None:
+    """
+    156 config 의 누적 수익률 비교 — spaghetti / percentile 토글.
+
+    "Backtesting = 과거 시뮬레이션" 의 시각적 표현.
+    156 회색 라인 (또는 percentile fill) + 신모델 cobalt 강조 + SPY 비교.
+    """
+    cols_t = st.columns([1.5, 1.5, 4])
+    with cols_t[0]:
+        view_mode = st.selectbox(
+            "표시 방식",
+            options=["156 라인 (spaghetti)", "Percentile (P5-P95 fill + median)"],
+            index=0, key="bt_cum_view",
+        )
+    with cols_t[1]:
+        log_scale = st.checkbox("Log scale", value=False, key="bt_cum_log")
+
+    df_cum = _compute_all_config_cumulative()
+    if len(df_cum) == 0:
+        st.warning("156 config 누적 수익률 산출 불가.")
+        return
+
+    fig = go.Figure()
+
+    if view_mode.startswith("156"):
+        # Spaghetti — 156 회색 라인
+        for cn in df_cum.columns:
+            if cn == current_config:
+                continue
+            cum = df_cum[cn].dropna()
+            fig.add_trace(go.Scatter(
+                x=cum.index, y=cum.values,
+                mode="lines", name=cn, showlegend=False,
+                line=dict(color="rgba(156, 163, 175, 0.18)", width=0.6),
+                hovertemplate=f"{cn}<br>%{{x|%Y-%m}}: %{{y:.2f}}x<extra></extra>",
+            ))
+    else:
+        # Percentile fill (P5-P95) + median
+        p5 = df_cum.quantile(0.05, axis=1)
+        p95 = df_cum.quantile(0.95, axis=1)
+        median = df_cum.median(axis=1)
+        fig.add_trace(go.Scatter(
+            x=p95.index, y=p95.values, mode="lines", name="P95",
+            line=dict(color="rgba(156, 163, 175, 0)"),
+            showlegend=False,
+        ))
+        fig.add_trace(go.Scatter(
+            x=p5.index, y=p5.values, mode="lines", name="P5-P95 (156 config)",
+            line=dict(color="rgba(156, 163, 175, 0)"),
+            fill="tonexty", fillcolor="rgba(156, 163, 175, 0.25)",
+            hovertemplate="%{x|%Y-%m}<br>P5: %{y:.2f}x<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=median.index, y=median.values, mode="lines", name="156 median",
+            line=dict(color=COLORS["text_muted"], width=1.5, dash="dash"),
+            hovertemplate="%{x|%Y-%m}<br>median: %{y:.2f}x<extra></extra>",
+        ))
+
+    # 신모델 — Cobalt 강조 라인 (메인)
+    if current_config in df_cum.columns:
+        cum_main = df_cum[current_config].dropna()
+        fig.add_trace(go.Scatter(
+            x=cum_main.index, y=cum_main.values,
+            mode="lines", name=f"★ {current_config} (Top 1)",
+            line=dict(color=BENCHMARK_COLORS.get("Fund", COLORS["primary"]), width=2.5),
+            hovertemplate=f"<b>{current_config}</b><br>%{{x|%Y-%m}}: %{{y:.2f}}x<extra></extra>",
+        ))
+
+    # SPY 비교
+    spy_clean = fund_spy.dropna()
+    if len(spy_clean) > 0:
+        spy_cum = (1 + spy_clean).cumprod()
+        fig.add_trace(go.Scatter(
+            x=spy_cum.index, y=spy_cum.values,
+            mode="lines", name="SPY (S&P 500)",
+            line=dict(color=BENCHMARK_COLORS.get("SPY", COLORS["text"]), width=2, dash="dot"),
+            hovertemplate="%{x|%Y-%m}<br>SPY: %{y:.2f}x<extra></extra>",
+        ))
+
+    fig = add_regime_backgrounds(fig, with_labels=False)
+    fig = add_event_annotations(fig)
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+        font_color=COLORS["text"],
+        xaxis_title="시점", yaxis_title="누적 수익률 (initial = 1)",
+        yaxis=dict(type="log" if log_scale else "linear"),
+        height=480, hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # narrative 보강
+    if current_config in df_cum.columns:
+        latest_t = df_cum[current_config].dropna().index[-1]
+        main_final = float(df_cum[current_config].dropna().iloc[-1])
+        spy_final = float((1 + spy_clean).cumprod().iloc[-1]) if len(spy_clean) > 0 else None
+        median_final = float(df_cum.median(axis=1).iloc[-1])
+        msg = (
+            f"📊 **신모델** {main_final:.2f}x → "
+            f"**156 median** {median_final:.2f}x → "
+        )
+        if spy_final is not None:
+            msg += f"**SPY** {spy_final:.2f}x"
+        msg += f"  (시점: {latest_t.strftime('%Y-%m')})"
+        st.caption(msg)
+
+
+# ======================================================================
+# 영역 5: Regime 메트릭 자세한 비교 (12 메트릭)
 # ======================================================================
 
 def render_regime_detail_table(
