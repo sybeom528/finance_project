@@ -412,6 +412,296 @@ def calc_effective_n(weights) -> float:
 
 
 # ======================================================================
+# Risk Metrics 페이지 전용 — final 정합 + 학술 표준 (Phase 2.1)
+# ======================================================================
+
+def calc_correlation(fund_ret: pd.Series, bench_ret: pd.Series) -> float:
+    """Pearson correlation 펀드 vs 벤치마크 (학술 표준)."""
+    df = pd.DataFrame({"f": fund_ret, "b": bench_ret}).dropna()
+    if len(df) < 2:
+        return np.nan
+    return float(df["f"].corr(df["b"]))
+
+
+def calc_r_squared(fund_ret: pd.Series, bench_ret: pd.Series) -> float:
+    """
+    R² = corr(fund, bench)² (CAPM 회귀 결정계수와 동일).
+    학술 표준 — Sharpe (1964) CAPM, Pearson² = OLS R² 동치.
+    """
+    corr = calc_correlation(fund_ret, bench_ret)
+    if pd.isna(corr):
+        return np.nan
+    return float(corr ** 2)
+
+
+def calc_top_n_drawdowns(returns: pd.Series, n: int = 3) -> list[dict]:
+    """
+    Top N drawdown 식별 + 각각 Duration + Recovery Time.
+
+    Returns:
+        list of dict (depth 큰 순):
+        {
+            "start_date": pd.Timestamp,         # peak 직후 시점
+            "trough_date": pd.Timestamp,        # 최저점 시점
+            "recovery_date": pd.Timestamp | None,  # 신고가 회복 (None = 진행 중)
+            "depth": float,                      # 최대 손실 (음수)
+            "duration": int,                     # peak → trough 개월 수
+            "recovery_months": int | None,       # trough → 회복 개월 수
+        }
+
+    학술 표준 drawdown 분해 (Magdon-Ismail & Atiya 2004).
+    """
+    r = pd.Series(returns).dropna()
+    if len(r) == 0:
+        return []
+
+    cum = (1 + r).cumprod()
+    peak = cum.cummax()
+    dd = (cum - peak) / peak
+
+    # Drawdown periods 식별 (drawdown 시작 → 회복 또는 진행 중)
+    in_dd = False
+    dd_start = None
+    dd_periods: list[dict] = []
+
+    for i in range(len(dd)):
+        is_dd = dd.iloc[i] < -1e-9  # 거의 0 무시
+        if is_dd and not in_dd:
+            in_dd = True
+            dd_start = i
+        elif not is_dd and in_dd:
+            in_dd = False
+            sub = dd.iloc[dd_start:i + 1]
+            trough_offset = int(sub.values.argmin())
+            trough_idx = dd_start + trough_offset
+            dd_periods.append({
+                "start_idx": max(dd_start - 1, 0),  # peak 시점
+                "trough_idx": trough_idx,
+                "recovery_idx": i,
+                "depth": float(dd.iloc[trough_idx]),
+                "duration": trough_idx - dd_start + 1,
+                "recovery_months": i - trough_idx,
+            })
+
+    # 진행 중 DD (회복 안 됨)
+    if in_dd and dd_start is not None:
+        sub = dd.iloc[dd_start:]
+        trough_offset = int(sub.values.argmin())
+        trough_idx = dd_start + trough_offset
+        dd_periods.append({
+            "start_idx": max(dd_start - 1, 0),
+            "trough_idx": trough_idx,
+            "recovery_idx": None,
+            "depth": float(dd.iloc[trough_idx]),
+            "duration": trough_idx - dd_start + 1,
+            "recovery_months": None,
+        })
+
+    # 가장 깊은 drawdown 순 정렬 (depth 가장 음수)
+    dd_periods.sort(key=lambda x: x["depth"])
+    top_n = dd_periods[:n]
+
+    # 날짜 부착
+    for p in top_n:
+        p["start_date"] = r.index[p["start_idx"]]
+        p["trough_date"] = r.index[p["trough_idx"]]
+        p["recovery_date"] = r.index[p["recovery_idx"]] if p["recovery_idx"] is not None else None
+
+    return top_n
+
+
+def calc_avg_recovery_time(returns: pd.Series) -> float:
+    """
+    완료된 모든 drawdown 의 평균 recovery 개월 수.
+
+    Recovery = trough 시점 → 신고가 회복 시점 (월 단위).
+    진행 중 DD 는 제외.
+    """
+    top_dds = calc_top_n_drawdowns(returns, n=100)  # 모든 dd
+    completed = [p["recovery_months"] for p in top_dds if p["recovery_months"] is not None]
+    if not completed:
+        return np.nan
+    return float(np.mean(completed))
+
+
+def calc_hill_estimator(
+    returns: pd.Series, k: int | None = None, side: str = "loss"
+) -> float:
+    """
+    Hill (1975) tail index estimator.
+
+    ξ̂_k = (1/k) Σ log(X_(i)) - log(X_(k+1))   (i=1..k)
+
+    Args:
+        returns: 일별 수익률 (월별도 가능하지만 sample size 부족)
+        k: tail order statistic (None → auto sqrt(n))
+        side: "loss" (음수 꼬리, 큰 손실) / "gain" (양수 꼬리)
+
+    Returns:
+        ξ̂ (tail index). > 0 = fat tail (극단값 자주). 주식 일반 0.2-0.4.
+
+    학술: Hill, B.M. (1975) "A simple general approach to inference about
+    the tail of a distribution." Annals of Statistics, 3, 1163-1174.
+    """
+    r = pd.Series(returns).dropna()
+    if len(r) < 50:
+        return np.nan
+
+    if side == "loss":
+        values = -r[r < 0].values  # 큰 손실을 양수로
+    else:
+        values = r[r > 0].values
+
+    if len(values) < 50:
+        return np.nan
+
+    # 양수만 (log 위해)
+    values = values[values > 1e-12]
+    if len(values) < 50:
+        return np.nan
+
+    sorted_values = np.sort(values)[::-1]  # 큰 값 먼저
+    n = len(sorted_values)
+
+    if k is None:
+        k = int(np.sqrt(n))  # auto: sqrt(n) 표준
+    if k >= n - 1 or k < 2:
+        return np.nan
+
+    log_vals = np.log(sorted_values[:k + 1])
+    xi_hat = float(np.mean(log_vals[:k]) - log_vals[k])
+    return xi_hat
+
+
+def hill_plot_data(
+    returns: pd.Series, side: str = "loss", k_min: int = 10, k_max: int | None = None
+) -> pd.DataFrame:
+    """
+    Hill plot 데이터 (k 별 ξ̂) — plateau detection 시각화용.
+
+    Returns:
+        pd.DataFrame: columns=[k, xi]
+    """
+    r = pd.Series(returns).dropna()
+    if len(r) < 50:
+        return pd.DataFrame(columns=["k", "xi"])
+
+    if side == "loss":
+        values = -r[r < 0].values
+    else:
+        values = r[r > 0].values
+    values = values[values > 1e-12]
+
+    if len(values) < 50:
+        return pd.DataFrame(columns=["k", "xi"])
+
+    sorted_values = np.sort(values)[::-1]
+    n = len(sorted_values)
+
+    if k_max is None:
+        k_max = min(n - 1, n // 2)
+
+    rows = []
+    for k in range(k_min, k_max):
+        log_vals = np.log(sorted_values[:k + 1])
+        xi = float(np.mean(log_vals[:k]) - log_vals[k])
+        rows.append({"k": k, "xi": xi})
+
+    return pd.DataFrame(rows)
+
+
+# ======================================================================
+# Rolling 메트릭 (영역 6 — Volatility / Sortino / Beta / R² / TE)
+# ======================================================================
+
+def calc_rolling_volatility(returns: pd.Series, window: int = 36) -> pd.Series:
+    """
+    Rolling annualized volatility (window 월).
+    학술 표준: rolling std × sqrt(12).
+    """
+    r = pd.Series(returns).dropna()
+    return r.rolling(window).std() * np.sqrt(12)
+
+
+def calc_rolling_sortino(
+    returns: pd.Series, rf, window: int = 36, periods_per_year: int = 12
+) -> pd.Series:
+    """
+    Rolling Sortino — final master_table _sortino_subperiod 정합 (sub<0 std 정의).
+    """
+    r = pd.Series(returns).dropna()
+    rf_a = _normalize_rf(r, rf) if not isinstance(rf, (int, float)) else None
+    out = []
+    for i in range(window, len(r) + 1):
+        sub = r.iloc[i - window:i]
+        if isinstance(rf, (int, float)):
+            rf_sub = pd.Series(rf / periods_per_year, index=sub.index)
+        else:
+            rf_sub = rf_a.reindex(sub.index).fillna(0)
+        exc = sub - rf_sub
+        down_series = sub[sub < 0]
+        if len(down_series) <= 1:
+            out.append((sub.index[-1], np.nan))
+            continue
+        down = down_series.std() * np.sqrt(periods_per_year)
+        if down is None or down <= 0 or pd.isna(down):
+            out.append((sub.index[-1], np.nan))
+            continue
+        out.append((sub.index[-1], float(exc.mean() * periods_per_year / down)))
+
+    if not out:
+        return pd.Series(dtype=float)
+    dates, values = zip(*out)
+    return pd.Series(values, index=pd.DatetimeIndex(dates))
+
+
+def calc_rolling_beta(
+    fund_ret: pd.Series, mkt_ret: pd.Series, rf, window: int = 36, periods_per_year: int = 12
+) -> pd.Series:
+    """
+    Rolling Beta — final compute_metrics 정합 (excess 기준 cov/var).
+    """
+    df = pd.DataFrame({"f": fund_ret, "m": mkt_ret}).dropna()
+    rf_a = _normalize_rf(df["f"], rf) if not isinstance(rf, (int, float)) else pd.Series(rf / periods_per_year, index=df.index)
+
+    out = []
+    for i in range(window, len(df) + 1):
+        sub = df.iloc[i - window:i]
+        sub_rf = rf_a.reindex(sub.index).fillna(0)
+        excess = (sub["f"] - sub_rf).values
+        mkt_excess = (sub["m"] - sub_rf).values
+        cov_mat = np.cov(excess, mkt_excess)
+        var_m = cov_mat[1, 1]
+        if var_m <= 0 or pd.isna(var_m):
+            out.append((sub.index[-1], np.nan))
+            continue
+        out.append((sub.index[-1], float(cov_mat[0, 1] / var_m)))
+
+    if not out:
+        return pd.Series(dtype=float)
+    dates, values = zip(*out)
+    return pd.Series(values, index=pd.DatetimeIndex(dates))
+
+
+def calc_rolling_r_squared(
+    fund_ret: pd.Series, mkt_ret: pd.Series, window: int = 36
+) -> pd.Series:
+    """Rolling R² = rolling correlation²."""
+    df = pd.DataFrame({"f": fund_ret, "m": mkt_ret}).dropna()
+    rolling_corr = df["f"].rolling(window).corr(df["m"])
+    return rolling_corr ** 2
+
+
+def calc_rolling_tracking_error(
+    fund_ret: pd.Series, bench_ret: pd.Series, window: int = 36, periods_per_year: int = 12
+) -> pd.Series:
+    """Rolling Tracking Error — annualized."""
+    df = pd.DataFrame({"f": fund_ret, "b": bench_ret}).dropna()
+    active = df["f"] - df["b"]
+    return active.rolling(window).std() * np.sqrt(periods_per_year)
+
+
+# ======================================================================
 # 서브기간 헬퍼 (final master_table 정확 재현)
 # ======================================================================
 

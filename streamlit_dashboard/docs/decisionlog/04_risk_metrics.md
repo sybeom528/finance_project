@@ -23,6 +23,50 @@
 - vs Performance: 수익률 → 위험률
 - 펀드 정체성 (Adaptive VolControl) 의 **위험 통제 narrative** 강화
 
+### 추가 결정 (Risk-Q1, 2026-05-10): final 정합성 + 학술 표준 메트릭 매핑
+
+**배경**: 사용자 지시 — "본 페이지의 각 지표들도 final 과 비교하여 정확하게 동일한
+결과가 나올 수 있도록 구성하고 검증까지 진행."
+
+**Final 에 직접 정의된 메트릭** (이미 검증 — Phase 1.5 사전 작업):
+
+| Risk Metrics 메트릭 | Final ground truth | 우리 lib | 검증 |
+|---|---|---|---|
+| Volatility | `compute_metrics.vol` | `calc_volatility` | ✅ 1e-3 일치 |
+| MDD | `compute_metrics.mdd` | `calc_mdd` | ✅ |
+| Beta | `compute_metrics.beta` (excess 기준) | `calc_beta` | ✅ |
+| Sortino | `compute_metrics.sortino` | `calc_sortino` | ✅ |
+| Sharpe | `compute_metrics.sharpe` | `calc_sharpe` | ✅ |
+| CVaR 5% | `compute_metrics.cvar_5` (pandas quantile) | `calc_cvar` | ✅ |
+| Skewness | `compute_metrics.skewness` (pandas .skew) | `calc_skewness` | ✅ |
+| Excess Kurtosis | `timeseries_lib.heavy_tail_stats` (scipy.stats) | `calc_excess_kurtosis` | ✅ |
+| MDD Duration | `compute_metrics.mdd_duration` | `calc_mdd_duration` | ✅ |
+| Alpha (CAPM) | `compute_metrics.alpha` | `calc_alpha` | ✅ |
+
+**Final 에 부재 → 학술 표준 정의 (출처 명시)**:
+
+| 메트릭 | 정의 | 출처 |
+|---|---|---|
+| **R²** | `corr(fund, mkt)²` (Pearson² = OLS R² 동치) | Sharpe (1964) CAPM |
+| **Correlation** | Pearson correlation | 학술 표준 |
+| **Tracking Error** | `std(fund - bench) × √12` | Grinold & Kahn (1999) |
+| **VaR 5%** | `ret.quantile(0.05)` (Historical method) | Jorion (2007) |
+| **Recovery Time** | DD trough → 신고가 회복 개월 수 | Magdon-Ismail & Atiya (2004) |
+| **Top N DD** | local minima 식별 (depth 기준 정렬) | 표준 DD 분해 |
+| **Hill ξ̂** | $\frac{1}{k}\sum \log X_{(i)} - \log X_{(k+1)}$ | Hill (1975) |
+
+**검증 결과** (실제 데이터 fund.ret + fund.spy_ret + panel.rf_1m):
+- Volatility 0.1345 / MDD -0.1289 / Beta 0.730 / Sortino 1.862 / Sharpe 1.103 / CVaR -0.0687 — **모두 final 1e-3 이내 일치**
+- R² 0.5984 (= corr² 0.5984, 수학적 동치 검증 True)
+- TE 9.41% / VaR -5.31%
+- Top 3 DD: #1 2011-08 (-12.9%, dur 4m, rec 3m) / #2 2022-08 (-12.8%) / #3 2010-05 (-10.5%)
+- Hill ξ̂: Fund 0.356 / SPY 0.378 → **Fund tail risk 가 SPY 보다 적음** (학술 narrative 검증)
+
+**결과 / 함의**:
+- `lib/metric_calculators.py` 보강 — 11 신규 함수 (R², Correlation, Top N DD, Recovery Time, Hill, Rolling 5종)
+- `lib/risk_charts.py` 신규 — 6 영역 함수
+- 모든 결과가 final 정합 또는 학술 출처 명시 → 정직성 확보
+
 ### 페이지 메타 결정 (Risk M-1 ~ M-4)
 
 #### Risk M-1. 영역 개수

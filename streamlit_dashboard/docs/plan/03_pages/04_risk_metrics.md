@@ -207,15 +207,19 @@ Risk Metrics (위험 지표)
 
 ---
 
-### 영역 6: Beta + R² + Tracking Error 시계열 (Rolling)
+### 영역 6: Volatility + Sortino + Beta + R² + Tracking Error 시계열 (Rolling)
 
-**결정사항** (R6-1 ~ R6-6):
-- 표시 방식: (b) 3개 분리 차트 (위아래)
+**결정사항** (R6-1 ~ R6-6 + 2026-05-10 보강):
+- 표시 방식: (b) 5개 분리 차트 (위아래) — **Volatility / Sortino 추가**
 - Rolling 윈도우: (b) 토글 (12m / 36m / 60m)
 - 비교: (a) 펀드 only (Beta/R²/TE 본질적으로 vs SPY 메트릭)
 - 추가 표시: (a) Beta=1 기준선만
 - 인터랙션: 모두 채택
 - **β 음수 처리** (R6-6): (c) R² 함께 표시 (신뢰성 평가)
+
+**보강 근거 (Q-G, 2026-05-10)**: Overview Hero KPI sparkline 제거 (옵션 C)
+시 Sortino / Volatility 의 시간 추이가 다른 페이지에 명시되어야 함. 기존 영역 6
+은 Beta/R²/TE 만 → Volatility / Sortino 추가하여 5 메트릭 통합 시계열 페이지로 확장.
 
 **시각화 예시**:
 

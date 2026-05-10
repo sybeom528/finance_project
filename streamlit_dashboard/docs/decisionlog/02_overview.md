@@ -525,6 +525,49 @@ def compute_ivw_returns(monthly_panel, sp500_membership, fund_dates):
 - caption 에 "Kurtosis 12-19 는 정상 fat tail (Bollerslev 1986)" 명시
 - daily 분포 통계 = 원본 데이터 그대로 → final pipeline 의도 정확히 정합
 
+##### 2-Q (2026-05-10): Hero KPI sparkline 제거 (옵션 C) + Risk Metrics plan 보강
+
+**배경**: Hero KPI 5 카드의 sparkline 이 모두 동일한 누적 wealth 곡선으로 표시되어
+정보 가치 redundant. 사용자 지적 (2026-05-10): "다른 페이지에서 각 상세 지표의
+차트를 명확히 보여주고 있다면 옵션 C, 진행되지 않는 부분이 있다면 옵션 B 고려."
+
+**검토된 옵션**:
+- (A) 현재 유지 (모든 카드 동일 sparkline)
+- (B) 각 KPI 별 별도 sparkline (Cumulative wealth / rolling CAGR / rolling Sortino /
+      rolling Vol / underwater curve)
+- (C) Sparkline 제거 + 다른 페이지에서 각 메트릭 시간 추이 차트 명시
+
+**메트릭별 시간 추이 차트 매핑 검증**:
+| Hero KPI | 다른 페이지 시간 추이 차트 |
+|---|---|
+| Cumulative Return | Overview 영역 3 (이중 차트 위) ✅ |
+| Net CAGR | Performance 영역 6 (Rolling Return 1y/3y/5y) ✅ |
+| Sortino | ⚠️ **다른 페이지 부재** — Performance 영역 7 Heatmap 만 (Regime별 표) |
+| Volatility | ⚠️ **다른 페이지 부재** — Risk Metrics 영역 6 = Beta/R²/TE 만 (Vol 명시 X) |
+| MDD | Overview 영역 3 (이중 차트 아래) + Risk Metrics 영역 4 ✅ |
+
+→ Sortino + Volatility 시간 추이가 다른 페이지에 부재 → **옵션 C 단독은 불가**.
+
+**결정**: **옵션 C + Risk Metrics plan 보강** (안 2)
+1. Hero KPI sparkline 제거 (단순화 — 큰 숫자 + TEST/HO 두 줄)
+2. Risk Metrics 영역 6 확장: "Beta + R² + TE 시계열" → "**Volatility + Sortino +
+   Beta + R² + TE 시계열**" (5 메트릭 통합 rolling 시계열 페이지)
+
+**근거**:
+1. **단순성**: Hero KPI 는 "5초 인상" 목적 — sparkline 제거 시 큰 숫자가 더 명확
+2. **정보 redundancy 제거**: 5 카드 동일 sparkline 은 정보 중복
+3. **페이지 분할 명확성**: Risk Metrics 페이지가 "위험 + 시간 추이" 종합 페이지로
+   강화 — Overview = 5초 인상 / Performance = 수익 추이 / Risk Metrics = 위험 추이
+4. **(B) 거리**: rolling Sortino 는 36m lookback 필요 → 첫 36 개월 빈 sparkline →
+   학술적 정확하지만 시각적 혼란
+
+**결과 / 함의**:
+- `lib/overview_charts.py` 의 `_make_sparkline` 함수 제거, render_hero_kpi 카드
+  디자인 단순화 (큰 숫자 + TEST/HO 라벨)
+- `plan/03_pages/04_risk_metrics.md` 영역 6 명세 업데이트
+  (5 메트릭 통합 rolling 시계열 — Volatility / Sortino / Beta / R² / TE)
+- Risk Metrics 페이지 구현 시 영역 6 에 Volatility / Sortino rolling 추가
+
 #### 결정 항목 3-3: Y축 스케일
 
 **검토된 옵션**:
