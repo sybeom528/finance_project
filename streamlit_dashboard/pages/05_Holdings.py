@@ -35,6 +35,7 @@ from lib.holdings_charts import (
     render_holdings_history,
     render_holdings_kpi,
     render_market_cap_distribution,
+    render_top_n_share_timeseries,
     render_top_n_table,
 )
 from lib.page_helpers import (
@@ -126,6 +127,18 @@ st.caption(
     "Regime 배경색 (R1/R2/R3/HO) + COVID/2022 Bear 등 이벤트 annotation 포함."
 )
 render_holdings_history(weights, universe)
+st.divider()
+
+
+# === 영역 6.5: 시점별 Top N 합 vs Others 시계열 ======================
+st.subheader("시점별 Top N 합 vs Others — 집중도 동적 추세")
+st.caption(
+    "각 시점에서의 Top N ticker (시점별 동적) 의 weight 합 시계열. "
+    "영역 6 (선택 시점 Top N 의 정적 추적) 의 보완 — 시점별로 다른 ticker 가 Top N 에 들어가더라도 그 시점의 합 자체를 그대로 사용. "
+    "100%-stacked area: Top N (아래 파란 면적) + Others (위 회색 면적) 누적. "
+    "Top 10 = `final.comp.top10_share` 직접 정합 / Top 1 = `final.comp.top1_weight` 정합 / Top 5·20 = 직접 산출."
+)
+render_top_n_share_timeseries(comp, weights)
 st.divider()
 
 
