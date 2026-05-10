@@ -24,6 +24,10 @@ wheels/
 *.zip
 *.tar.gz
 
+# Streamlit dashboard 작은 메타 데이터 (예외 — git 포함, 다른 인원 재현성 보장)
+!streamlit_dashboard/data/ticker_company_map.csv
+!streamlit_dashboard/data/universe.csv
+
 # Jupyter Notebook
 .ipynb_checkpoints/
 __pycache__/

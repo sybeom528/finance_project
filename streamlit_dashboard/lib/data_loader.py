@@ -61,11 +61,48 @@ def load_ticker_company_map() -> pd.DataFrame | None:
     """
     yfinance 회사명 매핑 (D-2). 파일 없으면 None.
     None 반환 시 호출 측에서 ticker 자체를 사용 (graceful degradation).
+
+    후처리 (D-2 보완 결정 2026-05-10):
+      yfinance.info 가 longName/shortName 을 반환하지 않고 CIK 등 숫자만
+      반환하는 케이스 (인수합병된 옛 종목 — GR, MOLX, TLAB, TWX 등) 자동 보정.
+      → company_name 이 숫자만이거나 빈값/NaN 이면 ticker 자체로 덮어쓰기.
+      이 후처리는 매핑 CSV 가 어떤 환경에서 생성되었든 동일 결과 보장.
     """
     p = DATA_DIR / "ticker_company_map.csv"
     if not p.exists():
         return None
-    return pd.read_csv(p)
+
+    df = pd.read_csv(p)
+
+    # 후처리: 잘못된 매핑을 ticker 로 fallback
+    def _is_invalid(name) -> bool:
+        if not isinstance(name, str):
+            return True  # NaN / None
+        s = name.strip()
+        if s == "":
+            return True
+        if s.isdigit():  # 숫자만 (CIK 등)
+            return True
+        return False
+
+    invalid_mask = df["company_name"].apply(_is_invalid)
+    df.loc[invalid_mask, "company_name"] = df.loc[invalid_mask, "ticker"]
+
+    return df
+
+
+@st.cache_data
+def get_ticker_company_dict() -> dict[str, str]:
+    """
+    ticker → company_name dict. 매핑 파일 부재 시 빈 dict.
+    호출 측 사용 패턴: `name = mapping.get(ticker, ticker)` (graceful degradation).
+
+    `load_ticker_company_map()` 의 후처리 (숫자/빈값 → ticker fallback) 가 적용된 결과.
+    """
+    df = load_ticker_company_map()
+    if df is None:
+        return {}
+    return dict(zip(df["ticker"], df["company_name"]))
 
 
 @st.cache_data

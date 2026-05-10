@@ -83,6 +83,46 @@ pd.DataFrame(
 
 **산출물**: `streamlit_dashboard/data/ticker_company_map.csv` (ticker, company_name)
 
+### D-2 보완 (2026-05-10): 매핑 후처리 — 잘못된 매핑 자동 fallback
+
+**배경 (Context)**: 833 매핑 수집 후 검증 결과, 71개 (8.5%) 가 회사명 대신 숫자 (CIK 등) 로 저장됨. yfinance.info 가 인수합병으로 사라진 옛 종목에 대해 `longName`/`shortName` 은 None 이지만 다른 메타데이터 (CIK 등) 만 반환하는 케이스. fund 실제 사용 592 ticker 중에도 4건 발견 (GR, MOLX, TLAB, TWX — 모두 2010 년대 인수합병 종목).
+
+**검토된 옵션**:
+- (a) 매핑 CSV 수동 보정 (4 건만 직접 입력)
+- (b) **코드 레벨 후처리** — `load_ticker_company_map()` 에서 숫자/빈값 자동 ticker fallback
+- (c) 그대로 유지 (Holdings 차트에 숫자 노출)
+
+**결정**: (b) 코드 레벨 후처리
+
+**근거**:
+1. **재현성**: 다른 인원이 build 스크립트 재실행해도 동일 결과 보장 (CSV 수동 보정 시 변경분 유실 위험)
+2. **확장성**: 신규 인수합병 종목도 자동 처리 (룰 기반)
+3. **Graceful degradation**: ticker 자체로 fallback → Holdings 차트에서 자연스러운 표시
+
+**구현**:
+```python
+# lib/data_loader.py
+def _is_invalid(name) -> bool:
+    if not isinstance(name, str): return True   # NaN
+    s = name.strip()
+    if s == "" or s.isdigit(): return True       # 빈값 / CIK 숫자
+    return False
+
+invalid_mask = df["company_name"].apply(_is_invalid)
+df.loc[invalid_mask, "company_name"] = df.loc[invalid_mask, "ticker"]
+```
+
+**검증 결과**:
+- 후처리 전 invalid 71 / 833 (8.5%) → 후처리 후 0 / 833 (0%)
+- fund 사용 592 ticker: 정상 매핑 588 (99.3%) + ticker fallback 4 (0.7%, GR/MOLX/TLAB/TWX)
+
+**Holdings/Sector Watch 사용 패턴**:
+```python
+from lib.data_loader import get_ticker_company_dict
+mapping = get_ticker_company_dict()
+display_name = mapping.get(ticker, ticker)  # 부재 시도 ticker
+```
+
 ## D-3. 캐싱 전략
 
 **검토된 옵션**:
