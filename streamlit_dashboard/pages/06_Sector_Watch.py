@@ -140,7 +140,7 @@ st.divider()
 
 
 # === 영역 8: ★★★ HO 24m 정당화 narrative ===============================
-st.subheader("HO 24m 분석 + 정당화 narrative ★")
+st.subheader("HO 24m 분석 + 정당화 narrative")
 st.caption(
     "**핵심 영역** — 펀드의 HO 24m underperform 의 학술적 정당화. "
     "1) SPY IT 비중 vs Fund IT Tilt 이중 축 — IT 시장 집중 + 펀드 under-weight 추세. "
