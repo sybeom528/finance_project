@@ -142,7 +142,7 @@ def extend_one(cfg):
     is_naive   = (q_mode == 'none')
     is_capm    = (q_mode == 'capm')
     max_w      = cfg.get('max_weight', 0.10)
-    tc         = cfg.get('tc', 0.001)
+    tc         = cfg.get('tc', 0.003)
 
     # ── prev_w 재구성: 기존 weights 의 마지막 행 ─────────
     prev_w = None

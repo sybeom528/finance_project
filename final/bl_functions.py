@@ -373,7 +373,7 @@ def apply_tc(gross_ret: float, turnover: float, tc: float) -> float:
     net_ret = gross_ret - turnover × tc.
 
     turnover: two-way (Σ|Δw| ∈ [0,2]), tc: 편측(per-side) rate.
-    예) tc=0.001 (10bp/side), turnover=0.5 → TC = 0.0005 (월 5bp)
+    예) tc=0.003 (30bp/side), turnover=0.5 → TC = 0.0015 (월 15bp)
     """
     return gross_ret - turnover * tc
 

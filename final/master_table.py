@@ -90,7 +90,7 @@ def parse_config(cfg: dict) -> dict:
         'q_mode'     : q_mode,
         'omega_mode' : om_mode,
         'omega_scale': om_scl,
-        'tc'         : cfg.get('tc',         0.001),
+        'tc'         : cfg.get('tc',         0.003),
         'max_weight' : cfg.get('max_weight', 0.10),
         # 약어 토큰
         'prior_s'    : pr_s,
