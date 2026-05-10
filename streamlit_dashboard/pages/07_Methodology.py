@@ -1,30 +1,29 @@
 """
-pages/07_Methodology.py — Methodology 페이지 (9 영역, 초안)
+pages/07_Methodology.py — Methodology 페이지 (8 영역, 초안)
 
 펀드 운용 방법론 설명 전담 — BL + LSTM + 4-slot config 의 학술/실무 토대.
 
-9 영역:
+8 영역:
   1. Header
   2. Sub-header
   3. Methodology Overview (BL+LSTM Plotly Sankey)
   4. Black-Litterman 상세 + 4-slot config
   5. LSTM 변동성 예측 상세 (★ Walk-forward 명시)
   6. Factor 분석 (CAPM + FF5)
-  7. 정규성 검정 (Jarque-Bera) — LSTM 정당화
-  8. 한계 + 향후 개선 (3 한계 카드)
-  9. Footer
+  7. 한계 + 향후 개선 (3 한계 카드)
+  8. Footer
 
 설계 원칙 (초안 — 향후 변경 용이):
   - 영역별 독립 함수 (영역 추가/제거 시 페이지 entry 만 변경)
   - 학술 인용 / 한계 정의 외부 dict
-  - 데이터: ff5_monthly.csv + 펀드 ret/spy_ret
+  - 데이터: ff5_monthly.csv + 펀드 ret
 
 참조: docs/plan/03_pages/07_methodology.md, docs/decisionlog/07_methodology.md
 """
 
 import streamlit as st
 
-from lib.data_loader import load_ff5_monthly, load_fund_results, load_monthly_panel
+from lib.data_loader import load_ff5_monthly, load_fund_results
 from lib.disclosure import init_session_state, render_footer
 from lib.methodology_charts import (
     render_bl_detail,
@@ -32,7 +31,6 @@ from lib.methodology_charts import (
     render_limitations,
     render_lstm_detail,
     render_methodology_sankey,
-    render_normality_test,
 )
 from lib.page_helpers import (
     inject_custom_css,
@@ -51,7 +49,6 @@ render_sidebar()
 # === 데이터 로드 ======================================================
 fund = load_fund_results()  # default = mat_eq_mcap_raw_he
 fund_ret = fund["ret"]
-fund_spy = fund["spy_ret"]
 config_name = fund["config"]["name"]
 
 ff5 = load_ff5_monthly()
@@ -119,26 +116,14 @@ render_factor_analysis(fund_ret, ff5)
 st.divider()
 
 
-# === 영역 7: 정규성 검정 (Jarque-Bera) ================================
-st.subheader("정규성 검정 — Jarque-Bera (LSTM 정당화)")
-st.caption(
-    "**Jarque-Bera 검정** (수익률 분포의 정규성 검증). "
-    "정규분포 기각 (fat tail) → 단순 통계 모델 한계 → **LSTM 같은 비선형 모델 학술적 정당화**. "
-    "Q-Q plot + Histogram + 동적 narrative (Case A 정당화 / Case B 재검토). "
-    "학술 인용: Cont (2001), Embrechts et al. (1997)."
-)
-render_normality_test(fund_ret, fund_spy)
-st.divider()
-
-
-# === 영역 8: 한계 + 향후 개선 =========================================
+# === 영역 7: 한계 + 향후 개선 =========================================
 st.subheader("한계 + 향후 개선")
 st.caption(
     "**학술 정직성 선언** + **3 한계 카드** (균형 옵션 B): 🟧 HO 24m 부진 / 🟩 향후 개선 / 🟥 실무 제약. "
-    "각 카드 자세한 내용은 Expander. 영역 7 Case B 시 \"LSTM 가치 미입증\" 동적 추가."
+    "각 카드 자세한 내용은 Expander."
 )
 render_limitations()
 
 
-# === 영역 9: Footer ===================================================
+# === 영역 8: Footer ===================================================
 render_footer()
