@@ -50,6 +50,9 @@ def init_session_state() -> None:
         st.session_state.show_ew = False
     if "show_ivw" not in st.session_state:
         st.session_state.show_ivw = False
+    # model-comparison branch — 펀드 모델 선택 (main 의 default = mat_eq_eq_raw_pap)
+    if "config_name" not in st.session_state:
+        st.session_state.config_name = "mat_eq_eq_raw_pap"
 
 
 # === Footer 렌더링 =====================================================

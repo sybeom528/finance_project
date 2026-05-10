@@ -54,7 +54,7 @@ render_sidebar()
 
 
 # === 데이터 로드 ======================================================
-fund = load_fund_results("mat_eq_eq_raw_pap")
+fund = load_fund_results(st.session_state.get("config_name", "mat_eq_eq_raw_pap"))
 fund_ret = fund["ret"]
 fund_gross = fund["gross_ret"]
 fund_spy = fund["spy_ret"]

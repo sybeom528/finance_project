@@ -144,6 +144,86 @@ def load_other_config_results(config_name: str) -> dict:
         return pickle.load(f)
 
 
+# === 모델 비교 실험 (branch model-comparison) =========================
+# main 의 mat_eq_eq_raw_pap 단일 모델 외에 156 config 자유 선택 가능.
+# pkl 파일 자체는 final/results/ 원본 또는 streamlit_dashboard/data/results/ 사본.
+
+
+@st.cache_data
+def list_available_configs() -> list[str]:
+    """
+    final/results/ 의 156 config pkl 파일명 list (확장자 제거, 정렬).
+
+    backup 디렉터리 등 제외 — .pkl 파일만 포함.
+    """
+    if not ORIGINAL_RESULTS_DIR.exists():
+        return ["mat_eq_eq_raw_pap"]  # fallback
+    names = sorted(
+        p.stem for p in ORIGINAL_RESULTS_DIR.glob("*.pkl")
+        if p.is_file()
+    )
+    return names
+
+
+@st.cache_data
+def load_fund_results_any(config_name: str) -> dict:
+    """
+    config_name 기준 fund pkl 로드 — main 사본 (Top 1) 우선, 없으면 final 원본.
+
+    이 함수가 model-comparison branch 의 핵심: pkl 파일명만 바뀌면
+    fund.weights / fund.comp / fund.ret / fund.spy_ret 등 모두 동일 형식이므로
+    모든 페이지의 메트릭 / 차트가 자동 반영됨.
+    """
+    local = RESULTS_DIR / f"{config_name}.pkl"
+    if local.exists():
+        with open(local, "rb") as f:
+            return pickle.load(f)
+    return load_other_config_results(config_name)
+
+
+@st.cache_data
+def load_all_config_metrics() -> pd.DataFrame:
+    """
+    156 config × 6 핵심 메트릭 표 — 사이드바 모델 선택 expander 표시용.
+
+    Returns:
+        pd.DataFrame (index=config_name, columns=[CAGR, Vol, MDD, Sharpe, Sortino, Beta])
+        FULL 기간 (2010-01 ~ 2025-12) 기준 산출.
+
+    NOTE: 156 config × 0.1초 ≈ 15초 소요 (캐시 후 즉시).
+    """
+    from lib.metric_calculators import (
+        calc_beta, calc_cagr, calc_mdd, calc_sharpe,
+        calc_sortino, calc_volatility,
+    )
+
+    configs = list_available_configs()
+    panel = load_monthly_panel()
+    rf = panel.groupby("date")["rf_1m"].first()
+
+    rows: list[dict] = []
+    for cn in configs:
+        try:
+            d = load_fund_results_any(cn)
+            ret = d["ret"]
+            spy = d["spy_ret"]
+            rows.append({
+                "config": cn,
+                "CAGR": calc_cagr(ret),
+                "Vol": calc_volatility(ret),
+                "MDD": calc_mdd(ret),
+                "Sharpe": calc_sharpe(ret, rf),
+                "Sortino": calc_sortino(ret, rf),
+                "Beta": calc_beta(ret, spy, rf),
+            })
+        except Exception as e:
+            rows.append({"config": cn, "CAGR": None, "Vol": None, "MDD": None,
+                         "Sharpe": None, "Sortino": None, "Beta": None, "error": str(e)[:50]})
+
+    df = pd.DataFrame(rows).set_index("config")
+    return df
+
+
 # === Baseline 산출 (Overview 영역 3 비교 라인) ========================
 # 모두 시점 t-1 sp500_membership 기준 (look-ahead bias 회피, decisionlog Q-C)
 

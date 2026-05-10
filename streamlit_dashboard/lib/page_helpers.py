@@ -93,6 +93,9 @@ def render_sidebar() -> None:
         st.markdown("# Adaptive VolControl Fund")
         st.markdown("어댑티브 볼컨트롤 펀드")
         st.caption("Benchmark: SPY  |  Data: 2025-12")
+
+        # ── 🧪 model-comparison branch 전용: 펀드 모델 선택 ──
+        _render_model_selector()
         st.divider()
 
         # ── 6 그룹 페이지 navigation (C4-1 c, C4-2 a) ──
@@ -140,3 +143,67 @@ def render_sidebar() -> None:
         st.checkbox("SPY", value=st.session_state.get("show_spy", True), key="show_spy")
         st.checkbox("EW (펀드 universe)", value=st.session_state.get("show_ew", False), key="show_ew")
         st.checkbox("IVW (Naive Low-vol)", value=st.session_state.get("show_ivw", False), key="show_ivw")
+
+
+def _render_model_selector() -> None:
+    """
+    🧪 model-comparison branch 전용 — 사이드바 펀드 모델 선택 UI.
+
+    구성:
+      1. selectbox (검색 가능, 156 config 중 선택)
+      2. expander "📊 156 config 메트릭 비교 표"
+         - 정렬 가능 DataFrame (CAGR/Vol/MDD/Sharpe/Sortino/Beta)
+         - 검색 텍스트 필터 (config 이름 contains)
+         - default 모델 (mat_eq_eq_raw_pap) 강조 표시
+
+    main 의 default 모델 = mat_eq_eq_raw_pap. 다른 모델 선택 시
+    모든 페이지 (Performance / Risk / Holdings 등) 메트릭이 자동 반영됨.
+    """
+    from lib.data_loader import list_available_configs, load_all_config_metrics
+
+    st.markdown("#### 🧪 펀드 모델 (실험)")
+    st.caption("`model-comparison` branch 에서만 표시 — main 은 mat_eq_eq_raw_pap 단일 모델")
+
+    configs = list_available_configs()
+    current = st.session_state.get("config_name", "mat_eq_eq_raw_pap")
+    if current not in configs:
+        current = configs[0] if configs else "mat_eq_eq_raw_pap"
+
+    # selectbox — Streamlit 자체 typeable 검색 지원
+    selected = st.selectbox(
+        "모델 선택",
+        options=configs,
+        index=configs.index(current) if current in configs else 0,
+        key="config_name",
+        help="텍스트 입력으로 검색 가능 (예: 'lstm', 'mat_eq', 'capm_mcap')",
+    )
+
+    # 메트릭 비교 표 (expander)
+    with st.expander("📊 156 config 메트릭 비교 표", expanded=False):
+        try:
+            df = load_all_config_metrics()
+            # 검색 필터
+            search = st.text_input(
+                "검색 (config 이름 contains)",
+                value="",
+                key="config_search",
+                placeholder="예: lstm, capm, mcap, raw",
+            )
+            if search:
+                df = df[df.index.str.contains(search, case=False, na=False)]
+
+            # 표시
+            st.dataframe(
+                df.style.format({
+                    "CAGR": "{:.2%}", "Vol": "{:.2%}", "MDD": "{:.2%}",
+                    "Sharpe": "{:.3f}", "Sortino": "{:.3f}", "Beta": "{:.3f}",
+                }),
+                use_container_width=True,
+                height=300,
+            )
+            st.caption(
+                f"총 {len(df)} config (FULL 192m). "
+                f"컬럼 클릭 → 정렬, 행 더블클릭 → ticker 복사 후 위 selectbox 에 붙여넣기."
+            )
+        except Exception as e:
+            st.warning(f"메트릭 표 로드 실패: {e}")

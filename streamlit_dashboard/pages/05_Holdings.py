@@ -52,7 +52,7 @@ render_sidebar()
 
 
 # === 데이터 로드 ======================================================
-fund = load_fund_results("mat_eq_eq_raw_pap")
+fund = load_fund_results(st.session_state.get("config_name", "mat_eq_eq_raw_pap"))
 weights = fund["weights"]
 comp = fund["comp"]
 fund_ret = fund["ret"]

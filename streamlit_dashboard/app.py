@@ -64,7 +64,7 @@ render_sidebar()
 
 
 # === 데이터 로드 (캐시) ================================================
-fund = load_fund_results("mat_eq_eq_raw_pap")
+fund = load_fund_results(st.session_state.get("config_name", "mat_eq_eq_raw_pap"))
 fund_ret = fund["ret"]               # Net 월별 수익률 (Series)
 fund_gross = fund["gross_ret"]       # TC 차감 전
 fund_spy = fund["spy_ret"]           # SPY 월별 수익률
