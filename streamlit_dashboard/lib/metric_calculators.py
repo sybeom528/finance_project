@@ -825,3 +825,271 @@ def compute_all_metrics(
         "beta": calc_beta(ret, mkt_ret, rf_a) if mkt_ret is not None else np.nan,
         "alpha": calc_alpha(ret, mkt_ret, rf_a) if mkt_ret is not None else np.nan,
     }
+
+
+# ======================================================================
+# Holdings 페이지 전용 — final 정합 + 학술 표준 (Phase 2.2)
+# ======================================================================
+# decisionlog 05_holdings.md Hold-Q1:
+#   - final 정합 메트릭: comp DataFrame (n_stocks, eff_n, top1_weight,
+#                       top10_share, turnover) — final/bl_functions 산출
+#   - 학술 표준 메트릭: Single HHI / Sector HHI / Top 5 / Simple Contribution
+#                     (Hirschman 1945, Brinson et al. 1986)
+
+
+def calc_top_n_share(weights_row: pd.Series, n: int) -> float:
+    """
+    Top N 종목 weight 합계 (학술 표준).
+
+    Args:
+        weights_row: pd.Series (index=ticker, value=weight, 단일 시점)
+        n: int (Top N 개수)
+
+    Returns:
+        float (sum of top N weights)
+    """
+    w = weights_row.dropna()
+    w = w[w > 0]
+    if len(w) == 0:
+        return np.nan
+    return float(w.nlargest(n).sum())
+
+
+def calc_sector_weights(weights_row: pd.Series, ticker_to_sector: dict) -> pd.Series:
+    """
+    종목 weight → 섹터 weight 합계 (학술 표준).
+
+    Args:
+        weights_row: pd.Series (index=ticker, value=weight)
+        ticker_to_sector: dict[ticker, sector] (universe 기반)
+
+    Returns:
+        pd.Series (index=sector, value=summed weight)
+    """
+    w = weights_row.dropna()
+    w = w[w > 0]
+    if len(w) == 0:
+        return pd.Series(dtype=float)
+    sector = w.index.to_series().map(ticker_to_sector).fillna("Unknown")
+    return w.groupby(sector).sum()
+
+
+def calc_sector_hhi(weights_row: pd.Series, ticker_to_sector: dict) -> float:
+    """
+    Sector HHI = Σ(섹터 weight)² (Hirschman 1945, sector level).
+    """
+    sector_w = calc_sector_weights(weights_row, ticker_to_sector)
+    if len(sector_w) == 0:
+        return np.nan
+    return float((sector_w ** 2).sum())
+
+
+def calc_holdings_kpi_snapshot(
+    weights_row: pd.Series,
+    ticker_to_sector: dict,
+) -> dict:
+    """
+    단일 시점 (Latest snapshot) Holdings KPI 6개 — Hold-Q1 final 정합 + 학술 표준.
+
+    n_stocks 정의 (final/_extend_bl_to_2025.py:251 정합):
+      = active universe 내 모든 ticker (NaN 제외, weight=0 종목 포함)
+      → 최적화 결과 weight=0 으로 산출된 ticker 도 active universe 의 일원
+
+    Args:
+        weights_row: pd.Series (index=ticker, value=weight, 단일 시점)
+        ticker_to_sector: dict[ticker, sector]
+
+    Returns:
+        dict {n_stocks, eff_n, single_hhi, sector_hhi, top1, top5, top10}
+    """
+    w_active = weights_row.dropna()       # active universe (NaN 제외)
+    w_pos = w_active[w_active > 0]        # 실제 보유 (weight > 0)
+
+    return {
+        "n_stocks": int(len(w_active)),   # final 정합 (valid_tix len)
+        "eff_n": calc_effective_n(w_pos),
+        "single_hhi": calc_hhi(w_pos),
+        "sector_hhi": calc_sector_hhi(weights_row, ticker_to_sector),
+        "top1": calc_top_n_share(weights_row, 1),
+        "top5": calc_top_n_share(weights_row, 5),
+        "top10": calc_top_n_share(weights_row, 10),
+    }
+
+
+def calc_holdings_kpi_period_avg(
+    weights: pd.DataFrame,
+    ticker_to_sector: dict,
+    comp: pd.DataFrame | None = None,
+) -> dict:
+    """
+    기간 평균 Holdings KPI — 사이드바 토글 (FULL/TEST/HO) 의 월별 평균.
+
+    final 정합 우선:
+      n_stocks_avg / eff_n_avg / turnover_avg = comp 직접 사용 (final master_table 정합)
+
+    학술 산출:
+      single_hhi_avg / sector_hhi_avg / top1_avg / top5_avg / top10_avg
+      = 월별 weight → snapshot 산출 → 평균
+
+    Args:
+        weights: pd.DataFrame (index=date, columns=ticker)
+        ticker_to_sector: dict
+        comp: pd.DataFrame (final 산출, optional)
+
+    Returns:
+        dict (위 메트릭 평균)
+    """
+    monthly = []
+    for t in weights.index:
+        snap = calc_holdings_kpi_snapshot(weights.loc[t], ticker_to_sector)
+        monthly.append(snap)
+
+    df = pd.DataFrame(monthly, index=weights.index)
+
+    # final 정합 (comp 우선) + 학술 산출 평균 통합
+    out: dict = {}
+    if comp is not None and len(comp) > 0:
+        comp_filtered = comp.loc[comp.index.intersection(weights.index)]
+        if "n_stocks" in comp_filtered.columns:
+            out["n_stocks_avg"] = float(comp_filtered["n_stocks"].mean())
+        if "eff_n" in comp_filtered.columns:
+            out["eff_n_avg"] = float(comp_filtered["eff_n"].mean())
+        if "turnover" in comp_filtered.columns:
+            out["turnover_avg"] = float(comp_filtered["turnover"].mean())
+    else:
+        out["n_stocks_avg"] = float(df["n_stocks"].mean())
+        out["eff_n_avg"] = float(df["eff_n"].mean())
+        out["turnover_avg"] = np.nan  # comp 없으면 산출 불가
+
+    # 학술 메트릭 (단순 평균)
+    out["single_hhi_avg"] = float(df["single_hhi"].mean())
+    out["sector_hhi_avg"] = float(df["sector_hhi"].mean())
+    out["top1_avg"] = float(df["top1"].mean())
+    out["top5_avg"] = float(df["top5"].mean())
+    out["top10_avg"] = float(df["top10"].mean())
+
+    return out
+
+
+def calc_simple_contribution(
+    weights: pd.DataFrame,
+    panel: pd.DataFrame,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp,
+) -> pd.Series:
+    """
+    Simple Contribution = Σ_t (w_t × R_t) per ticker. Brinson et al. (1986).
+
+    학술 출처:
+      - Brinson, G. P., Hood, L. R., & Beebower, G. L. (1986).
+        "Determinants of Portfolio Performance." Financial Analysts Journal.
+      - Simple = w × R (allocation/selection 분해 안 함, 청중 친화)
+
+    검증: Σ(per-ticker contribution) ≈ 펀드 누적 수익률 (선형 근사 한계 ε)
+
+    Args:
+        weights: pd.DataFrame (index=date, columns=ticker)
+        panel: pd.DataFrame (date, ticker, ret_1m)
+        period_start, period_end: 기간 boundary
+
+    Returns:
+        pd.Series (index=ticker, value=cumulative contribution, 정렬 X)
+    """
+    weights_p = weights[(weights.index >= period_start) & (weights.index <= period_end)]
+    if len(weights_p) == 0:
+        return pd.Series(dtype=float)
+
+    panel_p = panel[(panel["date"] >= period_start) & (panel["date"] <= period_end)]
+    panel_pivot = panel_p.pivot_table(
+        index="date", columns="ticker", values="ret_1m", aggfunc="first"
+    )
+
+    # weights[t] 와 ret[t] 매칭 (forward alignment: weight at t-1 보유 → ret at t)
+    common_dates = weights_p.index.intersection(panel_pivot.index)
+    if len(common_dates) == 0:
+        return pd.Series(dtype=float)
+
+    weights_aligned = weights_p.loc[common_dates]
+    rets_aligned = panel_pivot.loc[common_dates]
+
+    # 공통 ticker
+    common_tickers = weights_aligned.columns.intersection(rets_aligned.columns)
+    weights_a = weights_aligned[common_tickers].fillna(0)
+    rets_a = rets_aligned[common_tickers].fillna(0)
+
+    # 종목별 누적 contribution = Σ_t (w_t × r_t)
+    contribution = (weights_a * rets_a).sum(axis=0)
+
+    return contribution.sort_values(ascending=False)
+
+
+def calc_avg_turnover(comp: pd.DataFrame, start: str, end: str) -> float:
+    """
+    평균 회전율 (final 정합) — comp.turnover.mean() 기간 필터.
+    final/master_table.py:227 정확 재현 (turnover_avg).
+
+    NOTE: comp.turnover 첫 행 (2010-01) = 0 (rebalancing 시작점) 포함.
+    """
+    if "turnover" not in comp.columns:
+        return np.nan
+    sub = comp.loc[(comp.index >= start) & (comp.index <= end), "turnover"]
+    if len(sub) == 0:
+        return np.nan
+    return float(sub.mean())
+
+
+def get_market_cap_from_panel(
+    panel: pd.DataFrame, date: pd.Timestamp, tickers: list[str]
+) -> pd.Series:
+    """
+    monthly_panel.log_mcap → Market Cap ($) 환원. = exp(log_mcap).
+    decisionlog D-1 정합 — final 데이터 그대로 사용.
+    """
+    rows = panel[(panel["date"] == date) & (panel["ticker"].isin(tickers))]
+    if len(rows) == 0:
+        return pd.Series(dtype=float)
+    mcap = np.exp(rows.set_index("ticker")["log_mcap"])
+    return mcap.reindex(tickers)
+
+
+def get_12m_return_from_panel(
+    panel: pd.DataFrame, end_date: pd.Timestamp, tickers: list[str]
+) -> pd.Series:
+    """
+    종목별 최근 12m 누적 수익률 = ∏(1 + ret_1m) - 1 (12개월 rolling).
+    결측 ticker / 결측 월은 NaN 으로 반환.
+    """
+    start = end_date - pd.DateOffset(months=12)
+    sub = panel[
+        (panel["date"] > start)
+        & (panel["date"] <= end_date)
+        & (panel["ticker"].isin(tickers))
+    ]
+    if len(sub) == 0:
+        return pd.Series([np.nan] * len(tickers), index=tickers)
+
+    pivoted = sub.pivot_table(
+        index="date", columns="ticker", values="ret_1m", aggfunc="first"
+    )
+    cum_12m = (1 + pivoted).prod() - 1
+    return cum_12m.reindex(tickers)
+
+
+def calc_delta_weight(
+    weights: pd.DataFrame, current_date: pd.Timestamp, tickers: list[str]
+) -> pd.Series:
+    """
+    ΔWeight = w[current] - w[prev_month]. 결측 ticker = NaN.
+    """
+    if current_date not in weights.index:
+        return pd.Series([np.nan] * len(tickers), index=tickers)
+
+    pos = weights.index.get_loc(current_date)
+    if pos == 0:
+        # 첫 달은 ΔWeight 없음 → 모두 NaN
+        return pd.Series([np.nan] * len(tickers), index=tickers)
+
+    prev_date = weights.index[pos - 1]
+    curr = weights.loc[current_date].reindex(tickers).fillna(0)
+    prev = weights.loc[prev_date].reindex(tickers).fillna(0)
+    return curr - prev

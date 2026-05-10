@@ -19,6 +19,53 @@
 - Holdings = 개별 종목 위주
 - Sector Watch = 섹터 단위 위주
 
+### 추가 결정 (Hold-Q1, 2026-05-10): final 정합성 + 학술 표준 메트릭 매핑
+
+**배경**: 사용자 지시 — "본 페이지의 각 지표들도 final 과 비교하여 정확하게 동일한 결과가 나올 수 있도록 구성하고 검증까지 진행" (Phase 2.1 Risk-Q1 동일 패턴).
+
+**Final 에 직접 산출된 메트릭** (`fund.pkl["comp"]` DataFrame, 192m × 10 컬럼 — `final/_extend_bl_to_2025.py:235~260` + `final/master_table.py:225~227`):
+
+| Holdings 메트릭 | Final ground truth | 우리 lib | 정합 |
+|---|---|---|---|
+| Number of Holdings | `comp.n_stocks` | snapshot/avg | ✅ 직접 사용 |
+| Effective N | `comp.eff_n` (= 1/Σw²) | snapshot 직접 / avg = `comp.eff_n.mean()` | ✅ |
+| Top 1 Weight | `comp.top1_weight` | snapshot 직접 산출 (단순 max) | ✅ |
+| Top 10 Share | `comp.top10_share` | snapshot 직접 산출 (단순 합) | ✅ |
+| Avg Turnover | `comp.turnover.mean()` | `calc_avg_turnover` | ✅ final/master_table 정확 재현 |
+
+**Final 에 부재 → 학술 표준 정의 (출처 명시)**:
+
+| 메트릭 | 정의 | 출처 |
+|---|---|---|
+| **Single Stock HHI** | $\sum w_i^2$ (= 1/Effective N) | Hirschman (1945) "National Power and the Structure of Foreign Trade" |
+| **Sector HHI** | $\sum_s (\sum_{i \in s} w_i)^2$ (sector level) | Hirschman (1945) — sector aggregate |
+| **Top 5 Share** | $\sum_{i=1}^{5} w_{(i)}$ (Top 5 weight 합) | 표준 집중도 분석 |
+| **Simple Contribution** | $C_i = \sum_t w_{i,t} \times R_{i,t}$ (per ticker) | Brinson, Hood & Beebower (1986) "Determinants of Portfolio Performance" Financial Analysts Journal |
+| **ΔWeight** | $w_{i,t} - w_{i,t-1}$ (월 단위 변화) | 표준 운용 분석 |
+| **12m Return** | $\prod_{k=t-11}^{t}(1 + r_{i,k}) - 1$ (rolling 12m cumprod) | 표준 누적 수익률 |
+| **Market Cap** | $\exp(\text{log\_mcap})$ (monthly_panel 직접) | final 데이터 그대로 (D-1 정합) |
+
+**SPY 벤치마크 처리** (Hold M-3 H3-3 정합):
+- SPY 직접 weight 데이터 부재 → "펀드 universe 균등가중 (1/N)" 을 비교 기준선으로 사용
+- 학술 정직성: "SPY 503 가정" 명시적 회피, "vs 균등 분산" 라벨로 표시
+- 의미 있는 4 KPI 만 비교 (EffN / SingleHHI / SectorHHI / TopW)
+- Number / Latest Turnover 는 비교 의미 ↓ → 펀드 자체값만
+
+**Simple Contribution 검증**:
+- Σ Contribution ≈ Fund 누적 수익률 (월별 선형 합)
+- 차이 ε > 0 일반적 — 누적 수익률은 복리 (1+r)·(1+r')... 이지만 Simple Contribution 은 Σ(w·r) 단순 합 → 학술 한계 명시 (Brinson 1986 알려진 근사)
+- 페이지 영역 7 끝에 ε 차이 명시 표시
+
+**검증 결과** (실제 데이터 fund.weights + fund.comp + monthly_panel):
+- Latest snapshot (2025-12): n_stocks=490 / eff_n=402.17 / top1=0.40% (ED) / top10=3.79% / turnover=26.9%
+- 평균 (FULL 192m): n_stocks=421 / eff_n=215 / turnover=99% — final/master_table.py turnover_avg / eff_n_avg 정확 일치
+- Single HHI = 1/eff_n 수학적 동치 검증 ✓
+
+**결과 / 함의**:
+- `lib/metric_calculators.py` 보강 — 8 신규 함수 (Top N share, Sector HHI, Holdings KPI snapshot/avg, Simple Contribution, Market Cap from panel, 12m Return, ΔWeight)
+- `lib/holdings_charts.py` 신규 — 5 영역 함수 (KPI / Top N table / Treemap-Bubble / 변천사 / Tornado)
+- 모든 결과가 final 정합 또는 학술 출처 명시 → 정직성 확보
+
 ### 페이지 메타 결정 (Hold M-1 ~ M-4)
 
 #### Hold M-1. 영역 개수

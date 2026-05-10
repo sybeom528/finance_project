@@ -1,0 +1,770 @@
+"""
+lib/holdings_charts.py — Holdings 페이지 5 영역 차트 함수
+
+영역 3-7 함수화:
+  - 영역 3: render_holdings_kpi (Number/EffN/SingleHHI/SectorHHI/TopW/Turnover)
+  - 영역 4: render_top_n_table (Top N + 7컬럼 + Weight 막대 + 섹터 색상)
+  - 영역 5: render_market_cap_distribution (Bubble + Treemap 탭, 시점 슬라이더)
+  - 영역 6: render_holdings_history (Multi-line 변천사 + Regime + 신규/제외 마커)
+  - 영역 7: render_attribution_tornado (Top + Bottom Contributors + Sector 합계)
+
+메트릭 = decisionlog/05_holdings.md Hold-Q1:
+  - final 정합: comp.n_stocks / eff_n / top1_weight / top10_share / turnover
+  - 학술 표준: Single/Sector HHI (Hirschman 1945) / Top 5 / Simple Contribution (Brinson 1986)
+
+참조: docs/plan/03_pages/05_holdings.md, decisionlog/05_holdings.md
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
+from lib import metric_calculators as mc
+from lib.colors import BENCHMARK_COLORS, COLORS, SECTOR_COLORS
+from lib.data_loader import EVAL_PERIODS
+from lib.plot_helpers import add_event_annotations, add_regime_backgrounds
+
+
+# ======================================================================
+# 공통 유틸
+# ======================================================================
+
+def _fmt_pct(v: float, plus_sign: bool = False, digits: int = 2) -> str:
+    if pd.isna(v):
+        return "—"
+    sign = "+" if plus_sign and v > 0 else ""
+    return f"{sign}{v * 100:.{digits}f}%"
+
+
+def _fmt_ratio(v: float, digits: int = 2) -> str:
+    if pd.isna(v):
+        return "—"
+    return f"{v:.{digits}f}"
+
+
+def _delta_color_lower_is_better(delta: float) -> str:
+    if pd.isna(delta):
+        return COLORS["text_muted"]
+    return COLORS["accent_green"] if delta < 0 else COLORS["accent_red"]
+
+
+def _filter_period_index(idx: pd.DatetimeIndex, period: str) -> pd.DatetimeIndex:
+    """사이드바 토글 (FULL/TEST/HO) 기준 DatetimeIndex 필터."""
+    if period == "TEST":
+        s, e = EVAL_PERIODS["TEST"]
+    elif period == "HO":
+        s, e = EVAL_PERIODS["HOLD_OUT"]
+    else:
+        return idx
+    return idx[(idx >= pd.Timestamp(s)) & (idx <= pd.Timestamp(e))]
+
+
+def _build_ticker_to_sector(universe: pd.DataFrame) -> dict[str, str]:
+    """universe DataFrame → dict[ticker, gics_sector]."""
+    return dict(zip(universe["ticker"], universe["gics_sector"]))
+
+
+def _spy_kpi_baseline(panel: pd.DataFrame, ticker_to_sector: dict) -> dict:
+    """
+    SPY 벤치마크 KPI 근사 — universe 의 모든 활성 종목 균등가중 가정.
+    SPY 직접 weight 데이터 없음 → universe 균등 분산 = "전체 분산" 기준선.
+
+    이 baseline 은 펀드 vs "완전 분산 시장" 비교용 (학술 정직 — 'SPY 503' 가정 X).
+    """
+    latest_date = panel["date"].max()
+    rows = panel[panel["date"] == latest_date]
+    universe_tickers = rows["ticker"].dropna().tolist()
+    if not universe_tickers:
+        return {"eff_n": np.nan, "single_hhi": np.nan, "sector_hhi": np.nan,
+                "top1": np.nan, "top5": np.nan, "top10": np.nan}
+
+    n = len(universe_tickers)
+    # 균등가중 weight = 1/n
+    eq_w = pd.Series(1 / n, index=universe_tickers)
+    return {
+        "eff_n": float(n),               # = 1 / Σ(1/n)² = n
+        "single_hhi": float(1 / n),      # = Σ(1/n)² × n = 1/n
+        "sector_hhi": mc.calc_sector_hhi(eq_w, ticker_to_sector),
+        "top1": float(1 / n),
+        "top5": float(5 / n),
+        "top10": float(10 / n),
+    }
+
+
+# ======================================================================
+# 영역 3: Holdings Summary KPI 6개
+# ======================================================================
+
+def render_holdings_kpi(
+    weights: pd.DataFrame,
+    comp: pd.DataFrame,
+    universe: pd.DataFrame,
+    panel: pd.DataFrame,
+    period: str,
+) -> None:
+    """
+    Holdings KPI 6개 — Latest snapshot + 사이드바 토글 평균.
+
+    KPI:
+      1. Number of Holdings (final.comp.n_stocks)
+      2. Effective N (final.comp.eff_n)
+      3. Single Stock HHI (학술, Hirschman 1945)
+      4. Sector HHI (학술, Hirschman 1945)
+      5. Top Weights (T1/T5/T10) — final.top1/top10 + 학술 T5
+      6. Avg Turnover (final.comp.turnover)
+
+    SPY 비교 (4 KPI: EffN/SingleHHI/SectorHHI/TopW): universe 균등가중 기준선.
+    """
+    ticker_to_sector = _build_ticker_to_sector(universe)
+    latest_date = weights.index.max()
+
+    # Latest snapshot
+    snap = mc.calc_holdings_kpi_snapshot(weights.loc[latest_date], ticker_to_sector)
+    snap["turnover_latest"] = (
+        float(comp.loc[latest_date, "turnover"])
+        if (latest_date in comp.index and "turnover" in comp.columns)
+        else np.nan
+    )
+
+    # 기간 평균 (사이드바 토글)
+    period_idx = _filter_period_index(weights.index, period)
+    if len(period_idx) > 0:
+        weights_p = weights.loc[period_idx]
+        comp_p = comp.loc[comp.index.intersection(period_idx)]
+        avg = mc.calc_holdings_kpi_period_avg(weights_p, ticker_to_sector, comp_p)
+    else:
+        avg = {}
+
+    # SPY baseline (4 KPI)
+    spy = _spy_kpi_baseline(panel, ticker_to_sector)
+
+    # === 헤더 라벨 ===
+    period_label_map = {"FULL": "FULL 192m", "TEST": "TEST 168m", "HO": "HO 24m"}
+    st.caption(
+        f"**Latest snapshot**: {latest_date.strftime('%Y-%m')}  ·  "
+        f"**기간 평균**: {period_label_map.get(period, period)}"
+    )
+
+    cols = st.columns(6)
+
+    # --- KPI 1: Number of Holdings ---
+    with cols[0]:
+        st.metric(
+            label="Number of Holdings",
+            value=f"{snap['n_stocks']}",
+            help="보유 종목 수 (활성 weight > 0)",
+        )
+        st.caption(
+            f"평균 {avg.get('n_stocks_avg', np.nan):.1f}"
+            if not pd.isna(avg.get('n_stocks_avg', np.nan))
+            else "평균 —"
+        )
+
+    # --- KPI 2: Effective N ---
+    with cols[1]:
+        delta = snap["eff_n"] - spy["eff_n"]
+        st.metric(
+            label="Effective N",
+            value=_fmt_ratio(snap["eff_n"], 1),
+            delta=f"{delta:+.0f} vs 균등",
+            delta_color="off",
+            help="유효 종목 수 = 1/Σw². 높을수록 분산 (Hirschman 1945)",
+        )
+        st.caption(f"평균 {_fmt_ratio(avg.get('eff_n_avg', np.nan), 1)}")
+
+    # --- KPI 3: Single Stock HHI ---
+    with cols[2]:
+        delta = snap["single_hhi"] - spy["single_hhi"]
+        st.metric(
+            label="Single Stock HHI",
+            value=_fmt_ratio(snap["single_hhi"], 4),
+            delta=f"{delta:+.4f} vs 균등",
+            delta_color="inverse",  # 낮을수록 좋음
+            help="개별 종목 집중도 = Σw². 낮을수록 분산",
+        )
+        st.caption(f"평균 {_fmt_ratio(avg.get('single_hhi_avg', np.nan), 4)}")
+
+    # --- KPI 4: Sector HHI ---
+    with cols[3]:
+        delta = snap["sector_hhi"] - spy["sector_hhi"]
+        st.metric(
+            label="Sector HHI",
+            value=_fmt_ratio(snap["sector_hhi"], 3),
+            delta=f"{delta:+.3f} vs 균등",
+            delta_color="inverse",
+            help="섹터 집중도 = Σ(섹터 weight)². 낮을수록 섹터 분산",
+        )
+        st.caption(f"평균 {_fmt_ratio(avg.get('sector_hhi_avg', np.nan), 3)}")
+
+    # --- KPI 5: Top Weights (다중 값) ---
+    with cols[4]:
+        st.metric(
+            label="Top Weights",
+            value=_fmt_pct(snap["top10"], digits=1),
+            delta=f"{(snap['top10'] - spy['top10']) * 100:+.1f}%p vs 균등",
+            delta_color="inverse",
+            help="Top 1 / 5 / 10 종목 weight 합계. 낮을수록 분산",
+        )
+        st.caption(
+            f"T1: {_fmt_pct(snap['top1'], digits=2)} · "
+            f"T5: {_fmt_pct(snap['top5'], digits=1)}"
+        )
+
+    # --- KPI 6: Avg Turnover ---
+    with cols[5]:
+        st.metric(
+            label="Latest Turnover",
+            value=_fmt_pct(snap["turnover_latest"], digits=1),
+            help="월별 회전율 = Σ|w_new - w_prev|. 낮을수록 안정 운용",
+        )
+        st.caption(f"평균 {_fmt_pct(avg.get('turnover_avg', np.nan), digits=1)}/월")
+
+
+# ======================================================================
+# 영역 4: Top N Holdings 표 + 비중
+# ======================================================================
+
+def render_top_n_table(
+    weights: pd.DataFrame,
+    panel: pd.DataFrame,
+    universe: pd.DataFrame,
+    ticker_company_map: dict,
+) -> None:
+    """
+    Top N Holdings 표 (Latest snapshot, 7컬럼).
+
+    컬럼:
+      1. Rank / 2. Ticker (Company) / 3. Sector / 4. Weight (막대)
+      5. Market Cap ($B) / 6. 12m Return / 7. ΔWeight (vs 전월)
+    """
+    latest_date = weights.index.max()
+
+    cols_top = st.columns([1.5, 6])
+    with cols_top[0]:
+        top_n_choice = st.selectbox(
+            "Top N",
+            options=[10, 20, 50, "All"],
+            index=0,
+            key="holdings_top_n",
+            format_func=lambda x: f"Top {x}" if x != "All" else "All",
+        )
+
+    # Latest 시점 weight > 0 종목, 정렬 후 N 개
+    w_latest = weights.loc[latest_date]
+    w_latest = w_latest[w_latest > 0].sort_values(ascending=False)
+    if top_n_choice != "All":
+        w_latest = w_latest.head(int(top_n_choice))
+
+    tickers = w_latest.index.tolist()
+    ticker_to_sector = _build_ticker_to_sector(universe)
+
+    # 데이터 산출
+    mcap = mc.get_market_cap_from_panel(panel, latest_date, tickers) / 1e9  # $B
+    ret_12m = mc.get_12m_return_from_panel(panel, latest_date, tickers)
+    delta_w = mc.calc_delta_weight(weights, latest_date, tickers)
+
+    df = pd.DataFrame({
+        "Rank": range(1, len(tickers) + 1),
+        "Ticker": tickers,
+        "Company": [ticker_company_map.get(t, t) for t in tickers],
+        "Sector": [ticker_to_sector.get(t, "—") for t in tickers],
+        "Weight": w_latest.values,
+        "Market Cap ($B)": mcap.values,
+        "12m Return": ret_12m.values,
+        "ΔWeight (vs 전월)": delta_w.values,
+    })
+
+    st.dataframe(
+        df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Rank": st.column_config.NumberColumn("Rank", width="small"),
+            "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+            "Company": st.column_config.TextColumn("Company", width="medium"),
+            "Sector": st.column_config.TextColumn("Sector", width="medium"),
+            "Weight": st.column_config.ProgressColumn(
+                "Weight",
+                format="%.3f%%",
+                min_value=0,
+                max_value=float(df["Weight"].max()) if len(df) > 0 else 1.0,
+            ),
+            "Market Cap ($B)": st.column_config.NumberColumn(
+                "Mcap ($B)", format="%.1f"
+            ),
+            "12m Return": st.column_config.NumberColumn(
+                "12m Return", format="%.2f%%"
+            ),
+            "ΔWeight (vs 전월)": st.column_config.NumberColumn(
+                "ΔW", format="%.4f"
+            ),
+        },
+    )
+
+    # CSV 다운로드
+    csv = df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        label="⬇ CSV 다운로드",
+        data=csv,
+        file_name=f"holdings_top_{top_n_choice}_{latest_date.strftime('%Y-%m')}.csv",
+        mime="text/csv",
+        key="holdings_top_n_csv",
+    )
+
+
+# ======================================================================
+# 영역 5: 시가총액 분포 (Bubble + Treemap)
+# ======================================================================
+
+def render_market_cap_distribution(
+    weights: pd.DataFrame,
+    panel: pd.DataFrame,
+    universe: pd.DataFrame,
+    ticker_company_map: dict,
+) -> None:
+    """Bubble + Treemap 탭, 시점 슬라이더."""
+    ticker_to_sector = _build_ticker_to_sector(universe)
+
+    # 시점 슬라이더 (월 단위)
+    dates = weights.index.tolist()
+    date_idx = st.select_slider(
+        "시점",
+        options=list(range(len(dates))),
+        value=len(dates) - 1,  # 기본 = Latest
+        format_func=lambda i: dates[i].strftime("%Y-%m"),
+        key="holdings_mcap_slider",
+    )
+    selected_date = dates[date_idx]
+
+    # 해당 시점 데이터 산출
+    w = weights.loc[selected_date]
+    w = w[w > 0].sort_values(ascending=False)
+    tickers = w.index.tolist()
+
+    mcap = mc.get_market_cap_from_panel(panel, selected_date, tickers) / 1e9
+    ret_12m = mc.get_12m_return_from_panel(panel, selected_date, tickers)
+
+    df = pd.DataFrame({
+        "Ticker": tickers,
+        "Company": [ticker_company_map.get(t, t) for t in tickers],
+        "Sector": [ticker_to_sector.get(t, "Unknown") for t in tickers],
+        "Weight": w.values,
+        "Mcap_B": mcap.values,
+        "Return_12m": ret_12m.values,
+    }).dropna(subset=["Mcap_B"])
+
+    if len(df) == 0:
+        st.warning("선택 시점에 시가총액 데이터가 없습니다.")
+        return
+
+    tabs = st.tabs(["Treemap", "Bubble Chart"])
+
+    # === Treemap ===
+    with tabs[0]:
+        col_tm = st.columns([2, 5])
+        with col_tm[0]:
+            tm_mode = st.selectbox(
+                "Treemap 차원",
+                options=[
+                    "면적=비중 / 색상=섹터",
+                    "면적=비중 / 색상=12m 수익률",
+                    "면적=시가총액 / 색상=섹터",
+                ],
+                index=0,
+                key="holdings_treemap_mode",
+            )
+
+        if tm_mode.startswith("면적=비중") and "섹터" in tm_mode:
+            fig = px.treemap(
+                df, path=["Sector", "Ticker"], values="Weight",
+                color="Sector", color_discrete_map=SECTOR_COLORS,
+                hover_data={"Company": True, "Weight": ":.3%", "Mcap_B": ":.1f"},
+            )
+        elif tm_mode.startswith("면적=비중"):
+            fig = px.treemap(
+                df, path=["Sector", "Ticker"], values="Weight",
+                color="Return_12m",
+                color_continuous_scale="RdYlGn", color_continuous_midpoint=0,
+                hover_data={"Company": True, "Weight": ":.3%", "Return_12m": ":.2%"},
+            )
+        else:  # 시가총액
+            fig = px.treemap(
+                df, path=["Sector", "Ticker"], values="Mcap_B",
+                color="Sector", color_discrete_map=SECTOR_COLORS,
+                hover_data={"Company": True, "Mcap_B": ":.1f", "Weight": ":.3%"},
+            )
+
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+            font_color=COLORS["text"], margin=dict(t=20, l=0, r=0, b=0), height=520,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # === Bubble Chart ===
+    with tabs[1]:
+        cols_b = st.columns(4)
+        axis_options = ["Mcap_B", "Weight", "Return_12m"]
+        axis_labels = {"Mcap_B": "시가총액 ($B)", "Weight": "비중", "Return_12m": "12m 수익률"}
+
+        with cols_b[0]:
+            x_col = st.selectbox("X축", axis_options, index=0, key="hb_x", format_func=axis_labels.get)
+        with cols_b[1]:
+            y_col = st.selectbox("Y축", axis_options, index=1, key="hb_y", format_func=axis_labels.get)
+        with cols_b[2]:
+            size_col = st.selectbox("크기", axis_options, index=0, key="hb_size", format_func=axis_labels.get)
+        with cols_b[3]:
+            color_col = st.selectbox("색상", ["Sector", "Return_12m"], index=0, key="hb_color")
+
+        # 사이즈 음수/0 방지 (절대값)
+        df_b = df.copy()
+        df_b["_size"] = df_b[size_col].abs().clip(lower=1e-6)
+
+        scatter_kwargs = dict(
+            x=x_col, y=y_col, size="_size",
+            hover_name="Ticker",
+            hover_data={"Company": True, "Sector": True, "_size": False,
+                        "Weight": ":.3%", "Mcap_B": ":.1f", "Return_12m": ":.2%"},
+            size_max=40,
+        )
+        if color_col == "Sector":
+            scatter_kwargs["color"] = "Sector"
+            scatter_kwargs["color_discrete_map"] = SECTOR_COLORS
+        else:
+            scatter_kwargs["color"] = "Return_12m"
+            scatter_kwargs["color_continuous_scale"] = "RdYlGn"
+            scatter_kwargs["color_continuous_midpoint"] = 0
+
+        fig_b = px.scatter(df_b, **scatter_kwargs)
+        fig_b.update_layout(
+            template="plotly_dark",
+            paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+            font_color=COLORS["text"],
+            xaxis_title=axis_labels[x_col], yaxis_title=axis_labels[y_col],
+            height=520,
+        )
+        st.plotly_chart(fig_b, use_container_width=True)
+
+
+# ======================================================================
+# 영역 6: 보유 종목 변천사 (Multi-line)
+# ======================================================================
+
+def render_holdings_history(
+    weights: pd.DataFrame,
+    universe: pd.DataFrame,
+) -> None:
+    """
+    Multi-line 변천사: 섹터 / Top N + Others 토글, 월별 / 분기별 토글,
+    Regime 배경 + 신규/제외 마커 + 이벤트 annotation.
+    """
+    ticker_to_sector = _build_ticker_to_sector(universe)
+
+    cols_t = st.columns(4)
+    with cols_t[0]:
+        group_mode = st.selectbox(
+            "그룹화", options=["섹터", "Top 10 (선택 시점)", "Top 20 (선택 시점)"],
+            index=0, key="holdings_group_mode",
+            help="섹터 = 11 GICS 섹터별 합계 / Top N (선택 시점) = 슬라이더 시점의 Top N ticker 의 전 기간 시계열",
+        )
+    with cols_t[1]:
+        time_mode = st.selectbox(
+            "시간 단위", options=["월별", "분기별"], index=0, key="holdings_time_mode",
+        )
+    with cols_t[2]:
+        show_others = st.checkbox(
+            "Others 표시", value=True, key="holdings_show_others",
+            help="Others = 1 − Top N 합 (선택 시점 Top N 의 전 기간 weight 합계 보완)",
+        )
+    with cols_t[3]:
+        show_markers = st.checkbox(
+            "신규/제외 마커", value=True, key="holdings_markers",
+            help="★ = 표시 종목의 신규 진입, ✗ = 이탈",
+        )
+
+    # Top N 모드일 때만 시점 슬라이더 활성
+    is_top_mode = group_mode != "섹터"
+    selected_date = None
+    if is_top_mode:
+        date_options = list(weights.index)
+        date_idx = st.select_slider(
+            "Top N 기준 시점",
+            options=list(range(len(date_options))),
+            value=len(date_options) - 1,  # default = Latest
+            format_func=lambda i: date_options[i].strftime("%Y-%m"),
+            key="holdings_history_slider",
+            help="이 시점의 Top N 종목으로 라인 구성 (legend 가 시점별로 변경됨)",
+        )
+        selected_date = date_options[date_idx]
+
+    # 시간 단위 변환
+    if time_mode == "분기별":
+        weights_resampled = weights.resample("QE").last()
+    else:
+        weights_resampled = weights
+
+    # 그룹화별 series 산출
+    if group_mode == "섹터":
+        # 섹터별 weight 합계 시계열
+        series_dict: dict[str, pd.Series] = {}
+        for sector in sorted(set(ticker_to_sector.values())):
+            sector_tickers = [t for t, s in ticker_to_sector.items() if s == sector]
+            sector_tickers = [t for t in sector_tickers if t in weights_resampled.columns]
+            if not sector_tickers:
+                continue
+            series_dict[sector] = weights_resampled[sector_tickers].sum(axis=1)
+        color_map = SECTOR_COLORS
+    else:
+        # Top N (선택 시점 기준) — 슬라이더 시점의 Top N ticker 의 전 기간 시계열
+        n = 10 if "10" in group_mode else 20
+        # selected_date 시점에서 weight > 0 종목 비중 내림차순
+        w_at = weights.loc[selected_date]
+        w_at = w_at[w_at > 0].sort_values(ascending=False)
+        top_n_tickers = w_at.head(n).index.tolist()
+
+        series_dict = {
+            t: weights_resampled[t] if t in weights_resampled.columns
+            else pd.Series(0, index=weights_resampled.index)
+            for t in top_n_tickers
+        }
+
+        # Others = 1 - sum(displayed Top N) (정확한 보완, 선택 시점 ticker 기준)
+        if show_others:
+            displayed = [t for t in top_n_tickers if t in weights_resampled.columns]
+            series_dict["Others"] = 1 - weights_resampled[displayed].sum(axis=1)
+
+        # 색상 = ticker 의 섹터 매핑
+        color_map = {
+            t: SECTOR_COLORS.get(ticker_to_sector.get(t, ""), None)
+            for t in top_n_tickers
+        }
+        color_map["Others"] = COLORS["text_muted"]
+
+    # === Plotly figure ===
+    fig = go.Figure()
+    for label, series in series_dict.items():
+        color = color_map.get(label, None)
+        # Top N 모드 시 hover 에 ticker 의 섹터 표시 (변천 narrative 보강)
+        if is_top_mode and label != "Others":
+            sector = ticker_to_sector.get(label, "—")
+            hover = f"%{{x|%Y-%m}}<br><b>{label}</b> ({sector}): %{{y:.2%}}<extra></extra>"
+        else:
+            hover = f"%{{x|%Y-%m}}<br>{label}: %{{y:.2%}}<extra></extra>"
+        fig.add_trace(go.Scatter(
+            x=series.index, y=series.values,
+            mode="lines", name=label,
+            line=dict(color=color) if color else dict(),
+            hovertemplate=hover,
+        ))
+
+    # 신규/제외 마커 (Top 그룹 모드만)
+    if show_markers and is_top_mode:
+        for ticker in series_dict.keys():
+            if ticker == "Others":
+                continue
+            s = weights_resampled.get(ticker)
+            if s is None:
+                continue
+            # 신규: 0 → > 0 전환 시점
+            entry_dates = s.index[(s > 0) & (s.shift(1, fill_value=0) == 0)]
+            for d in entry_dates:
+                fig.add_trace(go.Scatter(
+                    x=[d], y=[s.loc[d]], mode="markers", showlegend=False,
+                    marker=dict(symbol="star", size=10, color=COLORS["accent_green"]),
+                    hovertemplate=f"★ {ticker} 신규: %{{x|%Y-%m}}<extra></extra>",
+                ))
+
+    # 선택 시점 vertical line (Top N 모드만) — Plotly 6.x annotation 분리 (datetime mean 버그 회피)
+    if is_top_mode and selected_date is not None:
+        fig.add_vline(
+            x=selected_date, line_dash="dash",
+            line_color=COLORS["primary"], line_width=1.5,
+        )
+        fig.add_annotation(
+            x=selected_date, y=1.02, yref="paper",
+            text=f"기준: {selected_date.strftime('%Y-%m')}",
+            showarrow=False,
+            font=dict(color=COLORS["primary"], size=11),
+            xanchor="center",
+        )
+
+    # Regime 배경 + 이벤트 annotation
+    fig = add_regime_backgrounds(fig, with_labels=False)
+    fig = add_event_annotations(fig)
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+        font_color=COLORS["text"],
+        xaxis_title="시점", yaxis_title="비중",
+        yaxis=dict(tickformat=".1%"),
+        height=520, hovermode="x unified",
+        legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ======================================================================
+# 영역 7: 종목별 기여도 분석 (Tornado Chart)
+# ======================================================================
+
+def render_attribution_tornado(
+    weights: pd.DataFrame,
+    panel: pd.DataFrame,
+    universe: pd.DataFrame,
+    ticker_company_map: dict,
+    fund_ret: pd.Series,
+    period: str,
+) -> None:
+    """
+    Simple Contribution = Σ(w × R) per ticker, 기간 누적.
+    Top N positive + Top N negative + Sector 합계 + Σ 검증.
+    """
+    cols_t = st.columns([1.5, 4])
+    with cols_t[0]:
+        top_n = st.selectbox(
+            "Top N", options=[10, 20, 50], index=0, key="holdings_attr_top_n",
+        )
+
+    # 기간 boundary
+    period_label_map = {"FULL": "FULL 192m", "TEST": "TEST 168m", "HO": "HO 24m"}
+    if period == "TEST":
+        s, e = EVAL_PERIODS["TEST"]
+    elif period == "HO":
+        s, e = EVAL_PERIODS["HOLD_OUT"]
+    else:
+        s, e = EVAL_PERIODS["FULL"]
+
+    period_start = pd.Timestamp(s)
+    period_end = pd.Timestamp(e)
+
+    # 종목별 contribution
+    contrib = mc.calc_simple_contribution(weights, panel, period_start, period_end)
+    if len(contrib) == 0:
+        st.warning("기여도 산출 불가 (기간 내 데이터 없음).")
+        return
+
+    # 펀드 누적 수익률 (기간) — 검증용
+    fund_p = fund_ret[(fund_ret.index >= period_start) & (fund_ret.index <= period_end)]
+    fund_cum = float((1 + fund_p).prod() - 1) if len(fund_p) > 0 else np.nan
+    contrib_sum = float(contrib.sum())
+
+    # Top N 양수 / Top N 음수
+    pos = contrib[contrib > 0].head(top_n)
+    neg = contrib[contrib < 0].tail(top_n).iloc[::-1]  # 최하위 부터
+
+    ticker_to_sector = _build_ticker_to_sector(universe)
+
+    # === Tornado: 두 컬럼 ===
+    cols_chart = st.columns(2)
+
+    with cols_chart[0]:
+        st.markdown(f"**Top {top_n} Contributors (양수)**")
+        if len(pos) == 0:
+            st.info("양수 기여 종목 없음")
+        else:
+            df_pos = pd.DataFrame({
+                "Ticker": pos.index,
+                "Company": [ticker_company_map.get(t, t) for t in pos.index],
+                "Sector": [ticker_to_sector.get(t, "—") for t in pos.index],
+                "Contribution": pos.values,
+            })
+            fig = go.Figure(go.Bar(
+                x=df_pos["Contribution"], y=df_pos["Ticker"], orientation="h",
+                marker_color=COLORS["accent_green"],
+                text=[f"{v:+.2%}" for v in df_pos["Contribution"]],
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>" +
+                              "Company: " + df_pos["Company"] + "<br>" +
+                              "Sector: " + df_pos["Sector"] + "<br>" +
+                              "Contribution: %{x:+.3%}<extra></extra>",
+            ))
+            fig.update_layout(
+                template="plotly_dark",
+                paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+                font_color=COLORS["text"],
+                xaxis=dict(tickformat=".1%"), yaxis=dict(autorange="reversed"),
+                height=400, margin=dict(t=20, l=0, r=20, b=20),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with cols_chart[1]:
+        st.markdown(f"**Bottom {top_n} Contributors (음수)**")
+        if len(neg) == 0:
+            st.info("음수 기여 종목 없음")
+        else:
+            df_neg = pd.DataFrame({
+                "Ticker": neg.index,
+                "Company": [ticker_company_map.get(t, t) for t in neg.index],
+                "Sector": [ticker_to_sector.get(t, "—") for t in neg.index],
+                "Contribution": neg.values,
+            })
+            fig = go.Figure(go.Bar(
+                x=df_neg["Contribution"], y=df_neg["Ticker"], orientation="h",
+                marker_color=COLORS["accent_red"],
+                text=[f"{v:+.2%}" for v in df_neg["Contribution"]],
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>" +
+                              "Company: " + df_neg["Company"] + "<br>" +
+                              "Sector: " + df_neg["Sector"] + "<br>" +
+                              "Contribution: %{x:+.3%}<extra></extra>",
+            ))
+            fig.update_layout(
+                template="plotly_dark",
+                paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+                font_color=COLORS["text"],
+                xaxis=dict(tickformat=".1%"), yaxis=dict(autorange="reversed"),
+                height=400, margin=dict(t=20, l=0, r=20, b=20),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    # === Sector 합계 ===
+    sector_contrib = (
+        contrib.groupby([ticker_to_sector.get(t, "Unknown") for t in contrib.index])
+        .sum()
+        .sort_values(ascending=False)
+    )
+    st.markdown("**Sector 합계** (보조 — 자세한 분석은 Sector Watch 페이지)")
+    sector_cols = st.columns(min(len(sector_contrib), 6))
+    for i, (sector, val) in enumerate(sector_contrib.head(6).items()):
+        with sector_cols[i % len(sector_cols)]:
+            color = COLORS["accent_green"] if val > 0 else COLORS["accent_red"]
+            st.markdown(
+                f"<div style='padding:6px;border-radius:4px;"
+                f"background:{COLORS['secondary_bg']};text-align:center'>"
+                f"<div style='font-size:0.8em;color:{COLORS['text_muted']}'>{sector}</div>"
+                f"<div style='font-size:1.2em;color:{color};font-weight:bold'>{val:+.2%}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    # === 검증 (Σ Contribution ≈ Fund Return) ===
+    diff = contrib_sum - fund_cum if not pd.isna(fund_cum) else np.nan
+    st.markdown("---")
+    st.caption(
+        f"**검증** (기간: {period_label_map.get(period, period)}): "
+        f"Σ Contribution = **{contrib_sum:+.2%}** vs "
+        f"Fund 누적 수익률 = **{fund_cum:+.2%}**  "
+        f"(차이: {diff:+.2%} — Simple Attribution 의 선형 근사 한계, "
+        f"누적 수익률은 복리이므로 ε > 0 일반적 ※ Brinson 1986)"
+    )
+
+    # CSV 다운로드 (전체 contribution)
+    csv_df = pd.DataFrame({
+        "Ticker": contrib.index,
+        "Company": [ticker_company_map.get(t, t) for t in contrib.index],
+        "Sector": [ticker_to_sector.get(t, "—") for t in contrib.index],
+        "Contribution": contrib.values,
+    })
+    csv_bytes = csv_df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        label="⬇ 전체 기여도 CSV",
+        data=csv_bytes,
+        file_name=f"holdings_attribution_{period}.csv",
+        mime="text/csv",
+        key="holdings_attr_csv",
+    )
