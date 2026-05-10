@@ -1,0 +1,517 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ _extend_data_to_2002 — daily_returns + vix 를 2002-01 부터 보강
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[1/6] 기존 데이터 로드
+  prices_raw       : (5595, 4274), 2004-01-02~2026-03-30
+  daily_returns    : (5595, 822), 2004-01-02~2026-03-30
+  macro_daily      : (5615, 13), vix finite=5595
+
+[2/6] universe 추출 (기존 prices_raw 의 822 ticker)
+  stock tickers: 821
+  macro tickers: ['^IRX']
+
+[3/6] yfinance 로 2002-01-01 ~ 2003-12-31 다운로드
+  대상: 822 ticker (stock + macro)
+  chunk 1/17 (50 ticker, 경과 0.0분) ...
+$AGN: possibly delisted; no timezone found
+$ALTR: possibly delisted; no timezone found
+$ABMD: possibly delisted; no timezone found
+$ACAS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$ABK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$AMTM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ABBV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ACE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ADT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$AAL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$AIZ: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$AMP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ABNB: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ADCT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$AKS: possibly delisted; no timezone found
+$ALLE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ADS: possibly delisted; no timezone found
+$ABS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ALXN: possibly delisted; no timezone found
+
+19 Failed downloads:
+['AGN', 'ALTR', 'ABMD', 'AKS', 'ADS', 'ALXN']: possibly delisted; no timezone found
+['ACAS', 'ABK']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['AMTM', 'ABBV', 'ACE', 'ADT', 'AAL', 'AIZ', 'AMP', 'ABNB', 'ADCT', 'ALLE', 'ABS']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+  chunk 2/17 (50 ticker, 경과 0.1분) ...
+$BCR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$AV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$AYE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$APOL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$APTV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$APP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ANSS: possibly delisted; no timezone found
+$ARES: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$AVGO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ANET: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$AVP: possibly delisted; no timezone found
+$ARG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$BEAM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$APO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$APC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$BHF: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ANR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ATVI: possibly delisted; no timezone found
+$ARNC: possibly delisted; no timezone found
+$AWK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+20 Failed downloads:
+['BCR', 'AV', 'AYE', 'APOL']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['APTV', 'APP', 'ARES', 'AVGO', 'ANET', 'ARG', 'BEAM', 'APO', 'APC', 'BHF', 'ANR', 'AWK']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['ANSS', 'AVP', 'ATVI', 'ARNC']: possibly delisted; no timezone found
+  chunk 3/17 (50 ticker, 경과 0.1분) ...
+$CFN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$BRCM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$BXLT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$CE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CEG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CBRE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CDW: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$BR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$BIG: possibly delisted; no timezone found
+$BX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CAM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$BHI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$BLDR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CARR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CF: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CFG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CELG: possibly delisted; no timezone found
+$BJS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$CERN: possibly delisted; no timezone found
+$CHK: possibly delisted; no timezone found
+$CEPH: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$CBOE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$BTU: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CCE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CHTR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+26 Failed downloads:
+['CFN', 'BRCM', 'BXLT', 'BJS', 'CEPH']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['CE', 'CEG', 'CBRE', 'CDW', 'BR', 'CA', 'BX', 'CAM', 'BHI', 'BLDR', 'CARR', 'CF', 'CFG', 'CBOE', 'BTU', 'CCE', 'CHTR']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['BIG', 'CELG', 'CERN', 'CHK']: possibly delisted; no timezone found
+  chunk 4/17 (50 ticker, 경과 0.1분) ...
+$CPGX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$CVC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$CTVA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CVH: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CPAY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CMA: possibly delisted; no timezone found
+$CSRA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CRWD: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CPRI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CTX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$CRM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CMCSK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$CTXS: possibly delisted; no timezone found
+$COIN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CTLT: possibly delisted; no timezone found
+$CMG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$COL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$COTY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CSC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$COV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+20 Failed downloads:
+['CPGX', 'CVC', 'CTX', 'CMCSK']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['CTVA', 'CVH', 'CPAY', 'CSRA', 'CRWD', 'CPRI', 'CRM', 'COIN', 'CMG', 'COL', 'COTY', 'CSC', 'COV']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['CMA', 'CTXS', 'CTLT']: possibly delisted; no timezone found
+  chunk 5/17 (50 ticker, 경과 0.2분) ...
+$DPS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$DJ: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$DTV: possibly delisted; no timezone found
+$DNB: possibly delisted; no timezone found
+$CXO: possibly delisted; no timezone found
+$DF: possibly delisted; no timezone found
+$DDOG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DAL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DASH: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DPZ: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DWDP: possibly delisted; no timezone found
+$DLR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CZR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DYN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DNR: possibly delisted; no timezone found
+$DV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$CVNA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DISH: possibly delisted; no timezone found
+$DO: possibly delisted; no timezone found
+$DELL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DOW: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DFS: possibly delisted; no timezone found
+$DISCA: possibly delisted; no timezone found
+$DISCK: possibly delisted; no timezone found
+$DAY: possibly delisted; no timezone found
+$DRE: possibly delisted; no timezone found
+$DG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$DXCM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+28 Failed downloads:
+['DPS', 'DJ']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['DTV', 'DNB', 'CXO', 'DF', 'DWDP', 'DNR', 'DISH', 'DO', 'DFS', 'DISCA', 'DISCK', 'DAY', 'DRE']: possibly delisted; no timezone found
+['DDOG', 'DAL', 'DASH', 'DPZ', 'DLR', 'CZR', 'DYN', 'DV', 'CVNA', 'DELL', 'DOW', 'DG', 'DXCM']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+  chunk 6/17 (50 ticker, 경과 0.2분) ...
+$EK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$EXE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$EMC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ETFC: possibly delisted; no timezone found
+$ENDP: possibly delisted; no timezone found
+$EPAM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FDO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$EXR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ESV: possibly delisted; no timezone found
+$FII: possibly delisted; no timezone found
+$ETSY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ENPH: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$EVHC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FBHS: possibly delisted; no timezone found
+$FDC: possibly delisted; no timezone found
+$FANG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$EXPE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+17 Failed downloads:
+['EK', 'FDO']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['EXE', 'EMC', 'EPAM', 'EXR', 'ETSY', 'ENPH', 'EVHC', 'FANG', 'EXPE']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['ETFC', 'ENDP', 'ESV', 'FII', 'FBHS', 'FDC']: possibly delisted; no timezone found
+  chunk 7/17 (50 ticker, 경과 0.2분) ...
+$FNM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$GMCR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$FOX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$GM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FRE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$GEV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FOXA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FL: possibly delisted; no timezone found
+$GENZ: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FRX: possibly delisted; no timezone found
+$GDDY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$GGP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$FTR: possibly delisted; no timezone found
+$GEHC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FLIR: possibly delisted; no timezone found
+$GAS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FTNT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$FRC: possibly delisted; no timezone found
+$FTV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$GNRC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$GNW: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$GOOGL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$GPS: possibly delisted; no timezone found
+$FSLR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+24 Failed downloads:
+['FNM', 'GMCR', 'GGP']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['FOX', 'GM', 'FRE', 'GEV', 'FOXA', 'GENZ', 'GDDY', 'GEHC', 'GAS', 'FTNT', 'FTV', 'GNRC', 'GNW', 'GOOGL', 'FSLR']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['FL', 'FRX', 'FTR', 'FLIR', 'FRC', 'GPS']: possibly delisted; no timezone found
+  chunk 8/17 (50 ticker, 경과 0.3분) ...
+$HSP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$ICE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$INVH: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$IPGP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$IPG: possibly delisted; no timezone found
+$IGT: possibly delisted; no timezone found
+$HES: possibly delisted; no timezone found
+$IQV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HCA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HNZ: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$IBKR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HII: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HLT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HWM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HOOD: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HCBK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$INFO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HFC: possibly delisted; no timezone found
+$HAR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$HBI: possibly delisted; no timezone found
+$HPE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$IR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+22 Failed downloads:
+['HSP', 'HNZ', 'HCBK']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['ICE', 'INVH', 'IPGP', 'IQV', 'HCA', 'IBKR', 'HII', 'HLT', 'HWM', 'HOOD', 'INFO', 'HAR', 'HPE', 'IR']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['IPG', 'IGT', 'HES', 'HFC', 'HBI']: possibly delisted; no timezone found
+  chunk 9/17 (50 ticker, 경과 0.3분) ...
+$JDSU: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$KRFT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$JNY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$KFT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$JNS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$JCP: possibly delisted; no timezone found
+$KSU: possibly delisted; no timezone found
+$LIFE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$JWN: possibly delisted; no timezone found
+$KG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LDOS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$KHC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LEH: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$JOY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$KDP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$KKR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$JNPR: possibly delisted; no timezone found
+$KEYS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$K: possibly delisted; no timezone found
+$KMI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$KVUE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$KSE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+22 Failed downloads:
+['JDSU', 'KRFT', 'JNY', 'KFT', 'JNS', 'LEH', 'JOY']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['JCP', 'KSU', 'JWN', 'JNPR', 'K']: possibly delisted; no timezone found
+['LIFE', 'KG', 'LDOS', 'KHC', 'KDP', 'KKR', 'KEYS', 'KMI', 'KVUE', 'KSE']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+  chunk 10/17 (50 ticker, 경과 0.3분) ...
+$LVLT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$LLTC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$MIL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$LO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$LSI: possibly delisted; no timezone found
+$LLL: possibly delisted; no timezone found
+$MHS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LYV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MKTX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MDP: possibly delisted; no timezone found
+$MI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LULU: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LXK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$LITE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MJN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$LM: possibly delisted; no timezone found
+$MFE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MMI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LVS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LW: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$LYB: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$META: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+23 Failed downloads:
+['LVLT', 'LLTC', 'MIL', 'LO', 'LXK', 'MJN']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['LSI', 'LLL', 'MDP', 'LM']: possibly delisted; no timezone found
+['MHS', 'LYV', 'MKTX', 'MI', 'LULU', 'LITE', 'MFE', 'MMI', 'LVS', 'MA', 'LW', 'LYB', 'META']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+  chunk 11/17 (50 ticker, 경과 0.4분) ...
+$MWW: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$MSCI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NCR: possibly delisted; no timezone found
+$NLSN: possibly delisted; no timezone found
+$MRNA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NOW: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MRO: possibly delisted; no timezone found
+$MNK: possibly delisted; no timezone found
+$MPWR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NOVL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$NBL: possibly delisted; no timezone found
+$NE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MON: possibly delisted; no timezone found
+$NCLH: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NAVI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NSM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MPC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$MXIM: possibly delisted; no timezone found
+
+18 Failed downloads:
+['MWW', 'NOVL']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['MSCI', 'MRNA', 'NOW', 'MPWR', 'NE', 'NCLH', 'NAVI', 'NSM', 'MPC']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['NCR', 'NLSN', 'MRO', 'MNK', 'NBL', 'MON', 'MXIM']: possibly delisted; no timezone found
+  chunk 12/17 (50 ticker, 경과 0.4분) ...
+$OMX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$NYX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$PLL: possibly delisted; no timezone found
+$PLTR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PETM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NWS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$OTIS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PAYC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PANW: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PDCO: possibly delisted; no timezone found
+$PGN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$NVLS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$PCL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PCP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PBCT: possibly delisted; no timezone found
+$ODP: possibly delisted; no timezone found
+$PCS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NXPI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$NWSA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$OGN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+21 Failed downloads:
+['OMX', 'NYX', 'PGN', 'NVLS']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['PLL', 'PDCO', 'PBCT', 'ODP']: possibly delisted; no timezone found
+['PLTR', 'PETM', 'NWS', 'OTIS', 'PAYC', 'PANW', 'PCL', 'PCP', 'PCS', 'NXPI', 'PM', 'NWSA', 'OGN']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+  chunk 13/17 (50 ticker, 경과 0.4분) ...
+$RAI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$SATS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$RX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SAI: possibly delisted; no timezone found
+$Q: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PYPL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PODD: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PSKY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SBL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$PXD: possibly delisted; no timezone found
+$S: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$QEP: possibly delisted; no timezone found
+$RDC: possibly delisted; no timezone found
+$RHT: possibly delisted; no timezone found
+$PSX: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$QRVO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$RTN: possibly delisted; no timezone found
+$RRD: possibly delisted; no timezone found
+
+18 Failed downloads:
+['RAI']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['SATS', 'RX', 'Q', 'PYPL', 'PODD', 'PSKY', 'SBL', 'S', 'PSX', 'QRVO']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['SAI', 'PXD', 'QEP', 'RDC', 'RHT', 'RTN', 'RRD']: possibly delisted; no timezone found
+  chunk 14/17 (50 ticker, 경과 0.5분) ...
+$SLR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$STJ: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$SIAL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$SOLS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SWN: possibly delisted; no timezone found
+$SUN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SRCL: possibly delisted; no timezone found
+$STI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SCG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SMCI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SGP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SNDK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$STR: possibly delisted; no timezone found
+$SIVB: possibly delisted; no timezone found
+$SE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SWY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$SEDG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SHLD: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SYF: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SLE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SII: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SBNY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SNI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SPLS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$SOLV: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+25 Failed downloads:
+['SLR', 'STJ', 'SIAL', 'SWY']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['SOLS', 'SUN', 'STI', 'SCG', 'SMCI', 'SGP', 'SNDK', 'SE', 'SEDG', 'SHLD', 'SYF', 'SLE', 'SII', 'SBNY', 'SNI', 'SPLS', 'SOLV']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['SWN', 'SRCL', 'STR', 'SIVB']: possibly delisted; no timezone found
+  chunk 15/17 (50 ticker, 경과 0.5분) ...
+$TRB: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$TYC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$TSS: possibly delisted; no timezone found
+$TRGP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TRIP: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TIF: possibly delisted; no timezone found
+$TDG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TEG: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TMUS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$UAA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TE: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TWTR: possibly delisted; no timezone found
+$UBER: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$UAL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$UA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TWC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$TEL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TSLA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TSG: possibly delisted; no timezone found
+$TDC: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$TTD: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+
+21 Failed downloads:
+['TRB', 'TYC', 'TWC']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['TSS', 'TIF', 'TWTR', 'TSG']: possibly delisted; no timezone found
+['TRGP', 'TRIP', 'TDG', 'TEG', 'TMUS', 'UAA', 'TE', 'UBER', 'UAL', 'UA', 'TEL', 'TSLA', 'TDC', 'TTD']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+  chunk 16/17 (50 ticker, 경과 0.5분) ...
+$WFM: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$WIN: possibly delisted; no timezone found
+$VAR: possibly delisted; no timezone found
+$VNT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$WCG: possibly delisted; no timezone found
+$VIAB: possibly delisted; no timezone found
+$VRSK: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$WBD: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$VRT: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ULTA: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$V: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$WBA: possibly delisted; no timezone found
+$WFR: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$WDAY: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$VICI: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$VLTO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$VST: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$WB: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$WPX: possibly delisted; no timezone found
+
+19 Failed downloads:
+['WFM']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['WIN', 'VAR', 'WCG', 'VIAB', 'WBA', 'WPX']: possibly delisted; no timezone found
+['VNT', 'VRSK', 'WBD', 'VRT', 'ULTA', 'V', 'WFR', 'WDAY', 'VICI', 'VLTO', 'VST', 'WB']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+  chunk 17/17 (22 ticker, 경과 0.6분) ...
+$XTO: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$WYN: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+$WU: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$XYL: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$ZTS: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$X: possibly delisted; no timezone found
+$XEC: possibly delisted; no timezone found
+$XYZ: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+$XLNX: possibly delisted; no timezone found
+$YHOO: possibly delisted; no timezone found
+$XL: possibly delisted; no timezone found
+
+11 Failed downloads:
+['XTO', 'WYN']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02)
+['WU', 'XYL', 'ZTS', 'XYZ']: possibly delisted; no price data found  (1d 2002-01-01 -> 2004-01-02) (Yahoo error = "Data doesn't exist for startDate = 1009861200, endDate = 1073019600")
+['X', 'XEC', 'XLNX', 'YHOO', 'XL']: possibly delisted; no timezone found
+C:\Users\gorhk\AppData\Local\Programs\Python\Python310\lib\site-packages\pandas\core\internals\blocks.py:395: RuntimeWarning: invalid value encountered in log
+  result = func(self.values, **kwargs)
+C:\Users\gorhk\최종 프로젝트\finance_project\final\_extend_data_to_2002.py:228: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  macro_combined = pd.concat([vix_df_full, macro_old]).sort_values('date')
+
+  다운로드 완료: shape=(504, 4932)
+  date 범위: 2002-01-02 ~ 2003-12-31
+
+[4/6] prices_raw.pkl 갱신
+  백업 생성: prices_raw.pkl.bak_pre_2002_ext
+  combined shape: (6099, 4274)
+  date 범위: 2002-01-02 ~ 2026-03-30
+  ✅ 저장: C:\Users\gorhk\최종 프로젝트\finance_project\final\data\prices_raw.pkl
+
+[5/6] daily_returns.pkl 재계산
+  백업 생성: daily_returns.pkl.bak_pre_2002_ext
+  daily_returns shape: (6099, 822)
+  date 범위: 2002-01-02 ~ 2026-03-30
+  ✅ 저장: C:\Users\gorhk\최종 프로젝트\finance_project\final\data\daily_returns.pkl
+
+[6/6] macro_daily.csv 의 vix 보강
+  백업 생성: macro_daily.csv.bak_pre_2002_ext
+  ^VIX 다운로드 (2002-01-01 ~ 2004-01-02) ...
+  ✅ macro_daily.csv 갱신: shape=(6119, 13)
+     date 범위: 2002-01-02 ~ 2026-03-30
+     vix finite: 6099
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 작업 완료 — 03 노트북 재실행 준비 완료
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+다음 단계:
+  1. final/03_Volatility_Forecasting.ipynb 의 cell 13 §4.2 에서
+     PANEL_MAX_DATE = '2026-04-30' 또는 None 설정
+     (현재 2026-02-01 인 경우 변경 필요)
+  2. 노트북 종료 → 재시작 → Run All
+  3. 자동 동작:
+     - daily_panel 재빌드 (2002-01 시작)
+     - fold csv 보존 (이미 truncate 됨, fold 0~221)
+     - incremental 학습 — fold 222~226 추가 (~30-40분 GPU)
+     - BL pkl 재계산 (~25-30분)
+
+롤백 (필요 시):
+  prices_raw.pkl.bak_pre_2002_ext → prices_raw.pkl
+  daily_returns.pkl.bak_pre_2002_ext → daily_returns.pkl
+  macro_daily.csv.bak_pre_2002_ext → macro_daily.csv
