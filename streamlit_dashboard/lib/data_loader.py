@@ -29,12 +29,49 @@ PROJECT_ROOT = DASHBOARD_DIR.parent
 ORIGINAL_RESULTS_DIR = PROJECT_ROOT / "final" / "results"
 
 
+# === GICS 11 섹터 정합화 (sector name normalization) ==================
+# universe.csv / monthly_panel.csv 모두 yfinance 와 GICS 표준이 혼재.
+# 두 source 모두 GICS 11 표준으로 통일 (load 시점 자동 적용).
+#
+# GICS 11 표준 (2018 GICS revision 기준):
+#   Information Technology / Health Care / Financials / Consumer Discretionary
+#   / Industrials / Communication Services / Consumer Staples / Energy
+#   / Utilities / Real Estate / Materials
+#
+# 대표 mismatch (yfinance / 옛 GICS) → GICS 11 표준 매핑:
+GICS_SECTOR_NORMALIZATION: dict[str, str] = {
+    # yfinance 형식 → GICS 표준
+    "Technology": "Information Technology",
+    "Healthcare": "Health Care",
+    "Consumer Defensive": "Consumer Staples",
+    "Consumer Cyclical": "Consumer Discretionary",
+    "Financial Services": "Financials",
+    "Basic Materials": "Materials",
+    # 그 외 (이미 GICS 표준이거나 Unknown — passthrough)
+}
+
+
+def normalize_gics_sector(name) -> str:
+    """단일 sector 명을 GICS 11 표준으로 정합화. 매핑 부재 시 원본 반환."""
+    if not isinstance(name, str):
+        return "Unknown"
+    return GICS_SECTOR_NORMALIZATION.get(name, name)
+
+
 # === 핵심 데이터 (대시보드 사본) =======================================
 
 @st.cache_data
 def load_monthly_panel() -> pd.DataFrame:
-    """월별 패널 (date, ticker, rf, spy_ret, sector, log_mcap 등)."""
-    return pd.read_csv(DATA_DIR / "monthly_panel.csv", parse_dates=["date"])
+    """
+    월별 패널 (date, ticker, rf, spy_ret, sector, log_mcap 등).
+
+    gics_sector 컬럼은 load 시점에 GICS 11 표준으로 자동 정합화
+    (yfinance 형식 Healthcare/Technology/Consumer Defensive 등 → 표준명).
+    """
+    df = pd.read_csv(DATA_DIR / "monthly_panel.csv", parse_dates=["date"])
+    if "gics_sector" in df.columns:
+        df["gics_sector"] = df["gics_sector"].map(normalize_gics_sector).fillna("Unknown")
+    return df
 
 
 @st.cache_data
@@ -52,8 +89,15 @@ def load_ff5_monthly() -> pd.DataFrame:
 
 @st.cache_data
 def load_universe() -> pd.DataFrame:
-    """Universe 정의 (ticker, gics_sector, 등)."""
-    return pd.read_csv(DATA_DIR / "universe.csv")
+    """
+    Universe 정의 (ticker, gics_sector).
+
+    gics_sector 컬럼은 load 시점에 GICS 11 표준으로 자동 정합화.
+    """
+    df = pd.read_csv(DATA_DIR / "universe.csv")
+    if "gics_sector" in df.columns:
+        df["gics_sector"] = df["gics_sector"].map(normalize_gics_sector).fillna("Unknown")
+    return df
 
 
 @st.cache_data
