@@ -160,7 +160,7 @@ plan/
 
 | # | 페이지 | 영역 | 그룹 | 핵심 narrative |
 |---|---|---|---|---|
-| 1 | Overview | 6 | 첫인상 | 5초 인상 + 4가지 메시지 진입점 |
+| 1 | Overview | 6 | 개요 | 5초 인상 + 4가지 메시지 진입점 |
 | 2 | **Investment Simulator** ★ | 7 | 체험 | 사용자 입력 → 즉각 시뮬레이션 |
 | 3 | Performance | 9 | 성과 | 액티브 운용 + 다중 벤치마크 |
 | 4 | Risk Metrics | 8 | 성과 | 위험 통제 + Tail Risk (Hill) |

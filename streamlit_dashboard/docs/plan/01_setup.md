@@ -12,14 +12,13 @@
 
 ```
 streamlit_dashboard/
-├── app.py                          # Streamlit 진입점 (사이드바 + page routing)
+├── app.py                          # Streamlit 진입점 = Overview 페이지 (C4-1 c)
 ├── requirements.txt                # J-5 Range versions
 ├── README.md                       # 프로젝트 설명 (배포 시 참조)
 ├── .streamlit/
-│   └── config.toml                 # H-5 다크 테마 + Cobalt Blue (B-4)
+│   └── config.toml                 # H-5 다크 테마 + Cobalt Blue + nav 비활성
 │
-├── pages/                          # Streamlit multi-page (자동 navigation)
-│   ├── 01_Overview.py              # 4가지 메시지 진입점
+├── pages/                          # 8 추가 페이지 (st.page_link 명시적 navigation)
 │   ├── 02_Investment_Simulator.py  # 사용자 입력 → 시뮬레이션 (★ 신규)
 │   ├── 03_Performance.py           # 성과 분석
 │   ├── 04_Risk_Metrics.py          # 위험 지표
@@ -90,6 +89,7 @@ final/data/                         # 참조 (필요 시 직접 접근)
 | `daily_returns.pkl` | ~수십 MB | 822 ticker × 6099 영업일 일별 수익률 |
 | `ff5_monthly.csv` | ~KB | Fama-French 5-factor (Methodology 영역 6) |
 | `universe.csv` | ~KB | 833 ticker + gics_sector (Holdings / Sector Watch) |
+| `sp500_membership.pkl` | ~KB | dict[월말, frozenset(ticker)] — EW/IVW universe (look-ahead 회피, decisionlog 02_overview Q-C) |
 | `results/mat_eq_eq_raw_pap.pkl` | ~MB | 우리 펀드 backtest 결과 (weights, returns) |
 
 ### 2.2 D-2. 회사명 매핑 (yfinance 1회 수집)
@@ -235,7 +235,7 @@ startup_data_check()  # 모든 페이지 진입 전 검증
 
 ```
 streamlit>=1.30,<2.0
-plotly>=5.18,<6.0
+plotly>=6.0,<7.0
 pandas>=2.0,<3.0
 numpy>=1.24,<2.0
 yfinance>=0.2,<1.0

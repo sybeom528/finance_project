@@ -35,7 +35,7 @@
 - [ ] **`requirements.txt`** (J-5 Range versions, `01_setup.md` 3.2):
   ```
   streamlit>=1.30,<2.0
-  plotly>=5.18,<6.0
+  plotly>=6.0,<7.0
   pandas>=2.0,<3.0
   numpy>=1.24,<2.0
   yfinance>=0.2,<1.0
@@ -102,13 +102,14 @@
   - Session state 초기화
   - 사이드바 렌더 (펀드명 + 6 그룹 + 2 토글)
 
-- [ ] **Streamlit multi-page 자동 routing**:
-  - `pages/01_Overview.py` ~ `pages/09_About.py`
-  - Numeric prefix 로 사이드바 자동 그룹화
+- [ ] **Streamlit page_link 명시적 navigation**:
+  - `app.py` (Overview) + `pages/02_Investment_Simulator.py` ~ `pages/09_About.py`
+  - 자동 sidebar nav 비활성 (`config.toml: client.showSidebarNavigation = false`)
+  - `st.page_link` 으로만 6 그룹 + 8 페이지 명시적 노출 (C4-1 c)
 
 #### D. Overview 페이지 (3-4일)
 
-- [ ] **`pages/01_Overview.py`** (`03_pages/01_overview.md` 참조):
+- [ ] **`app.py`** (= Overview, `03_pages/01_overview.md` 참조):
   - 영역 1: Header
   - 영역 2: Hero KPI 5개 (반응형 + sparkline)
   - 영역 3: 누적수익 곡선 (이중 차트 + Regime + EW/IVW 토글 + Q-Zoom)

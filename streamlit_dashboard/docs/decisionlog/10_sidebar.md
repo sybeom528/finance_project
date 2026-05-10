@@ -39,12 +39,15 @@
 **결정**: (a) 5 그룹 → ★ **6 그룹으로 갱신** (Investment Simulator 페이지 추가, F 섹션 결정)
 
 **그룹 구성** (6 그룹):
-- **첫인상**: Overview
+- **개요**: Overview
 - **체험** ★ 신규 (F 섹션 결정): Investment Simulator
 - **성과**: Performance / Risk Metrics
 - **보유**: Holdings / Sector Watch
 - **검증**: Methodology / Backtesting
 - **메타**: About / FAQ
+
+**변경 이력**:
+- *2026-05-10 그룹 1 라벨: "첫인상" → "개요"* — 사용자 피드백 ("첫인상은 어색하다"). 의미 동일 (사이트 진입 시 첫 페이지) 이지만 표현이 더 자연스러움.
 
 **근거**:
 1. **6 그룹** = 명확한 정보 위계 + Investment Simulator 별도 그룹
@@ -98,7 +101,7 @@
 │ Benchmark: SPY           │
 │ Data: 2025-12            │
 ├──────────────────────────┤
-│ ── 첫인상 ──             │
+│ ── 개요 ──               │
 │ ◉ Overview               │
 │                          │
 │ ── 체험 ── ★ 신규         │

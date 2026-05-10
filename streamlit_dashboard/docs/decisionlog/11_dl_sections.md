@@ -548,7 +548,7 @@ C-4 결정 갱신: 5 그룹 → 6 그룹 (체험 신규 그룹 추가, Investmen
 
 | 페이지 | 위치 |
 |---|---|
-| 1. Overview | 첫인상 |
+| 1. Overview | 개요 |
 | 2. **Investment Simulator** ★ 신규 | 체험 |
 | 3. Performance | 성과 |
 | 4. Risk Metrics | 성과 |
@@ -964,7 +964,7 @@ font = "sans serif"
 **`requirements.txt` 안**:
 ```
 streamlit>=1.30,<2.0
-plotly>=5.18,<6.0
+plotly>=6.0,<7.0
 pandas>=2.0,<3.0
 numpy>=1.24,<2.0
 yfinance>=0.2,<1.0
@@ -978,6 +978,9 @@ streamlit-card>=1.0,<2.0
 2. **Major version 핀** = 메이저 변경 회피
 3. (a) Pinned (특정 버전) = 보안 패치 누락
 4. (c) Latest = 갑작스런 변경 위험
+
+**변경 이력**:
+- *2026-05-10 plotly `>=5.18,<6.0` → `>=6.0,<7.0`*: 루트 `pyproject.toml`(da-portfolio) 환경 (`plotly>=6.5.2`) 과 통합하기 위해 조정. 대시보드만 별도 환경 분리 시 다른 분석 코드와 의존성 충돌 우려 → 루트 `.venv` 재사용 결정. 사용 API (Sankey / Treemap / on_select 등) 는 5↔6 호환됨.
 
 ## J 섹션 결과 / 함의
 

@@ -156,35 +156,79 @@ def hero_kpi_card(label, test_value, ho_value, sparkline_data):
 - [ ] Regime 배경색 4개 + annotation 라벨 (`add_regime_backgrounds()` 헬퍼)
 - [ ] 위기 annotation: COVID-19 / 2022 Bear / 2024 Sector Rotation (`add_event_annotations()`)
 - [ ] 비교 라인 토글 (사이드바 SPY/EW/IVW 활성에 따라 동적 추가)
-- [ ] EW baseline: `equal_weight_returns(universe, returns_df)` (`lib/data_loader.py`)
-- [ ] IVW baseline: `ivw_returns(returns_df, window=120)` (Frazzini-Pedersen 2014)
+- [ ] EW baseline: `compute_equal_weight_returns(daily_returns, sp500_membership, fund_dates)` — **시점 t-1 sp500 universe** (look-ahead 회피, decisionlog Q-C 결정)
+- [ ] IVW baseline: `compute_ivw_returns(daily_returns, sp500_membership, fund_dates, window=120)` — Frazzini-Pedersen (2014) + 시점 t-1 sp500 universe
 - [ ] Y축 Log 토글
 - [ ] Range slider (Plotly 기본)
 - [ ] Q-Zoom: 시기 클릭 → 같은 페이지 expand
 
-**코드 snippet (EW + IVW 산출)**:
+**코드 snippet (EW + IVW 산출 — Look-ahead 회피)**:
 ```python
 # lib/data_loader.py
 @st.cache_data
-def equal_weight_returns(universe_dict, returns_df):
-    """EW baseline: 매월 우리 펀드 universe 의 1/N."""
-    monthly_ew = []
-    for date, tickers in universe_dict.items():
-        N = len(tickers)
-        weights = {t: 1/N for t in tickers}
-        # 월별 EW 수익률 계산
-        ...
-    return pd.Series(monthly_ew)
+def compute_equal_weight_returns(daily_returns, sp500_membership, fund_dates):
+    """
+    매월 EW baseline (시점 t-1 sp500 universe → 1/N).
+
+    Args:
+        daily_returns: pd.DataFrame, index=daily date, columns=ticker
+        sp500_membership: dict[Timestamp, frozenset[str]] — 월말별 sp500 종목
+        fund_dates: pd.DatetimeIndex — 펀드 ret 의 월말 인덱스
+
+    Returns:
+        pd.Series (index=fund_dates, value=monthly EW return)
+    """
+    out = {}
+    sp_dates = sorted(sp500_membership.keys())
+    for i, t in enumerate(fund_dates):
+        # rebalance 시점 = 직전 월말 (look-ahead 회피)
+        t_prev = fund_dates[i - 1] if i > 0 else (t - pd.offsets.MonthEnd(1))
+        # t_prev 시점 sp500 universe (또는 가장 가까운 직전)
+        prior = [d for d in sp_dates if d <= t_prev]
+        if not prior:
+            continue
+        active = list(sp500_membership[max(prior)])
+        active_in_data = [tk for tk in active if tk in daily_returns.columns]
+        if not active_in_data:
+            continue
+        # 보유 기간: (t_prev, t]
+        period = daily_returns.loc[(daily_returns.index > t_prev) & (daily_returns.index <= t), active_in_data]
+        # 1/N 동일가중 일별 수익률 → 월별 컴파운딩
+        daily_ew = period.mean(axis=1).dropna()
+        out[t] = (1 + daily_ew).prod() - 1
+    return pd.Series(out, name="EW")
+
 
 @st.cache_data
-def ivw_returns(returns_df, window=120):
-    """IVW baseline: weight = (1/σ_i) / Σ(1/σ_j)."""
-    # Frazzini & Pedersen (2014) "Betting Against Beta"
-    sigma = returns_df.rolling(window).std()
-    inv_sigma = 1 / sigma
-    weights = inv_sigma.div(inv_sigma.sum(axis=1), axis=0)
-    monthly_returns = (weights.shift(1) * returns_df).sum(axis=1).resample("M").apply(lambda x: (1+x).prod() - 1)
-    return monthly_returns
+def compute_ivw_returns(daily_returns, sp500_membership, fund_dates, window=120):
+    """
+    매월 IVW baseline (시점 t-1 sp500 universe + 직전 window-일 변동성 역수 가중).
+    Frazzini & Pedersen (2014) "Betting Against Beta".
+    """
+    out = {}
+    sp_dates = sorted(sp500_membership.keys())
+    for i, t in enumerate(fund_dates):
+        t_prev = fund_dates[i - 1] if i > 0 else (t - pd.offsets.MonthEnd(1))
+        prior = [d for d in sp_dates if d <= t_prev]
+        if not prior:
+            continue
+        active = list(sp500_membership[max(prior)])
+        active_in_data = [tk for tk in active if tk in daily_returns.columns]
+        if not active_in_data:
+            continue
+        # 변동성: t_prev 까지의 window-일 일별 표준편차 (look-ahead 회피)
+        sigma_period = daily_returns.loc[daily_returns.index <= t_prev, active_in_data].tail(window)
+        sigma = sigma_period.std()
+        sigma = sigma[sigma > 0]
+        if len(sigma) == 0:
+            continue
+        inv_sigma = 1 / sigma
+        weights = inv_sigma / inv_sigma.sum()
+        # 보유 기간 일별 수익률 × weight → 월별 컴파운딩
+        period = daily_returns.loc[(daily_returns.index > t_prev) & (daily_returns.index <= t), weights.index]
+        daily_ivw = (period * weights).sum(axis=1).dropna()
+        out[t] = (1 + daily_ivw).prod() - 1
+    return pd.Series(out, name="IVW")
 ```
 
 ---
@@ -347,7 +391,8 @@ def render_differentiator_cards():
 - **monthly_panel.csv** (rf, spy_ret, sector, log_mcap)
 - **daily_returns.pkl** (sparkline 산출 + IVW baseline)
 - **results/mat_eq_eq_raw_pap.pkl** (펀드 weights + returns)
-- **universe.csv** (EW baseline universe)
+- **sp500_membership.pkl** ★ (EW / IVW universe 정의 — look-ahead 회피)
+- **universe.csv** (참조용 — EW universe 는 sp500_membership 사용)
 
 → 모두 `lib/data_loader.py` 캐시 활용
 

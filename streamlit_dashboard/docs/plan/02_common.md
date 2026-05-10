@@ -20,7 +20,7 @@ C-4 결정 (5 그룹 → 6 그룹 갱신, F-6 Investment Simulator 추가):
 │ Benchmark: SPY           │   ← 메타 (C4-3)
 │ Data: 2025-12            │
 ├──────────────────────────┤
-│ ── 첫인상 ──             │
+│ ── 개요 ──               │
 │ ◉ Overview               │
 │                          │
 │ ── 체험 ── ★ 신규         │   ← F-6 Investment Simulator
@@ -84,33 +84,34 @@ with st.sidebar:
     st.divider()
 
     # === 페이지 navigation — 6 그룹 + st.page_link (C4-1 c, C4-2 a) ===
-    # 그룹 1: 첫인상
-    st.markdown("##### ── 첫인상 ──")
+    # 그룹 1: 개요
+    st.markdown("##### ── 개요 ──")
     st.page_link("app.py", label="Overview", icon="📊")
 
     # 그룹 2: 체험 (★ Investment Simulator F-6)
+    # NOTE: 파일명은 영문만 (호환성·안정성 우선) — emoji 는 icon 파라미터로 분리
     st.markdown("##### ── 체험 ──")
-    st.page_link("pages/02_💵_Investment_Simulator.py",
+    st.page_link("pages/02_Investment_Simulator.py",
                  label="Investment Simulator", icon="💵")
 
     # 그룹 3: 성과
     st.markdown("##### ── 성과 ──")
-    st.page_link("pages/03_📈_Performance.py", label="Performance", icon="📈")
-    st.page_link("pages/04_⚠️_Risk_Metrics.py", label="Risk Metrics", icon="⚠️")
+    st.page_link("pages/03_Performance.py", label="Performance", icon="📈")
+    st.page_link("pages/04_Risk_Metrics.py", label="Risk Metrics", icon="⚠️")
 
     # 그룹 4: 보유
     st.markdown("##### ── 보유 ──")
-    st.page_link("pages/05_🏢_Holdings.py", label="Holdings", icon="🏢")
-    st.page_link("pages/06_🌐_Sector_Watch.py", label="Sector Watch", icon="🌐")
+    st.page_link("pages/05_Holdings.py", label="Holdings", icon="🏢")
+    st.page_link("pages/06_Sector_Watch.py", label="Sector Watch", icon="🌐")
 
     # 그룹 5: 검증
     st.markdown("##### ── 검증 ──")
-    st.page_link("pages/07_🧪_Methodology.py", label="Methodology", icon="🧪")
-    st.page_link("pages/08_✓_Backtesting.py", label="Backtesting", icon="✓")
+    st.page_link("pages/07_Methodology.py", label="Methodology", icon="🧪")
+    st.page_link("pages/08_Backtesting.py", label="Backtesting", icon="✅")
 
     # 그룹 6: 메타
     st.markdown("##### ── 메타 ──")
-    st.page_link("pages/09_ℹ️_About.py", label="About / FAQ", icon="ℹ️")
+    st.page_link("pages/09_About.py", label="About / FAQ", icon="ℹ️")
 
     st.divider()
 
@@ -135,7 +136,7 @@ with st.sidebar:
 1. `st.page_link` 사용을 위해 Streamlit 1.30+ 필수 (`requirements.txt` 명시)
 2. `pages/` 폴더 자동 multi-page 와 `st.page_link` 동시 활용 (Streamlit 자동 sidebar 비활성화 → `.streamlit/config.toml` 의 `client.showSidebarNavigation = false` 설정 필요)
 3. icon 은 emoji string (별도 라이브러리 X)
-4. 그룹 헤더 (`##### ── 첫인상 ──`) = `st.markdown` 사용 (커스텀 CSS 최소화)
+4. 그룹 헤더 (`##### ── 개요 ──`) = `st.markdown` 사용 (커스텀 CSS 최소화)
 
 ### 1.3 토글 영향 범위
 

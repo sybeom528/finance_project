@@ -356,11 +356,116 @@ return_ew = sum(weights_ew[i] * returns[t][i] for i in our_fund_universe[t])
 5. **Low Vol Quintile (B3) 한계**: universe 일부만 사용 → 우리 펀드와 비대칭
 
 **구현 상세**:
-- 변동성 윈도우: **120일 (6개월)** — 단기 noise (60일) 와 장기 lag (252일) 균형
+- 변동성 윈도우: **60일 (3개월)** ← 2026-05-10 변경 (원안 120일 → 60일)
 - Weight: $w_i = (1/\sigma_i) / \sum_j (1/\sigma_j)$
-- $\sigma_i$ = 120일 일별 수익률 표준편차
+- $\sigma_i$ = 60일 일별 수익률 표준편차
 - 매월 rebalancing (우리 펀드와 동일)
-- universe 동일 (우리 펀드 universe 사용)
+- universe = 시점 t-1 sp500_membership (Q-C 결정 참조)
+
+**변경 이력**:
+- *2026-05-10 윈도우 120일 → 60일*: `daily_returns` 데이터 결함 발견 (SPY -41% 일별 spike 등) → `monthly_panel` 기반 구현으로 전환 (Q-D 옵션 E). monthly_panel 에는 `vol_60d`, `vol_252d` 만 있어 120d 부재. 60d 가 252d 보다 단기 변동성 반영 (시장 변화 빠른 반응) → 액티브 비교에 적절. Frazzini-Pedersen (2014) BAB 도 다양한 윈도우 사용 (60d 표준).
+
+##### 3-2 추가 결정 (Q-C): EW / IVW universe 정의 — Look-ahead Bias 회피
+
+**배경**: 사용자 지적 (2026-05-10) — "EW/IVW 구현 시 해당 기간에 실제로 S&P500 에 편입되어 있는 종목만을 대상으로 할 것. 현재 의도는 universe.csv 의 모든 종목을 대상으로 계산되어 look-ahead bias 발생 위험."
+
+**검토된 옵션**:
+- (C1) `universe.csv` 의 모든 833 ticker 사용 (무시점)
+- (C2) 펀드의 `weights[t] > 0` 인 active ticker 사용 (펀드 universe 동기화)
+- (C3) **`sp500_membership[t-1]` 의 frozenset 사용** (직전 월말 시점 S&P500 편입 종목)
+
+**결정**: (C3) `sp500_membership[t-1]`
+
+**근거**:
+1. **Look-ahead bias 회피**: 시점 t 의 ret 계산 시 universe 정의는 **t-1 시점에 알 수 있는 정보** 만 사용 (사용자 예시: "2월 1일 자산 구성 시 1월 31일 기준")
+2. **Survivorship bias 회피**: 시점 t 에서 이미 퇴출된 종목 제외, 이후 편입될 종목 포함 X
+3. **Constituent bias 회피**: 시점 t 에 실제로 S&P500 편입된 종목만 universe → 학술 백테스트 표준 (Brown et al. 1992, Banz 1981)
+4. **(C1) 거리**: `universe.csv` (833 ticker) 는 전 기간 합집합 — 2010년에 2020년 편입 종목 포함 → 명백한 look-ahead
+5. **(C2) 거리**: 펀드 자체가 active universe 결정 = look-ahead 회피되어 있음. 다만 명시적 학술 정의 (S&P500 편입) 가 더 명확
+
+**구현 상세**:
+- 데이터: `final/data/sp500_membership.pkl` (dict: Timestamp → frozenset of tickers)
+- 시점 매핑: `ret[t]` (예: `2010-02-28`) 의 universe = `sp500_membership[t_prev]` (예: `2010-01-31`)
+- universe ∩ `daily_returns.columns` 교집합 사용 (데이터 누락 ticker 제외)
+- 첫 항목 (예: `2010-01-31`) 의 경우 직전 월말 = `2009-12-31` 사용
+
+**시점 convention**:
+```
+fund.ret[t]    = (t-1, t] 기간 수익률 (t-1 결정 weight 로 보유)
+ew.ret[t]      = (t-1, t] 기간 EW 수익률
+                 universe = sp500_membership[t-1]
+                 weight   = 1/N (N = |universe ∩ daily_returns.columns|)
+ivw.ret[t]     = (t-1, t] 기간 IVW 수익률
+                 universe = sp500_membership[t-1]
+                 σ_i      = (t-window, t-1] 일별 수익률 표준편차
+                 weight_i = (1/σ_i) / Σ(1/σ_j)
+```
+
+**결과 / 함의**:
+- `compute_equal_weight_returns(daily_returns, sp500_membership, fund_dates)` 시그니처 채택
+- `compute_ivw_returns(daily_returns, sp500_membership, fund_dates, window=120)` 시그니처 채택
+- `lib/validators.py` 의 필수 데이터 파일에 `sp500_membership.pkl` 추가
+- `scripts/copy_data.py` 복사 대상에 추가
+
+##### 3-2 추가 결정 (Q-D): EW / IVW 데이터 출처 — `monthly_panel` 사용
+
+**배경**: 1차 구현 (Q-C 시점 + `daily_returns` 기반 EW/IVW) 결과 EW 16년 누적 ~3.5배 (CAGR ~8%). RSP (Invesco S&P 500 EW ETF) 의 실제 historical 5-7배 (CAGR ~11%) 대비 명확히 낮음. **2단계 진단** 진행:
+
+**1단계 진단** (outlier 가설):
+- `daily_returns` 25개 ticker 에 -400% / +258% 비정상 (인수합병 / 파산 / 감자 처리 오류)
+- 분위 winsorize 1%/99% (Tukey 1962) 적용 후에도 EW 3.47배 (CAGR 8.08%) — 미미한 개선
+
+**2단계 진단** (데이터 자체 결함):
+- `daily_returns['SPY']` 2010-2025 cumprod = **6.42배** (정확값 8.24배 대비 22% 낮음)
+- `daily_returns['SPY']` 일별 min = **-41%** (정상 약 -12%, COVID 2020-03-16)
+- `monthly_panel.spy_ret` 2010-2025 cumprod = **8.16배** (fund.spy_ret 8.24배와 0.96% 차이) → **신뢰 가능**
+- `monthly_panel.ret_1m` 기반 EW = **7.42배 (CAGR 13.3%)** → RSP 정상 범위 부합
+
+→ **`daily_returns` 자체에 데이터 처리 결함**. winsorize 로 회피 불가.
+
+**검토된 옵션 (2단계)**:
+- (E-A) `daily_returns` + 분위 winsorize (1단계 시도) — 결과 부족
+- (E-B) `monthly_panel.ret_1m` (EW) + `monthly_panel.vol_60d` (IVW)
+- (E-C) `monthly_panel` (EW) + `daily_returns` 보정 (IVW) — 데이터 출처 불일치
+
+**결정**: (E-B) `monthly_panel` 통합 사용
+
+**근거**:
+1. **데이터 신뢰성**: `monthly_panel.spy_ret` 가 `fund.spy_ret` 와 일관성 검증 → 펀드 backtest pipeline 과 동일 데이터 출처 유추 가능
+2. **EW 결과 정상 회복**: 7.42배 (CAGR 13.3%) — RSP 정상 범위
+3. **데이터 출처 일관**: EW + IVW 모두 `monthly_panel` 사용 → 비교 정합성 유지
+4. **시점 convention 유지**: sp500_membership[t-1] universe (Q-C 결정 그대로 유지)
+5. **윈도우 변경**: `monthly_panel` 에 `vol_120d` 부재 → `vol_60d` 사용 (Q-B 결정 정정)
+
+**구현 상세**:
+```python
+# EW: 매월 t 시점 sp500[t-1] universe 의 ret_1m 평균
+def compute_equal_weight_returns(monthly_panel, sp500_membership, fund_dates):
+    for i, t in enumerate(fund_dates):
+        t_prev = fund_dates[i-1] if i > 0 else (t - pd.offsets.MonthEnd(1))
+        universe = sp500_membership[max(d for d in sp_dates if d <= t_prev)]
+        active = panel[(panel.date == t) & panel.ticker.isin(universe)]
+        ew_ret[t] = active['ret_1m'].mean()
+
+# IVW: 매월 t-1 시점 vol_60d 역수 가중 → t 시점 ret_1m
+def compute_ivw_returns(monthly_panel, sp500_membership, fund_dates):
+    for i, t in enumerate(fund_dates):
+        t_prev = ...
+        universe = sp500_at(t_prev)
+        # t-1 시점 vol_60d 로 weight 결정 (look-ahead 회피)
+        prev_active = panel[(panel.date == t_prev) & panel.ticker.isin(universe)]
+        weights = (1/prev_active.vol_60d) / (1/prev_active.vol_60d).sum()
+        # t 시점 ret_1m 의 가중 평균
+        curr_active = panel[(panel.date == t) & panel.ticker.isin(prev_active.ticker)]
+        ivw_ret[t] = (curr_active.ret_1m * weights).sum() / weights[curr_active.ticker].sum()
+```
+
+**결과 / 함의**:
+- EW 7.42배 (CAGR 13.3%) — RSP 정상 범위 회복
+- 함수 시그니처 변경: `_daily_returns` → `_monthly_panel`
+- `app.py` import 조정 (`load_daily_returns` 호출 제거 가능)
+- `sp500_membership.pkl` 그대로 필수 데이터로 유지
+- `daily_returns.pkl` 은 다른 페이지 (예: Risk Metrics 의 일별 분포) 에서 필요할 수 있어 필수 유지
 
 #### 결정 항목 3-3: Y축 스케일
 
