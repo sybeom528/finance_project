@@ -54,7 +54,7 @@ render_sidebar()
 
 
 # === 데이터 로드 ======================================================
-fund = load_fund_results("mat_eq_eq_raw_pap")
+fund = load_fund_results()  # default = mat_eq_mcap_raw_he (최종 Top 1)
 fund_ret = fund["ret"]
 fund_gross = fund["gross_ret"]
 fund_spy = fund["spy_ret"]
@@ -96,8 +96,16 @@ render_subheader(
 # === 영역 3: Performance Summary KPI ==================================
 period = st.session_state.get("period", "FULL")
 st.subheader(f"핵심 성과 지표 — {period}")
-st.caption("CAGR / Sortino / Sharpe / IR / Active Return — final/master_table 정합")
-render_performance_kpi(fund_ret, fund_spy, ew_ret, ivw_ret, fund_rf, period)
+st.caption(
+    "CAGR / Sortino / Sharpe / IR / Active Return — final/master_table 정합. "
+    "**TC 차감 후 Net 기준** (One-way 20bp = 거래 1회당 0.10%, "
+    "Frazzini, Israel & Moskowitz 2018 *Trading Costs* 표준). "
+    "CAGR 카드 하단에 Gross + TC 누적 비교 표시."
+)
+render_performance_kpi(
+    fund_ret, fund_spy, ew_ret, ivw_ret, fund_rf, period,
+    fund_gross_ret=fund_gross,
+)
 st.divider()
 
 

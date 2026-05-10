@@ -101,11 +101,26 @@ def render_risk_kpi(
     fund_r2 = mc.calc_r_squared(f, filter_by_eval_period(spy_ret, eval_label))
     fund_te = mc.calc_tracking_error(f, filter_by_eval_period(spy_ret, eval_label))
 
+    from lib.tooltips import get_tooltip
+
+    def _label(text: str, tip_key: str) -> str:
+        """카드 라벨 + tooltip ⓘ HTML."""
+        tip = get_tooltip(tip_key) or ""
+        if not tip:
+            return f"**{text}**"
+        return (
+            f'<div style="font-weight:700;">{text}'
+            f'<span title="{tip}" style="cursor:help;color:#9CA3AF;font-size:11px;'
+            f'margin-left:6px;border:1px solid #374151;border-radius:50%;'
+            f'width:14px;height:14px;display:inline-flex;align-items:center;'
+            f'justify-content:center;">ⓘ</span></div>'
+        )
+
     cols = st.columns(5)
 
     # Vol
     with cols[0]:
-        st.markdown("**Volatility**")
+        st.markdown(_label("Volatility", "Volatility"), unsafe_allow_html=True)
         st.markdown(f"## {_format_pct(fund_vol)}")
         for name, bench in benchmarks.items():
             b_vol = mc.calc_volatility(filter_by_eval_period(bench, eval_label))
@@ -120,7 +135,7 @@ def render_risk_kpi(
 
     # MDD
     with cols[1]:
-        st.markdown("**MDD**")
+        st.markdown(_label("MDD", "MDD"), unsafe_allow_html=True)
         st.markdown(f"## {_format_pct(fund_mdd)}")
         for name, bench in benchmarks.items():
             b_mdd = mc.calc_mdd(filter_by_eval_period(bench, eval_label))
@@ -135,7 +150,7 @@ def render_risk_kpi(
 
     # Beta
     with cols[2]:
-        st.markdown("**Beta**")
+        st.markdown(_label("Beta", "Beta"), unsafe_allow_html=True)
         st.markdown(f"## {_format_ratio(fund_beta)}")
         st.caption("vs SPY")
         if not pd.isna(fund_beta):
@@ -152,7 +167,7 @@ def render_risk_kpi(
 
     # R²
     with cols[3]:
-        st.markdown("**R²**")
+        st.markdown(_label("R²", "R²"), unsafe_allow_html=True)
         st.markdown(f"## {_format_pct(fund_r2)}")
         st.caption("vs SPY")
         st.markdown(
@@ -164,7 +179,7 @@ def render_risk_kpi(
 
     # TE
     with cols[4]:
-        st.markdown("**Tracking Error**")
+        st.markdown(_label("Tracking Error", "Tracking Error"), unsafe_allow_html=True)
         st.markdown(f"## {_format_pct(fund_te)}")
         st.caption("vs SPY (annualized)")
         for name, bench in benchmarks.items():

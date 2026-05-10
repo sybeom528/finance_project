@@ -57,7 +57,24 @@ def render_subheader(title_en: str, title_ko: str, description: str) -> None:
 
     Cobalt Blue 좌측 테두리 + 어두운 카드 배경.
     페이지의 핵심 메시지 / 영역 설명을 표시.
+
+    description 에서 자주 쓰는 markdown 자동 변환:
+      - **bold**     → <strong>bold</strong>
+      - `code`       → <code>code</code>
+    (HTML 박스 안에 markdown 직접 안 됨 → 변환 필요)
     """
+    import re
+
+    desc_html = description
+    # **bold** → <strong>
+    desc_html = re.sub(r"\*\*(.+?)\*\*", r"<strong style='color:#FAFAFA;'>\1</strong>", desc_html)
+    # `code` → <code>
+    desc_html = re.sub(
+        r"`([^`]+?)`",
+        r"<code style='background:#374151;padding:1px 5px;border-radius:3px;color:#FAFAFA;'>\1</code>",
+        desc_html,
+    )
+
     st.markdown(
         f"""
         <div style="
@@ -71,7 +88,7 @@ def render_subheader(title_en: str, title_ko: str, description: str) -> None:
                 ℹ️ {title_en} ({title_ko})
             </div>
             <div style="font-size: 14px; color: #9CA3AF; margin-top: 8px;">
-                {description}
+                {desc_html}
             </div>
         </div>
         """,

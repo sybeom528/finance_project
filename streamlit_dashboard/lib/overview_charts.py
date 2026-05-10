@@ -123,6 +123,8 @@ def render_hero_kpi(
         rf: 무위험 수익률 시리즈 (월별). None 이면 0 — Sortino 결과가 final 과
             정확히 일치하려면 panel.rf_1m 전달 필요.
     """
+    from lib.tooltips import get_tooltip
+
     metrics = _calc_hero_metrics(ret, gross_ret, rf=rf)
     cols = st.columns(5)
     items = list(metrics.items())
@@ -133,16 +135,28 @@ def render_hero_kpi(
             ho_v = data["ho"]
             fmt = data["format"]
             fmt_fn = _format_pct if fmt == "pct" else _format_ratio
-            plus = (label != "MDD")  # MDD 는 음수, +기호 부적절
+            plus = (label != "MDD")
 
             test_str = fmt_fn(test_v, plus) if fmt == "pct" else fmt_fn(test_v)
             ho_str = fmt_fn(ho_v, plus) if fmt == "pct" else fmt_fn(ho_v)
 
-            # 단순 카드 — 큰 숫자 강조 + TEST / HO 두 줄 (sparkline 제거)
+            # tooltip 텍스트 (메트릭 정의)
+            tip = get_tooltip(label) or ""
+            tip_html = (
+                f'<span title="{tip}" style="cursor:help;color:#9CA3AF;font-size:11px;'
+                f'margin-left:6px;border:1px solid #374151;border-radius:50%;'
+                f'width:14px;height:14px;display:inline-flex;align-items:center;'
+                f'justify-content:center;">ⓘ</span>'
+                if tip else ""
+            )
+
+            # 단순 카드 — 큰 숫자 강조 + TEST / HO 두 줄 (sparkline 제거) + tooltip
             st.markdown(
                 f'<div style="border-left:3px solid {COLORS["primary"]};'
                 f'padding:8px 0 8px 12px;margin-bottom:4px;">'
-                f'<div style="font-size:13px;color:#9CA3AF;font-weight:600;">{label}</div>'
+                f'<div style="font-size:13px;color:#9CA3AF;font-weight:600;">'
+                f'{label}{tip_html}'
+                f'</div>'
                 f'<div style="font-size:24px;color:#FAFAFA;font-weight:700;margin-top:4px;">'
                 f'{test_str}'
                 f'</div>'

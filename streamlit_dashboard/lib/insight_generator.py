@@ -75,15 +75,18 @@ def generate_insight_cards(
         "color": "green" if sim_result["cagr"] > 0 else "red",
     })
 
-    # 3-5. vs Benchmark (활성 벤치마크만)
+    # 3-5. vs Benchmark (활성 벤치마크만) — CAGR delta + Final value delta 동시 표시
     for name in ("SPY", "EW", "IVW"):
         if name in benchmarks:
-            delta = sim_result["cagr"] - benchmarks[name].get("cagr", 0.0)
+            bench = benchmarks[name]
+            delta_cagr = sim_result["cagr"] - bench.get("cagr", 0.0)
+            delta_final = sim_result["final_value"] - bench.get("final_value", 0.0)
             cards.append({
                 "icon": "📊",
                 "title": f"vs {name}",
-                "value": f"{name} 대비 {delta * 100:+.2f}%",
-                "color": "green" if delta > 0 else "red",
+                "value": f"CAGR {delta_cagr * 100:+.3f}%p",
+                "subtitle": f"Final value 차이: ${delta_final:+,.0f}",
+                "color": "green" if delta_cagr > 0 else "red",
             })
 
     # 6. 최대 손실 / 회복 (항상)
@@ -113,12 +116,17 @@ def generate_insight_cards(
 
     # 8. Goal 달성 분석 (Goal Tab 활성 시만)
     if scenario == "goal" and sim_result.get("goal_amount"):
-        achievement = sim_result.get("goal_achievement_date") or "미달성"
+        req = sim_result.get("required_initial")
+        goal = sim_result["goal_amount"]
+        cum_factor = (goal / req) if (req and req > 0) else None
         cards.append({
             "icon": "🎯",
-            "title": "Goal 달성 분석 — Goal-based",
-            "value": f"${sim_result['goal_amount']:,.0f} 목표",
-            "subtitle": f"달성 시점: {achievement}",
+            "title": "Goal 역산 — Goal-based",
+            "value": f"필요 초기 ${req:,.0f}" if req else "산출 불가",
+            "subtitle": (
+                f"목표 ${goal:,.0f} / 누적 factor {cum_factor:.2f}배"
+                if cum_factor else f"목표 ${goal:,.0f}"
+            ),
             "color": "purple",
         })
 

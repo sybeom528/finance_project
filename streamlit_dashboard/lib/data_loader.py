@@ -29,12 +29,49 @@ PROJECT_ROOT = DASHBOARD_DIR.parent
 ORIGINAL_RESULTS_DIR = PROJECT_ROOT / "final" / "results"
 
 
+# === GICS 11 섹터 정합화 (sector name normalization) ==================
+# universe.csv / monthly_panel.csv 모두 yfinance 와 GICS 표준이 혼재.
+# 두 source 모두 GICS 11 표준으로 통일 (load 시점 자동 적용).
+#
+# GICS 11 표준 (2018 GICS revision 기준):
+#   Information Technology / Health Care / Financials / Consumer Discretionary
+#   / Industrials / Communication Services / Consumer Staples / Energy
+#   / Utilities / Real Estate / Materials
+#
+# 대표 mismatch (yfinance / 옛 GICS) → GICS 11 표준 매핑:
+GICS_SECTOR_NORMALIZATION: dict[str, str] = {
+    # yfinance 형식 → GICS 표준
+    "Technology": "Information Technology",
+    "Healthcare": "Health Care",
+    "Consumer Defensive": "Consumer Staples",
+    "Consumer Cyclical": "Consumer Discretionary",
+    "Financial Services": "Financials",
+    "Basic Materials": "Materials",
+    # 그 외 (이미 GICS 표준이거나 Unknown — passthrough)
+}
+
+
+def normalize_gics_sector(name) -> str:
+    """단일 sector 명을 GICS 11 표준으로 정합화. 매핑 부재 시 원본 반환."""
+    if not isinstance(name, str):
+        return "Unknown"
+    return GICS_SECTOR_NORMALIZATION.get(name, name)
+
+
 # === 핵심 데이터 (대시보드 사본) =======================================
 
 @st.cache_data
 def load_monthly_panel() -> pd.DataFrame:
-    """월별 패널 (date, ticker, rf, spy_ret, sector, log_mcap 등)."""
-    return pd.read_csv(DATA_DIR / "monthly_panel.csv", parse_dates=["date"])
+    """
+    월별 패널 (date, ticker, rf, spy_ret, sector, log_mcap 등).
+
+    gics_sector 컬럼은 load 시점에 GICS 11 표준으로 자동 정합화
+    (yfinance 형식 Healthcare/Technology/Consumer Defensive 등 → 표준명).
+    """
+    df = pd.read_csv(DATA_DIR / "monthly_panel.csv", parse_dates=["date"])
+    if "gics_sector" in df.columns:
+        df["gics_sector"] = df["gics_sector"].map(normalize_gics_sector).fillna("Unknown")
+    return df
 
 
 @st.cache_data
@@ -52,8 +89,15 @@ def load_ff5_monthly() -> pd.DataFrame:
 
 @st.cache_data
 def load_universe() -> pd.DataFrame:
-    """Universe 정의 (ticker, gics_sector, 등)."""
-    return pd.read_csv(DATA_DIR / "universe.csv")
+    """
+    Universe 정의 (ticker, gics_sector).
+
+    gics_sector 컬럼은 load 시점에 GICS 11 표준으로 자동 정합화.
+    """
+    df = pd.read_csv(DATA_DIR / "universe.csv")
+    if "gics_sector" in df.columns:
+        df["gics_sector"] = df["gics_sector"].map(normalize_gics_sector).fillna("Unknown")
+    return df
 
 
 @st.cache_data
@@ -92,6 +136,42 @@ def load_ticker_company_map() -> pd.DataFrame | None:
 
 
 @st.cache_data
+def get_ticker_sector_map() -> dict[str, str]:
+    """
+    ticker → GICS 11 표준 sector dict.
+
+    lookup 우선순위 (정확도 ↑):
+      1. monthly_panel 의 ticker 별 최신 시점 gics_sector (실제 GICS)
+      2. universe.csv 의 gics_sector (panel 부재 시 fallback)
+      3. "Unknown" (둘 다 부재)
+
+    universe 의 "Unknown" 205 ticker 도 panel 에 있으면 정확 sector 산출 가능.
+    """
+    panel = load_monthly_panel()
+    universe = load_universe()
+
+    # 1) panel — 각 ticker 의 latest 시점 gics_sector (이미 normalize 됨)
+    panel_latest = (
+        panel.dropna(subset=["gics_sector"])
+        .sort_values("date")
+        .groupby("ticker")["gics_sector"]
+        .last()
+        .to_dict()
+    )
+
+    # 2) universe — panel 에 없는 ticker 보강
+    universe_map = dict(zip(universe["ticker"], universe["gics_sector"]))
+
+    # 통합 (panel 우선)
+    out: dict[str, str] = {}
+    all_tickers = set(panel_latest) | set(universe_map)
+    for t in all_tickers:
+        sector = panel_latest.get(t) or universe_map.get(t) or "Unknown"
+        out[t] = sector
+    return out
+
+
+@st.cache_data
 def get_ticker_company_dict() -> dict[str, str]:
     """
     ticker → company_name dict. 매핑 파일 부재 시 빈 dict.
@@ -123,25 +203,57 @@ def load_sp500_membership() -> dict:
 # === 펀드 결과 ========================================================
 
 @st.cache_data
-def load_fund_results(config_name: str = "mat_eq_eq_raw_pap") -> dict:
+def load_fund_results(config_name: str = "mat_eq_mcap_raw_he") -> dict:
     """
-    펀드 backtest 결과 (Top 1 = mat_eq_eq_raw_pap).
+    펀드 backtest 결과 (최종 Top 1 = mat_eq_mcap_raw_he).
 
-    pkl 구조 (예상):
-      {"weights": pd.DataFrame, "returns": pd.Series, "dates": ..., ...}
+    config 차원: prior=capm_eq / p_weight=mcap / q_mode=raw_lam / omega_mode=rmse
+    선정 근거: turnover 안정성 (~0.43, mat_eq_eq_raw_pap 의 0.99 대비 절반)
+              + Sharpe 1.05 / MDD -13.9% — 운용 안정성 + 학술 narrative 균형
+
+    대시보드 사본 (Top 1) 우선, 없으면 final 원본 fallback.
+
+    pkl 구조: {"weights": DataFrame, "ret": Series, "spy_ret": Series,
+              "comp": DataFrame, "config": dict, "meta": DataFrame, ...}
     """
-    with open(RESULTS_DIR / f"{config_name}.pkl", "rb") as f:
-        return pickle.load(f)
+    local = RESULTS_DIR / f"{config_name}.pkl"
+    if local.exists():
+        with open(local, "rb") as f:
+            return pickle.load(f)
+
+    original = ORIGINAL_RESULTS_DIR / f"{config_name}.pkl"
+    if original.exists():
+        with open(original, "rb") as f:
+            return pickle.load(f)
+
+    raise FileNotFoundError(
+        f"Config '{config_name}' pkl 을 찾을 수 없습니다.\n"
+        f"  확인한 경로:\n  - {local}\n  - {original}"
+    )
 
 
 @st.cache_data
 def load_other_config_results(config_name: str) -> dict:
     """
-    다른 155 config 결과 (Backtesting 영역 6 Sensitivity Test 시).
-    원본 final/results/ 에서 직접 참조 (대시보드 사본에는 Top 1 만 존재).
+    다른 155 config 결과 — Backtesting 영역 6 / model-comparison 등.
+    load_fund_results 와 동일한 fallback (사본 우선 → final 원본).
     """
-    with open(ORIGINAL_RESULTS_DIR / f"{config_name}.pkl", "rb") as f:
-        return pickle.load(f)
+    return load_fund_results(config_name)
+
+
+@st.cache_data
+def list_available_configs() -> list[str]:
+    """
+    streamlit_dashboard/data/results/ 의 모든 config pkl 이름 list.
+    부재 시 final/results/ fallback. Backtesting 페이지 영역 6 sensitivity 사용.
+    """
+    if RESULTS_DIR.exists():
+        names = sorted(p.stem for p in RESULTS_DIR.glob("*.pkl") if p.is_file())
+        if names:
+            return names
+    if ORIGINAL_RESULTS_DIR.exists():
+        return sorted(p.stem for p in ORIGINAL_RESULTS_DIR.glob("*.pkl") if p.is_file())
+    return ["mat_eq_mcap_raw_he"]  # fallback
 
 
 # === Baseline 산출 (Overview 영역 3 비교 라인) ========================

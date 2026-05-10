@@ -459,140 +459,42 @@ def render_holdings_history(
     universe: pd.DataFrame,
 ) -> None:
     """
-    Multi-line 변천사: 섹터 / Top N + Others 토글, 월별 / 분기별 토글,
-    Regime 배경 + 신규/제외 마커 + 이벤트 annotation.
+    섹터 단위 Multi-line 변천사: 11 GICS 섹터별 weight 합계 시계열.
+
+    종목 단위 동적 변천은 영역 6.5 (render_top_n_share_timeseries) 에서 보완.
+    본 영역은 섹터 narrative 에 집중 — 시간 단위 토글 + Regime 배경 + 이벤트 annotation.
     """
     ticker_to_sector = _build_ticker_to_sector(universe)
 
-    cols_t = st.columns(4)
+    cols_t = st.columns([1.5, 5])
     with cols_t[0]:
-        group_mode = st.selectbox(
-            "그룹화", options=["섹터", "Top 10 (선택 시점)", "Top 20 (선택 시점)"],
-            index=0, key="holdings_group_mode",
-            help="섹터 = 11 GICS 섹터별 합계 / Top N (선택 시점) = 슬라이더 시점의 Top N ticker 의 전 기간 시계열",
-        )
-    with cols_t[1]:
         time_mode = st.selectbox(
             "시간 단위", options=["월별", "분기별"], index=0, key="holdings_time_mode",
         )
-    with cols_t[2]:
-        show_others = st.checkbox(
-            "Others 표시", value=True, key="holdings_show_others",
-            help="Others = 1 − Top N 합 (선택 시점 Top N 의 전 기간 weight 합계 보완)",
-        )
-    with cols_t[3]:
-        show_markers = st.checkbox(
-            "신규/제외 마커", value=True, key="holdings_markers",
-            help="★ = 표시 종목의 신규 진입, ✗ = 이탈",
-        )
-
-    # Top N 모드일 때만 시점 슬라이더 활성
-    is_top_mode = group_mode != "섹터"
-    selected_date = None
-    if is_top_mode:
-        date_options = list(weights.index)
-        date_idx = st.select_slider(
-            "Top N 기준 시점",
-            options=list(range(len(date_options))),
-            value=len(date_options) - 1,  # default = Latest
-            format_func=lambda i: date_options[i].strftime("%Y-%m"),
-            key="holdings_history_slider",
-            help="이 시점의 Top N 종목으로 라인 구성 (legend 가 시점별로 변경됨)",
-        )
-        selected_date = date_options[date_idx]
 
     # 시간 단위 변환
-    if time_mode == "분기별":
-        weights_resampled = weights.resample("QE").last()
-    else:
-        weights_resampled = weights
+    weights_resampled = weights.resample("QE").last() if time_mode == "분기별" else weights
 
-    # 그룹화별 series 산출
-    if group_mode == "섹터":
-        # 섹터별 weight 합계 시계열
-        series_dict: dict[str, pd.Series] = {}
-        for sector in sorted(set(ticker_to_sector.values())):
-            sector_tickers = [t for t, s in ticker_to_sector.items() if s == sector]
-            sector_tickers = [t for t in sector_tickers if t in weights_resampled.columns]
-            if not sector_tickers:
-                continue
-            series_dict[sector] = weights_resampled[sector_tickers].sum(axis=1)
-        color_map = SECTOR_COLORS
-    else:
-        # Top N (선택 시점 기준) — 슬라이더 시점의 Top N ticker 의 전 기간 시계열
-        n = 10 if "10" in group_mode else 20
-        # selected_date 시점에서 weight > 0 종목 비중 내림차순
-        w_at = weights.loc[selected_date]
-        w_at = w_at[w_at > 0].sort_values(ascending=False)
-        top_n_tickers = w_at.head(n).index.tolist()
-
-        series_dict = {
-            t: weights_resampled[t] if t in weights_resampled.columns
-            else pd.Series(0, index=weights_resampled.index)
-            for t in top_n_tickers
-        }
-
-        # Others = 1 - sum(displayed Top N) (정확한 보완, 선택 시점 ticker 기준)
-        if show_others:
-            displayed = [t for t in top_n_tickers if t in weights_resampled.columns]
-            series_dict["Others"] = 1 - weights_resampled[displayed].sum(axis=1)
-
-        # 색상 = ticker 의 섹터 매핑
-        color_map = {
-            t: SECTOR_COLORS.get(ticker_to_sector.get(t, ""), None)
-            for t in top_n_tickers
-        }
-        color_map["Others"] = COLORS["text_muted"]
+    # 섹터별 weight 합계 시계열
+    series_dict: dict[str, pd.Series] = {}
+    for sector in sorted(set(ticker_to_sector.values())):
+        sector_tickers = [t for t, s in ticker_to_sector.items() if s == sector]
+        sector_tickers = [t for t in sector_tickers if t in weights_resampled.columns]
+        if not sector_tickers:
+            continue
+        series_dict[sector] = weights_resampled[sector_tickers].sum(axis=1)
 
     # === Plotly figure ===
     fig = go.Figure()
     for label, series in series_dict.items():
-        color = color_map.get(label, None)
-        # Top N 모드 시 hover 에 ticker 의 섹터 표시 (변천 narrative 보강)
-        if is_top_mode and label != "Others":
-            sector = ticker_to_sector.get(label, "—")
-            hover = f"%{{x|%Y-%m}}<br><b>{label}</b> ({sector}): %{{y:.2%}}<extra></extra>"
-        else:
-            hover = f"%{{x|%Y-%m}}<br>{label}: %{{y:.2%}}<extra></extra>"
+        color = SECTOR_COLORS.get(label, None)
         fig.add_trace(go.Scatter(
             x=series.index, y=series.values,
             mode="lines", name=label,
             line=dict(color=color) if color else dict(),
-            hovertemplate=hover,
+            hovertemplate=f"%{{x|%Y-%m}}<br>{label}: %{{y:.2%}}<extra></extra>",
         ))
 
-    # 신규/제외 마커 (Top 그룹 모드만)
-    if show_markers and is_top_mode:
-        for ticker in series_dict.keys():
-            if ticker == "Others":
-                continue
-            s = weights_resampled.get(ticker)
-            if s is None:
-                continue
-            # 신규: 0 → > 0 전환 시점
-            entry_dates = s.index[(s > 0) & (s.shift(1, fill_value=0) == 0)]
-            for d in entry_dates:
-                fig.add_trace(go.Scatter(
-                    x=[d], y=[s.loc[d]], mode="markers", showlegend=False,
-                    marker=dict(symbol="star", size=10, color=COLORS["accent_green"]),
-                    hovertemplate=f"★ {ticker} 신규: %{{x|%Y-%m}}<extra></extra>",
-                ))
-
-    # 선택 시점 vertical line (Top N 모드만) — Plotly 6.x annotation 분리 (datetime mean 버그 회피)
-    if is_top_mode and selected_date is not None:
-        fig.add_vline(
-            x=selected_date, line_dash="dash",
-            line_color=COLORS["primary"], line_width=1.5,
-        )
-        fig.add_annotation(
-            x=selected_date, y=1.02, yref="paper",
-            text=f"기준: {selected_date.strftime('%Y-%m')}",
-            showarrow=False,
-            font=dict(color=COLORS["primary"], size=11),
-            xanchor="center",
-        )
-
-    # Regime 배경 + 이벤트 annotation
     fig = add_regime_backgrounds(fig, with_labels=False)
     fig = add_event_annotations(fig)
 
@@ -600,12 +502,114 @@ def render_holdings_history(
         template="plotly_dark",
         paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
         font_color=COLORS["text"],
-        xaxis_title="시점", yaxis_title="비중",
-        yaxis=dict(tickformat=".1%"),
-        height=520, hovermode="x unified",
+        xaxis_title="시점", yaxis_title="섹터 weight 합",
+        yaxis=dict(tickformat=".0%"),
+        height=480, hovermode="x unified",
         legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02),
     )
     st.plotly_chart(fig, use_container_width=True)
+
+
+# ======================================================================
+# 영역 6.5: 시점별 Top N 합 vs Others 시계열 (시점별 동적 — 영역 6 보완)
+# ======================================================================
+
+def render_top_n_share_timeseries(
+    comp: pd.DataFrame,
+    weights: pd.DataFrame,
+) -> None:
+    """
+    각 시점별 Top N 합 (시점별 동적 ticker) + Others 100%-stacked area 시계열.
+
+    영역 6 vs 본 영역의 차이:
+      - 영역 6 = 선택 시점 Top N ticker 의 전 기간 weight (정적 ticker, 동적 weight)
+      - 본 영역 = 각 시점의 Top N 합 (동적 ticker, 시점별 합)
+      → 펀드 집중도의 시점별 동적 추세 (final.comp.top10_share 직접 정합)
+
+    100%-stacked area: Top N (아래) + Others (위) 누적 = 100%, 경계선이 Top N 합.
+
+    Args:
+        comp: pd.DataFrame (final 산출 — top1_weight, top10_share 활용)
+        weights: pd.DataFrame (Top 5 / 20 직접 산출 시 fallback)
+    """
+    cols_t = st.columns([1.5, 5])
+    with cols_t[0]:
+        n = st.selectbox(
+            "Top N",
+            options=[1, 5, 10, 20],
+            index=2,  # default 10
+            key="holdings_topn_share",
+            help="N 별 시점별 합 시계열 — 펀드 집중도 동적 추세",
+        )
+
+    # 시점별 Top N 합 산출 — final 정합 우선, 부재 시 직접 산출
+    if n == 10 and "top10_share" in comp.columns:
+        top_share = comp["top10_share"]  # final 직접 사용
+        source_label = "final.comp.top10_share"
+    elif n == 1 and "top1_weight" in comp.columns:
+        top_share = comp["top1_weight"]
+        source_label = "final.comp.top1_weight"
+    else:
+        # 직접 산출 (Top 5 / 20)
+        top_share = pd.Series({
+            t: float(weights.loc[t][weights.loc[t] > 0].nlargest(n).sum())
+            for t in weights.index
+        })
+        source_label = f"직접 산출 — 각 시점 Top {n} weight 합"
+
+    others = 1 - top_share
+
+    # 시점별 Top N 종목 list + weight (hover 정보)
+    hover_text_per_t: list[str] = []
+    for t in weights.index:
+        row = weights.loc[t]
+        row = row[row > 0].sort_values(ascending=False).head(n)
+        if len(row) == 0:
+            hover_text_per_t.append("")
+            continue
+        lines = [f"  {i+1}. <b>{tk}</b>: {w * 100:.2f}%"
+                 for i, (tk, w) in enumerate(row.items())]
+        hover_text_per_t.append("<br>".join(lines))
+
+    # 100%-stacked area — 두 면적 누적, 경계선이 Top N 합을 자연 표현
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=top_share.index, y=top_share.values,
+        name=f"Top {n} 합",
+        stackgroup="one",
+        line=dict(color=COLORS["primary"], width=2),
+        fillcolor="rgba(59, 130, 246, 0.55)",  # primary blue 반투명
+        customdata=hover_text_per_t,
+        hovertemplate=(
+            f"<b>%{{x|%Y-%m}} — Top {n} 합: %{{y:.2%}}</b>"
+            "<br>%{customdata}<extra></extra>"
+        ),
+    ))
+    fig.add_trace(go.Scatter(
+        x=others.index, y=others.values,
+        name="Others",
+        stackgroup="one",
+        line=dict(color=COLORS["text_muted"], width=1, dash="dot"),
+        fillcolor="rgba(156, 163, 175, 0.30)",  # text_muted 반투명
+        hovertemplate="Others: %{y:.2%}<extra></extra>",
+    ))
+
+    fig = add_regime_backgrounds(fig, with_labels=False)
+    fig = add_event_annotations(fig)
+
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
+        font_color=COLORS["text"],
+        xaxis_title="시점",
+        yaxis_title="시점별 weight 누적 (Top N + Others = 100%)",
+        yaxis=dict(tickformat=".0%", range=[0, 1]),
+        height=400, hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=30, l=0, r=0, b=0),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"데이터 출처: {source_label}")
 
 
 # ======================================================================
@@ -621,14 +625,25 @@ def render_attribution_tornado(
     period: str,
 ) -> None:
     """
-    Simple Contribution = Σ(w × R) per ticker, 기간 누적.
-    Top N positive + Top N negative + Sector 합계 + Σ 검증.
+    Attribution Tornado — Simple (Brinson 1986) / Carino (1999) 토글.
+      - Simple: Σ(w × R) — 단일 기간 선형 합 (multi-period 누적과 차이 큼)
+      - Carino Smoothed: log smoothing → Σ = Fund 누적 수익률 정확 일치
     """
-    cols_t = st.columns([1.5, 4])
+    cols_t = st.columns([1.5, 2, 3])
     with cols_t[0]:
         top_n = st.selectbox(
             "Top N", options=[10, 20, 50], index=0, key="holdings_attr_top_n",
         )
+    with cols_t[1]:
+        method = st.selectbox(
+            "Attribution 방법",
+            options=["Simple (Brinson 1986)", "Carino Smoothed (Carino 1999)"],
+            index=1,  # default Carino
+            key="holdings_attr_method",
+            help="Simple = 선형 합 (Brinson 1986 한계 — 누적과 차이) / "
+                 "Carino = log smoothing 으로 Σ = Fund 누적 정확 일치",
+        )
+    is_carino = method.startswith("Carino")
 
     # 기간 boundary
     period_label_map = {"FULL": "FULL 192m", "TEST": "TEST 168m", "HO": "HO 24m"}
@@ -642,8 +657,11 @@ def render_attribution_tornado(
     period_start = pd.Timestamp(s)
     period_end = pd.Timestamp(e)
 
-    # 종목별 contribution
-    contrib = mc.calc_simple_contribution(weights, panel, period_start, period_end)
+    # 종목별 contribution (선택 method 기준)
+    if is_carino:
+        contrib = mc.calc_carino_smoothed_contribution(weights, panel, period_start, period_end)
+    else:
+        contrib = mc.calc_simple_contribution(weights, panel, period_start, period_end)
     if len(contrib) == 0:
         st.warning("기여도 산출 불가 (기간 내 데이터 없음).")
         return
@@ -652,6 +670,19 @@ def render_attribution_tornado(
     fund_p = fund_ret[(fund_ret.index >= period_start) & (fund_ret.index <= period_end)]
     fund_cum = float((1 + fund_p).prod() - 1) if len(fund_p) > 0 else np.nan
     contrib_sum = float(contrib.sum())
+
+    # 산출 portfolio R_t 의 누적 — Carino 의 정합 비교 기준
+    panel_p_pivot = panel[(panel["date"] >= period_start) & (panel["date"] <= period_end)] \
+        .pivot_table(index="date", columns="ticker", values="ret_1m", aggfunc="first")
+    common_dates = weights.index.intersection(panel_p_pivot.index)
+    common_dates = common_dates[(common_dates >= period_start) & (common_dates <= period_end)]
+    if len(common_dates) > 0:
+        common_tickers = weights.columns.intersection(panel_p_pivot.columns)
+        contrib_t_check = (weights.loc[common_dates, common_tickers]
+                           * panel_p_pivot.loc[common_dates, common_tickers]).fillna(0)
+        calc_R_cum = float((1 + contrib_t_check.sum(axis=1)).prod() - 1)
+    else:
+        calc_R_cum = np.nan
 
     # Top N 양수 / Top N 음수
     pos = contrib[contrib > 0].head(top_n)
@@ -742,29 +773,47 @@ def render_attribution_tornado(
                 unsafe_allow_html=True,
             )
 
-    # === 검증 (Σ Contribution ≈ Fund Return) ===
-    diff = contrib_sum - fund_cum if not pd.isna(fund_cum) else np.nan
+    # === 검증 (method 별 다른 narrative) ===
     st.markdown("---")
-    st.caption(
-        f"**검증** (기간: {period_label_map.get(period, period)}): "
-        f"Σ Contribution = **{contrib_sum:+.2%}** vs "
-        f"Fund 누적 수익률 = **{fund_cum:+.2%}**  "
-        f"(차이: {diff:+.2%} — Simple Attribution 의 선형 근사 한계, "
-        f"누적 수익률은 복리이므로 ε > 0 일반적 ※ Brinson 1986)"
-    )
+    if is_carino:
+        diff_calc = contrib_sum - calc_R_cum if not pd.isna(calc_R_cum) else np.nan
+        st.caption(
+            f"**검증** (기간: {period_label_map.get(period, period)}, **Carino 1999 Logarithmic Smoothing**)"
+        )
+        st.caption(
+            f"  • Σ Smoothed Contribution = **{contrib_sum:+.2%}**"
+        )
+        st.caption(
+            f"  • 산출 portfolio R_t 누적 = **{calc_R_cum:+.2%}** "
+            f"(Σ Carino 와 차이: {diff_calc:+.6%} — **수학적 정확 일치** ※ Carino 1999)"
+        )
+        st.caption(
+            f"  • 참고 — Fund 실제 net 누적 = {fund_cum:+.2%} "
+            f"(산출 R_t 와의 차이는 panel.ret vs 펀드 내부 ret 차이 + transaction cost 누적, attribution scope 외부)"
+        )
+    else:
+        diff_fund = contrib_sum - fund_cum if not pd.isna(fund_cum) else np.nan
+        st.caption(
+            f"**검증** (기간: {period_label_map.get(period, period)}, **Simple Σ(w × R)**): "
+            f"Σ Contribution = **{contrib_sum:+.2%}** vs "
+            f"Fund 누적 수익률 = **{fund_cum:+.2%}**  "
+            f"(차이: {diff_fund:+.2%} — Simple Attribution 의 선형 근사 한계 — 장기 누적은 복리이므로 차이 ε 큼 ※ Brinson 1986. "
+            f"정확한 분해는 위 토글에서 **Carino Smoothed** 선택)"
+        )
 
     # CSV 다운로드 (전체 contribution)
+    method_suffix = "carino" if is_carino else "simple"
     csv_df = pd.DataFrame({
         "Ticker": contrib.index,
         "Company": [ticker_company_map.get(t, t) for t in contrib.index],
         "Sector": [ticker_to_sector.get(t, "—") for t in contrib.index],
-        "Contribution": contrib.values,
+        f"Contribution_{method_suffix}": contrib.values,
     })
     csv_bytes = csv_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
         label="⬇ 전체 기여도 CSV",
         data=csv_bytes,
-        file_name=f"holdings_attribution_{period}.csv",
+        file_name=f"holdings_attribution_{method_suffix}_{period}.csv",
         mime="text/csv",
         key="holdings_attr_csv",
     )

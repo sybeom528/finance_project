@@ -709,17 +709,26 @@ def calc_sharpe_subperiod(
     ret: pd.Series, rf, start: str, end: str, periods_per_year: int = 12
 ) -> float:
     """
-    final master_table._sharpe_subperiod 정확 재현 (line 127-135).
+    final master_table._sharpe_subperiod 정확 1:1 재현 (line 127-135).
 
-    NaN 처리: final 은 sub.std() / exc.mean() 등이 pandas default skipna=True
-              로 NaN 자동 무시 → 우리도 동일 동작 (명시적 dropna 불필요).
+    final 코드 그대로:
+        sub = ret[(ret.index >= start) & (ret.index <= end)]
+        rf_sub = rf.reindex(sub.index).fillna(0)
+        exc = sub - rf_sub
+        vol = sub.std() * sqrt(12)
+        return exc.mean() * 12 / vol
+
+    NaN 처리: final 은 dropna 안 하고 pandas default skipna=True 사용. 동일 적용.
     """
     r = pd.Series(ret)
-    sub_raw = r[(r.index >= start) & (r.index <= end)]
-    sub = sub_raw.dropna()
+    sub = r[(r.index >= start) & (r.index <= end)]
     if len(sub) < 6:
         return np.nan
-    rf_sub = pd.Series(rf).reindex(sub.index).fillna(0) if isinstance(rf, pd.Series) else pd.Series(rf / periods_per_year, index=sub.index)
+    rf_sub = (
+        pd.Series(rf).reindex(sub.index).fillna(0)
+        if isinstance(rf, pd.Series)
+        else pd.Series(rf / periods_per_year, index=sub.index)
+    )
     exc = sub - rf_sub
     vol = sub.std() * np.sqrt(periods_per_year)
     if vol <= 0 or pd.isna(vol):
@@ -971,6 +980,76 @@ def calc_holdings_kpi_period_avg(
     return out
 
 
+def calc_carino_smoothed_contribution(
+    weights: pd.DataFrame,
+    panel: pd.DataFrame,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp,
+) -> pd.Series:
+    """
+    Carino (1999) Logarithmic Smoothing — 종목별 누적 기여도.
+    Σ smoothed contribution = portfolio 누적 수익률 (정확 일치).
+
+    학술 출처:
+      - Carino, D. (1999) "Combining attribution effects over time"
+        Journal of Performance Measurement.
+      - Brinson Simple Attribution 의 multi-period linking 한계 해결 표준 방법.
+
+    수식:
+      1. per-period contribution: C_{i,t} = w_{i,t} × R_{i,t}
+      2. portfolio per-period return: R_t = Σ_i C_{i,t}
+      3. Carino factor: k_t = ln(1+R_t) / R_t   (R_t≠0; 0 시 lim → 1)
+      4. 정규화: K = ln(1+R_cum) / R_cum, R_cum = ∏(1+R_t) - 1
+      5. smoothed: C_i = Σ_t (k_t / K) × C_{i,t}
+
+    검증: Σ smoothed C_i = R_cum (Brinson Σ 의 누적 환산)
+
+    Returns:
+        pd.Series (index=ticker, value=smoothed cumulative contribution, 내림차순)
+    """
+    weights_p = weights[(weights.index >= period_start) & (weights.index <= period_end)]
+    if len(weights_p) == 0:
+        return pd.Series(dtype=float)
+
+    panel_p = panel[(panel["date"] >= period_start) & (panel["date"] <= period_end)]
+    panel_pivot = panel_p.pivot_table(
+        index="date", columns="ticker", values="ret_1m", aggfunc="first"
+    )
+
+    common_dates = weights_p.index.intersection(panel_pivot.index)
+    if len(common_dates) == 0:
+        return pd.Series(dtype=float)
+
+    weights_a = weights_p.loc[common_dates]
+    rets_a = panel_pivot.loc[common_dates]
+
+    common_tickers = weights_a.columns.intersection(rets_a.columns)
+    weights_a = weights_a[common_tickers].fillna(0)
+    rets_a = rets_a[common_tickers].fillna(0)
+
+    # per-period × per-ticker contribution
+    contrib_t = weights_a * rets_a   # DataFrame (date × ticker)
+
+    # portfolio per-period return (산출된 contribution 합 = 펀드 추정 R_t)
+    R_t = contrib_t.sum(axis=1)
+
+    # Carino factor per period — k_t = ln(1+R_t)/R_t, R_t=0 시 lim = 1
+    with np.errstate(divide="ignore", invalid="ignore"):
+        k_t = np.where(R_t.abs() > 1e-12, np.log(1 + R_t) / R_t, 1.0)
+    k_t = pd.Series(k_t, index=R_t.index)
+
+    # 정규화 상수 — K = ln(1+R_cum) / R_cum
+    R_cum = float((1 + R_t).prod() - 1)
+    if abs(R_cum) < 1e-12:
+        return pd.Series(0.0, index=common_tickers)
+    K = float(np.log(1 + R_cum) / R_cum)
+
+    # smoothed C_i = Σ_t (k_t / K) × C_{i,t}
+    smoothed = contrib_t.mul(k_t / K, axis=0).sum(axis=0)
+
+    return smoothed.sort_values(ascending=False)
+
+
 def calc_simple_contribution(
     weights: pd.DataFrame,
     panel: pd.DataFrame,
@@ -1093,3 +1172,345 @@ def calc_delta_weight(
     curr = weights.loc[current_date].reindex(tickers).fillna(0)
     prev = weights.loc[prev_date].reindex(tickers).fillna(0)
     return curr - prev
+
+
+# ======================================================================
+# Sector Watch 페이지 전용 (Phase 2.3)
+# ======================================================================
+# decisionlog 06_sector_watch.md Sector-Q1:
+#   - SPY sector weight 산출: panel.log_mcap × sp500_membership[t-1] (look-ahead 회피)
+#   - Sector Tilt = Fund_w − SPY_w (Active Management)
+#   - Active Bets = (|Tilt| > 1%).sum()
+#   - HO 정당화 narrative: Markowitz (1952) + Fama-French (1992)
+
+
+def compute_spy_sector_weights(
+    panel: pd.DataFrame,
+    sp500_membership: dict,
+    date: pd.Timestamp,
+    ticker_to_sector: dict | None = None,
+) -> pd.Series:
+    """
+    SPY sector weight (mcap 가중) — date 시점 sp500_membership 의 mcap 가중 합.
+
+    학술 산출:
+      1. members = sp500_membership[date 직전] (look-ahead 회피)
+      2. mcap_i = exp(log_mcap_i)
+      3. sector_weight_s = Σ_{i ∈ s} mcap_i / Σ_all mcap_i
+
+    Args:
+        panel: monthly_panel (date, ticker, log_mcap, gics_sector)
+        sp500_membership: dict[Timestamp, frozenset[str]]
+        date: 산출 시점
+        ticker_to_sector: panel.gics_sector 외부 lookup (선택)
+
+    Returns:
+        pd.Series (index=sector, value=weight, sum=1)
+    """
+    sp_dates = sorted(sp500_membership.keys())
+    prior = [d for d in sp_dates if d <= date - pd.offsets.MonthEnd(1)]
+    if not prior:
+        prior = [d for d in sp_dates if d <= date]
+    if not prior:
+        return pd.Series(dtype=float)
+
+    members = list(sp500_membership[max(prior)])
+    rows = panel[(panel["date"] == date) & (panel["ticker"].isin(members))].copy()
+    rows = rows[rows["log_mcap"].notna()]
+    if len(rows) == 0:
+        return pd.Series(dtype=float)
+
+    rows["_mcap"] = np.exp(rows["log_mcap"])
+    if ticker_to_sector is not None:
+        rows["_sector"] = rows["ticker"].map(ticker_to_sector).fillna("Unknown")
+        sector_col = "_sector"
+    else:
+        sector_col = "gics_sector"
+
+    total = rows["_mcap"].sum()
+    if total <= 0:
+        return pd.Series(dtype=float)
+    return rows.groupby(sector_col)["_mcap"].sum() / total
+
+
+def calc_sector_weights_fund(
+    weights_row: pd.Series, ticker_to_sector: dict
+) -> pd.Series:
+    """단일 시점 Fund sector weight (Holdings calc_sector_weights 와 동일)."""
+    return calc_sector_weights(weights_row, ticker_to_sector)
+
+
+def calc_sector_tilt(
+    fund_sw: pd.Series, spy_sw: pd.Series
+) -> pd.Series:
+    """
+    Sector Tilt = Fund_w − SPY_w (Active Management 표준).
+    두 series 의 합집합 sector — 어느 쪽에만 있어도 0 보강 후 차이 산출.
+    """
+    all_sectors = sorted(set(fund_sw.index) | set(spy_sw.index))
+    tilt = pd.Series(
+        {s: float(fund_sw.get(s, 0)) - float(spy_sw.get(s, 0)) for s in all_sectors}
+    )
+    return tilt.sort_values(ascending=False)
+
+
+def calc_active_bets(tilt: pd.Series, threshold: float = 0.01) -> int:
+    """Active Bets = |Tilt| > threshold (default 1%) 의 sector 개수."""
+    return int((tilt.abs() > threshold).sum())
+
+
+def calc_sector_decomposition(
+    weights_row: pd.Series,
+    panel: pd.DataFrame,
+    date: pd.Timestamp,
+    ticker_to_sector: dict,
+    spy_sw: pd.Series,
+    fund_ret: pd.Series | None = None,
+) -> pd.DataFrame:
+    """
+    Sector level decomposition 표 — 9 컬럼 (영역 5 plan 정합).
+
+    컬럼: sector, weight, tilt, return_12m, n_holdings, vol, beta, sharpe, contribution
+
+    sector level 메트릭 산출 (가중 평균):
+      - return_12m: Σ_i (w_i × ret_12m_i) / sector_weight (sector-conditional)
+      - vol / beta: ticker level 의 가중 평균
+      - sharpe: (sector return - rf) / sector vol
+      - contribution: sector weight × sector return (단순)
+    """
+    w = weights_row.dropna()
+    w = w[w > 0]
+    if len(w) == 0:
+        return pd.DataFrame()
+
+    fund_sw = calc_sector_weights(weights_row, ticker_to_sector)
+
+    # 종목별 12m return + vol / beta (panel 기반)
+    ret_12m = get_12m_return_from_panel(panel, date, w.index.tolist())
+    panel_d = panel[panel["date"] == date].set_index("ticker")
+    vol_d = panel_d["vol_252d"].reindex(w.index)
+    beta_d = panel_d["beta_252d"].reindex(w.index)
+
+    # sector level groupby
+    sectors = w.index.to_series().map(ticker_to_sector).fillna("Unknown")
+    rows = []
+    for sec, group in pd.DataFrame({
+        "ticker": w.index, "weight": w.values,
+        "ret_12m": ret_12m.values, "vol": vol_d.values, "beta": beta_d.values,
+        "sector": sectors.values,
+    }).groupby("sector"):
+        sw = float(group["weight"].sum())
+        if sw <= 0:
+            continue
+        # sector-conditional 가중 평균
+        wts_norm = group["weight"] / sw
+        sec_ret_12m = float((wts_norm * group["ret_12m"]).sum(skipna=True))
+        sec_vol = float((wts_norm * group["vol"]).sum(skipna=True))
+        sec_beta = float((wts_norm * group["beta"]).sum(skipna=True))
+        # Sharpe (annualized) = sector return / sector vol (rf 무시 — 단순 근사)
+        sec_sharpe = sec_ret_12m / sec_vol if sec_vol > 0 else np.nan
+        # contribution = sector_weight × sector_return
+        sec_contribution = sw * sec_ret_12m
+        rows.append({
+            "Sector": sec,
+            "Weight": sw,
+            "Tilt": sw - float(spy_sw.get(sec, 0)),
+            "Return_12m": sec_ret_12m,
+            "N_Holdings": int(len(group)),
+            "Volatility": sec_vol,
+            "Beta": sec_beta,
+            "Sharpe": sec_sharpe,
+            "Contribution": sec_contribution,
+        })
+
+    df = pd.DataFrame(rows).sort_values("Weight", ascending=False).reset_index(drop=True)
+    return df
+
+
+# ======================================================================
+# Backtesting 페이지 전용 (Phase 3.2)
+# ======================================================================
+# decisionlog 08_backtesting.md BT-Q1:
+#   - Regime 12 메트릭 (영역 4)
+#   - 4 Sub-events (영역 5)
+#   - 156 config Sensitivity (영역 6)
+#   - 모든 메트릭 final/master_table 정합 또는 학술 표준 (출처 명시)
+
+
+def calc_test_ho_gap(ret: pd.Series, rf: pd.Series) -> float:
+    """
+    TEST/HO Gap = TEST Sortino - HO Sortino.
+
+    학술 의미:
+      - Gap 클수록 (양수, > 0): 학습편향 (overfitting) ↑ — TEST 에서 잘하지만 HO 에서 못함
+      - Gap 작을수록 (0 에 가까울수록): TEST/HO 일관 = robust
+      - Gap 음수 (HO > TEST): 드문 케이스 — HO 가 TEST 보다 좋음
+
+    검증 표준 (학술 출처):
+      - Bailey & López de Prado (2014) "The Probability of Backtest Overfitting"
+        — TEST/OOS gap 으로 학습편향 정량화
+    """
+    s_test = calc_sortino_subperiod(ret, rf, "2010-01-01", "2023-12-31")
+    s_ho = calc_sortino_subperiod(ret, rf, "2024-01-01", "2025-12-31")
+    if pd.isna(s_test) or pd.isna(s_ho):
+        return np.nan
+    return float(s_test - s_ho)
+
+
+def calc_regime_consistency_score(ret: pd.Series, rf: pd.Series) -> dict:
+    """
+    Regime 일관성 = R1/R2/R3/HO Sortino mean / std.
+    높을수록 모든 시기에서 일관된 성과 (안정).
+    """
+    regimes = {
+        "R1": ("2010-01-01", "2012-06-30"),
+        "R2": ("2012-07-01", "2019-12-31"),
+        "R3": ("2020-01-01", "2023-12-31"),
+        "HO": ("2024-01-01", "2025-12-31"),
+    }
+    sortinos = {label: calc_sortino_subperiod(ret, rf, s, e) for label, (s, e) in regimes.items()}
+    valid = [v for v in sortinos.values() if not pd.isna(v)]
+    if len(valid) < 2:
+        return {"sortinos": sortinos, "mean": np.nan, "std": np.nan, "score": np.nan}
+    mean = float(np.mean(valid))
+    std = float(np.std(valid, ddof=1))
+    score = mean / std if std > 0 else np.nan
+    return {"sortinos": sortinos, "mean": mean, "std": std, "score": score}
+
+
+# 영역 5 — Sub-events (4 위기) 정의 (변경 용이성 위해 외부 dict)
+SUB_EVENTS: list[dict] = [
+    {"name": "2018 Q4 Sell-off", "start": "2018-09-30", "end": "2018-12-31"},
+    {"name": "COVID-19 Crash",    "start": "2020-02-29", "end": "2020-03-31"},
+    {"name": "2022 Inflation Bear", "start": "2022-01-31", "end": "2022-10-31"},
+    {"name": "2024-12 Sector Rotation", "start": "2024-11-30", "end": "2024-12-31"},
+]
+
+
+def calc_sub_event_metrics(ret: pd.Series, spy: pd.Series, rf: pd.Series) -> pd.DataFrame:
+    """
+    4 Sub-events 별 Fund / SPY / Active Return / MDD / Recovery Time 산출.
+
+    각 위기 기간 동안:
+      - Fund 누적 수익률 / SPY 누적 수익률 / Active = Fund - SPY
+      - Fund MDD 기간 내
+      - Recovery Time = trough → 신고가 회복 (위기 종료 후 N 개월)
+    """
+    rows = []
+    ret_clean = ret.dropna()
+    full_cum = (1 + ret_clean).cumprod()  # 시작 시점부터 누적
+
+    for ev in SUB_EVENTS:
+        s, e = pd.Timestamp(ev["start"]), pd.Timestamp(ev["end"])
+        sub_ret = ret[(ret.index >= s) & (ret.index <= e)].dropna()
+        sub_spy = spy[(spy.index >= s) & (spy.index <= e)].dropna()
+        if len(sub_ret) == 0:
+            continue
+        fund_cum = float((1 + sub_ret).prod() - 1)
+        spy_cum = float((1 + sub_spy).prod() - 1) if len(sub_spy) > 0 else np.nan
+        active = fund_cum - spy_cum if not pd.isna(spy_cum) else np.nan
+        # MDD (위기 기간만)
+        cum_in = (1 + sub_ret).cumprod()
+        mdd = float((cum_in / cum_in.cummax() - 1).min())
+
+        # Recovery — 위기 시작 직전 peak (전체 누적) → 위기 종료 후 신고가 회복
+        before = full_cum[full_cum.index < s]
+        if len(before) == 0:
+            recovery = None
+        else:
+            peak_pre = float(before.iloc[-1])
+            after_e = full_cum[full_cum.index > e]
+            recovered = after_e[after_e >= peak_pre]
+            if len(recovered) > 0:
+                rec_t = recovered.index[0]
+                # 위기 종료 시점부터 회복 시점까지의 개월 수
+                recovery = (rec_t.year - e.year) * 12 + (rec_t.month - e.month)
+                recovery = max(0, int(recovery))
+            else:
+                recovery = None
+
+        rows.append({
+            "Event": ev["name"],
+            "Period": f"{s.strftime('%Y-%m')} ~ {e.strftime('%Y-%m')}",
+            "Fund": fund_cum,
+            "SPY": spy_cum,
+            "Active": active,
+            "MDD": mdd,
+            "Recovery_months": recovery,
+        })
+    return pd.DataFrame(rows)
+
+
+def calc_avg_recovery_time(sub_event_df: pd.DataFrame) -> float:
+    """4 Sub-events 의 평균 Recovery Time (개월). NaN 제외."""
+    if "Recovery_months" not in sub_event_df.columns:
+        return np.nan
+    rec = sub_event_df["Recovery_months"].dropna()
+    return float(rec.mean()) if len(rec) > 0 else np.nan
+
+
+# 영역 4 — Regime 12 메트릭 정의 (변경 용이)
+REGIME_METRICS: list[str] = [
+    "CAGR", "Sortino", "Sharpe", "MDD", "Volatility",
+    "Active_Return", "IR", "Win_Rate", "Calmar",
+    "VaR_5", "CVaR_5", "Beta",
+]
+
+REGIME_PERIODS: dict[str, tuple[str, str]] = {
+    "R1 회복": ("2010-01-01", "2012-06-30"),
+    "R2 확장": ("2012-07-01", "2019-12-31"),
+    "R3 변동": ("2020-01-01", "2023-12-31"),
+    "HO 24m": ("2024-01-01", "2025-12-31"),
+    "FULL":   ("2010-01-01", "2025-12-31"),
+}
+
+
+def calc_regime_full_metrics(
+    ret: pd.Series, spy: pd.Series, rf: pd.Series
+) -> pd.DataFrame:
+    """
+    영역 4 — Regime × 12 메트릭 표.
+    행: Regime / 컬럼: 메트릭. 모두 final 정합 함수 사용.
+    """
+    rows = []
+    for label, (s, e) in REGIME_PERIODS.items():
+        sub_ret = ret[(ret.index >= s) & (ret.index <= e)].dropna()
+        sub_spy = spy[(spy.index >= s) & (spy.index <= e)].dropna()
+        sub_rf = rf.reindex(sub_ret.index).fillna(0)
+        if len(sub_ret) < 6:
+            continue
+        cum = (1 + sub_ret).cumprod()
+        spy_cum = (1 + sub_spy).cumprod() if len(sub_spy) > 0 else None
+
+        cagr_val = calc_cagr_subperiod(ret, s, e)
+        sortino_val = calc_sortino_subperiod(ret, rf, s, e)
+        sharpe_val = calc_sharpe_subperiod(ret, rf, s, e)
+        mdd_val = calc_mdd_subperiod(ret, s, e)
+        vol_val = float(sub_ret.std() * np.sqrt(12))
+        active_ret = (
+            float(cum.iloc[-1] - 1) - float(spy_cum.iloc[-1] - 1)
+            if spy_cum is not None and len(spy_cum) > 0
+            else np.nan
+        )
+        # IR = Active Return / Tracking Error
+        if len(sub_spy) > 0:
+            common = sub_ret.index.intersection(sub_spy.index)
+            te = float((sub_ret.reindex(common) - sub_spy.reindex(common)).std() * np.sqrt(12))
+            ir_val = (active_ret * (12 / len(sub_ret))) / te if te > 0 else np.nan
+        else:
+            ir_val = np.nan
+        win_rate = calc_win_rate(sub_ret)
+        calmar = (cagr_val / abs(mdd_val)) if (not pd.isna(mdd_val) and mdd_val != 0) else np.nan
+        var_5 = float(sub_ret.quantile(0.05))
+        cvar_5 = calc_cvar(sub_ret, alpha=0.05)
+        beta_val = calc_beta(sub_ret, sub_spy, sub_rf) if len(sub_spy) > 0 else np.nan
+
+        rows.append({
+            "Regime": label,
+            "CAGR": cagr_val, "Sortino": sortino_val, "Sharpe": sharpe_val,
+            "MDD": mdd_val, "Volatility": vol_val,
+            "Active_Return": active_ret, "IR": ir_val,
+            "Win_Rate": win_rate, "Calmar": calmar,
+            "VaR_5": var_5, "CVaR_5": cvar_5, "Beta": beta_val,
+        })
+    return pd.DataFrame(rows).set_index("Regime")

@@ -24,9 +24,17 @@ wheels/
 *.zip
 *.tar.gz
 
-# Streamlit dashboard 작은 메타 데이터 (예외 — git 포함, 다른 인원 재현성 보장)
+# Streamlit dashboard 필수 데이터 (예외 — git 포함, 다른 인원 dashboard 구동 보장)
+# 작은 메타 데이터
 !streamlit_dashboard/data/ticker_company_map.csv
 !streamlit_dashboard/data/universe.csv
+!streamlit_dashboard/data/ff5_monthly.csv
+!streamlit_dashboard/data/sp500_membership.pkl
+# 핵심 패널 / 일별 수익률 (대용량 — git push 시 1회 transfer)
+!streamlit_dashboard/data/monthly_panel.csv
+!streamlit_dashboard/data/daily_returns.pkl
+# Top 1 모델 결과 + 156 config sensitivity (Backtesting 페이지 영역 6)
+!streamlit_dashboard/data/results/*.pkl
 
 # Jupyter Notebook
 .ipynb_checkpoints/

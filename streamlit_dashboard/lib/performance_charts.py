@@ -86,12 +86,15 @@ def render_performance_kpi(
     ivw_ret: pd.Series | None,
     rf: pd.Series,
     period: str,
+    fund_gross_ret: pd.Series | None = None,
 ) -> None:
     """
     영역 3: KPI 5 카드 — CAGR / Sortino / Sharpe / IR / Active Return.
 
     final master_table 정합 (subperiod 함수 사용).
     벤치마크 delta 행: 활성 벤치마크 (사이드바 토글) 마다 추가.
+
+    fund_gross_ret 전달 시 CAGR 카드에 Gross + TC 누적 추가 표시 (B-1).
 
     period: "FULL" / "TEST" / "HO"
     """
@@ -102,6 +105,10 @@ def render_performance_kpi(
     cagr = mc.calc_cagr_subperiod(fund_ret, s, e)
     sortino = mc.calc_sortino_subperiod(fund_ret, rf, s, e)
     sharpe = mc.calc_sharpe_subperiod(fund_ret, rf, s, e)
+    cagr_gross = (
+        mc.calc_cagr_subperiod(fund_gross_ret, s, e)
+        if fund_gross_ret is not None else None
+    )
 
     # 벤치마크 활성 (delta 표시용)
     benchmarks = _get_active_benchmarks(spy_ret, ew_ret, ivw_ret)
@@ -112,11 +119,26 @@ def render_performance_kpi(
     active_spy = mc.calc_active_return(filter_by_eval_period(fund_ret, eval_label),
                                        filter_by_eval_period(spy_ret, eval_label)) if spy_ret is not None else np.nan
 
+    from lib.tooltips import get_tooltip
+
+    def _label(text: str, tip_key: str) -> str:
+        """카드 라벨 + tooltip ⓘ HTML."""
+        tip = get_tooltip(tip_key) or ""
+        if not tip:
+            return f"**{text}**"
+        return (
+            f'<div style="font-weight:700;">{text}'
+            f'<span title="{tip}" style="cursor:help;color:#9CA3AF;font-size:11px;'
+            f'margin-left:6px;border:1px solid #374151;border-radius:50%;'
+            f'width:14px;height:14px;display:inline-flex;align-items:center;'
+            f'justify-content:center;">ⓘ</span></div>'
+        )
+
     cols = st.columns(5)
 
-    # 카드 1: CAGR
+    # 카드 1: CAGR (Net + Gross + TC 누적)
     with cols[0]:
-        st.markdown("**CAGR**")
+        st.markdown(_label("CAGR", "Net CAGR"), unsafe_allow_html=True)
         st.markdown(f"## {_format_pct(cagr, plus_sign=True)}")
         for name, bench in benchmarks.items():
             bench_cagr = mc.calc_cagr_subperiod(bench, s, e)
@@ -128,10 +150,21 @@ def render_performance_kpi(
                 f'</div>',
                 unsafe_allow_html=True,
             )
+        # B-1: Gross + TC 누적 (작은 회색 글씨)
+        if cagr_gross is not None and not pd.isna(cagr_gross):
+            tc_diff = cagr_gross - cagr
+            st.markdown(
+                f'<div style="font-size:11px;color:{COLORS["text_muted"]};margin-top:6px;'
+                f'border-top:1px solid #374151;padding-top:4px;">'
+                f'Gross {_format_pct(cagr_gross, plus_sign=True)}<br>'
+                f'TC -{_format_pct(tc_diff)} (One-way 20bp)'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     # 카드 2: Sortino
     with cols[1]:
-        st.markdown("**Sortino**")
+        st.markdown(_label("Sortino", "Sortino"), unsafe_allow_html=True)
         st.markdown(f"## {_format_ratio(sortino)}")
         for name, bench in benchmarks.items():
             bench_sortino = mc.calc_sortino_subperiod(bench, rf, s, e)
@@ -146,7 +179,7 @@ def render_performance_kpi(
 
     # 카드 3: Sharpe
     with cols[2]:
-        st.markdown("**Sharpe**")
+        st.markdown(_label("Sharpe", "Sharpe"), unsafe_allow_html=True)
         st.markdown(f"## {_format_ratio(sharpe)}")
         for name, bench in benchmarks.items():
             bench_sharpe = mc.calc_sharpe_subperiod(bench, rf, s, e)
@@ -161,7 +194,7 @@ def render_performance_kpi(
 
     # 카드 4: IR (active vs SPY 기준 — 다른 벤치마크는 추가행)
     with cols[3]:
-        st.markdown("**IR**")
+        st.markdown(_label("IR", "IR"), unsafe_allow_html=True)
         st.markdown(f"## {_format_ratio(ir_spy)}")
         st.caption("vs SPY")
         # 다른 벤치마크 활성 시 추가 IR
@@ -179,7 +212,7 @@ def render_performance_kpi(
 
     # 카드 5: Active Return (vs SPY 기준)
     with cols[4]:
-        st.markdown("**Active Return**")
+        st.markdown(_label("Active Return", "Active Return"), unsafe_allow_html=True)
         st.markdown(f"## {_format_pct(active_spy, plus_sign=True)}")
         st.caption("vs SPY (annualized)")
         for name, bench in benchmarks.items():
