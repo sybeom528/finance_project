@@ -1,0 +1,33 @@
+# Streamlit 전역 설정 — Adaptive VolControl Fund 대시보드
+# 다크 테마 + Cobalt Blue 팔레트
+# 참조: decisionlog/11_dl_sections.md G 섹션 (디자인), plan/02_common.md 색상 토큰
+
+[theme]
+# 다크 모드 기반 (PortfolioX360 스타일)
+base = "dark"
+
+# 메인 강조색 — Cobalt Blue (KPI, 링크, 슬라이더, 강조 텍스트)
+primaryColor = "#3B82F6"
+
+# 페이지 배경 (다크 차콜)
+backgroundColor = "#0E1117"
+
+# 사이드바 / 카드 / 위젯 배경
+secondaryBackgroundColor = "#1F2937"
+
+# 본문 텍스트 (오프-화이트로 눈 피로 감소)
+textColor = "#FAFAFA"
+
+# 기본 폰트 패밀리 (한글 폰트는 추후 assets/fonts/에서 처리)
+font = "sans serif"
+
+[server]
+# 파일 저장 시 자동 리로드
+runOnSave = true
+# headless 는 명시 안 함 → 기본값 false → 서버 시작 시 자동 브라우저 오픈
+# (Streamlit Cloud 등 서버 배포 시에는 자동으로 headless 모드로 동작)
+
+[client]
+# pages/ 자동 sidebar navigation 비활성 → st.page_link 로만 노출 (C4-1 c)
+# (그룹 헤더 + 명시적 page_link 구조 유지)
+showSidebarNavigation = false

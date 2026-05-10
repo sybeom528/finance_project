@@ -17,6 +17,10 @@ wheels/
 *.csv
 *.parquet
 *.bak
+*.bak_*
+*.bak.*
+*_pre_*_ext
+*_pre_retrain
 *.zip
 *.tar.gz
 

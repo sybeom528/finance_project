@@ -51,6 +51,7 @@ dependencies = [
     "squarify>=0.4.4",
     "statsmodels>=0.14.6",
     "streamlit>=1.53.0",
+    "streamlit-card>=1.0.2",
     "tabpfn>=2.0",
     "tabpy>=2.13.0",
     "torch>=2.1.0",
