@@ -1033,13 +1033,18 @@ def compute_ivw_returns(monthly_panel, sp500_membership, fund_dates):
 3. FINRA Rule 2210 (마케팅 규제) 부합 — misleading 회피
 4. 가상 투자자 신뢰 ↑ — "감추지 않는 펀드"
 
-**Disclosure 텍스트 안**:
+**Disclosure 텍스트 안** (2026-05-10 결정 당시):
 ```
 ※ 본 결과는 백테스트 시뮬레이션이며 실제 운용 성과를 보장하지 않습니다.
    데이터 기간: 2010-01 ~ 2025-12 (학습 168m + 검증 24m)
    ※ HOLD_OUT 24m (2024-2025) 구간에서 SPY 대비 부진 (Net CAGR +X.XX%
      vs SPY +21.2%) — 자세한 분석은 Backtesting 페이지 참조
 ```
+
+> **📌 사후 정정 (2026-05-12)**: 위 텍스트의 "SPY +21.2%" 는 2026-05-10 결정 당시의 추정치입니다.
+> 이후 SPY NaN 보강 작업으로 dashboard 의 실제 산출치는 **SPY +21.07%** (24m 대칭) 으로 갱신.
+> 또한 TC override (편측 10bp → 20bp) 로 Fund Net CAGR 도 **+7.20%** 로 갱신.
+> Backtesting 페이지는 통합 삭제 (2026-05-11) — 관련 분석은 Risk Metrics 영역 5/6 으로 이전.
 
 #### 결정 항목 6-4: Copyright + 메타
 

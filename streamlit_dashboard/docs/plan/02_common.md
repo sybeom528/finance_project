@@ -328,7 +328,9 @@ E-3 + I-2 + I-5 결정 통합
 """
 import streamlit as st
 
-# === Footer 통일 텍스트 (E-3 + I-2) ===
+# === Footer 통일 텍스트 (E-3 + I-2) — 2026-05-10 결정 당시 ===
+# 📌 사후 정정 (2026-05-12): "SPY +21.2%" → 현재 dashboard 산출 "SPY +21.07%" (SPY NaN 보강 후)
+# 📌 "Backtesting 페이지" 는 통합 삭제 (2026-05-11) → Risk Metrics 영역 5/6 으로 이전
 FOOTER_DISCLOSURE = """
 ※ 본 결과는 백테스트 시뮬레이션이며 실제 운용 성과를 보장하지 않습니다.
    데이터 기간: 2010-01 ~ 2025-12 (TEST 평가 168m + HOLD_OUT 24m)

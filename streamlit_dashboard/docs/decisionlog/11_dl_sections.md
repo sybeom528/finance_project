@@ -291,7 +291,7 @@ HO 24m (2024-2025) 펀드 부진 narrative — 페이지별로 이미 적용됨.
 3. (c) 상단 박스는 첫인상 부정적 강조 (마케팅 ↓)
 4. (b) 페이지별 다름은 일관성 ↓
 
-**Footer Disclosure 통일 텍스트**:
+**Footer Disclosure 통일 텍스트** (2026-05-10 결정 당시):
 ```
 ※ 본 결과는 백테스트 시뮬레이션이며 실제 운용 성과를 보장하지 않습니다.
    데이터 기간: 2010-01 ~ 2025-12 (TEST 평가 168m + HOLD_OUT 24m)
@@ -299,11 +299,32 @@ HO 24m (2024-2025) 펀드 부진 narrative — 페이지별로 이미 적용됨.
      vs SPY +21.2%) — 자세한 분석은 Backtesting 페이지 참조
 ```
 
+> **📌 사후 정정 (2026-05-12)**: 위 텍스트의 "SPY +21.2%" 는 결정 당시 추정치.
+> 현재 dashboard 실제 산출치 = **SPY +21.07%** (SPY NaN 보강 후 24m 대칭).
+> "Backtesting 페이지" 는 통합 삭제 (2026-05-11) → Risk Metrics 영역 5/6 으로 이전.
+
 ## E-4. HO 부진 정량 표현 통일
 
-이미 결정된 수치:
+이미 결정된 수치 (2026-05-10 작성 시점):
 - Net CAGR Fund +8.3% / SPY +21.2% / 차이 -12.9%p
 - Sortino Fund 0.685 / SPY 2.333
+
+> **📌 사후 정정 (2026-05-12)** — 본 박스 작성 후 2가지 변경 발생:
+>
+> 1. **TC override 도입** (편측 10bp → **편측 20bp**, 펀드 의도값):
+>    - Fund Net CAGR: ~~+8.3%~~ → **+7.20%**
+>    - Fund Sortino: ~~0.685~~ → **0.516**
+>    - 자세한 이력: `updatelog.md` 의 "TC override 도입" 항목
+>
+> 2. **SPY NaN 보강** (`monthly_panel.spy_ret` 의 boundary NaN 을 일별 SPY 로 보강):
+>    - SPY HO CAGR: ~~+21.2%~~ (출처 불명, yfinance 직접 추정) → **+21.07%** (panel 산식 정합, 24m 대칭)
+>    - 자세한 이력: `updatelog.md` 의 "SPY NaN 보강" 항목
+>
+> 3. **종합 변경 후 정확한 수치**:
+>    - Net CAGR Fund **+7.20%** / SPY **+21.07%** / 차이 **-13.87%p**
+>    - Sortino Fund **0.516** / SPY (TBD — Sortino 산식 재검토 필요)
+>
+> 본문의 "+8.3% / +21.2% / -12.9%p / 0.685" 수치는 **결정 당시의 원본 기록** 으로 보존됩니다. Dashboard 가 표시하는 값은 정정된 수치입니다.
 
 **검토된 옵션**:
 - (a) Net CAGR 차이 (-12.9%p) 강조
@@ -868,6 +889,9 @@ font = "sans serif"
    vs SPY +21.2%) — 자세한 분석은 Backtesting 페이지 참조
    자세한 Disclosure / Risk factors: About 페이지 참조
 ```
+
+> **📌 사후 정정 (2026-05-12)**: "SPY +21.2%" → 현재 dashboard 산출 **SPY +21.07%** (SPY NaN 보강 후 24m 대칭).
+> "Backtesting 페이지" 는 통합 삭제 (2026-05-11) → Risk Metrics 영역 5/6 으로 이전.
 
 ## I-3. About 페이지 자세한 Disclosure (영역 7)
 

@@ -115,6 +115,130 @@
 - **사유**: 기술 스택 정보는 Footer 부적합. 실제 프로젝트 목적은 부트캠프 최종 과제.
 - **영향 파일**: `lib/disclosure.py`
 
+### docs "경진대회" 표현 정리 (옵션 B — inline 정정)
+- **카테고리**: Narrative / Docs
+- **변경 내역**:
+  - `docs/decisionlog/01_meta_A_B_C.md` 상단에 사후 정정 박스 추가 + 본문 5건 inline 정정 (L39 결정 / L42 근거 / L76 근거 / L93 배경 / L143 근거)
+  - `docs/plan/00_README.md` 상단에 사후 정정 박스 추가 + 본문 2건 inline 정정 (2.1 절)
+  - 형식: `~~취소선~~ → [정정 2026-05-12: ...]` — 원본 보존 + 정정 명시
+- **유지**: 검토된 옵션 표 (A-1 의 `(b) 경진대회` 행) + 변경 이력 인용 부분 (`updatelog.md`, `10_sidebar.md`) — 의사결정 이력 보존
+- **사유**: 결정 당시 ("경진대회 + 가상 투자자") 와 실제 컨텍스트 ("부트캠프 최종 프로젝트") 의 괴리 해소. 원본 보존 + 정정 사실 명시 (CLAUDE.md "사후 변경 → 페이지별 박스 추가" 지침 부합).
+- **영향 파일**: `docs/decisionlog/01_meta_A_B_C.md`, `docs/plan/00_README.md`
+
+### SPY NaN 보강 + HO docs 정정 (Task 2) — `lib/data_loader.py` + decisionlog/plan
+- **카테고리**: Data / Bug Fix / Narrative 정합성
+- **배경**:
+  - HO SPY CAGR 의 docs claim (21.2%) 과 dashboard 산출치 (20.58%) 사이 0.62%p 차이 발견
+  - 추적 결과: `panel.spy_ret` 의 2개 시점 (2024-12-31, 2025-12-31) 이 **NaN**
+  - 원인: `monthly_panel.spy_ret` 도 `fwd_ret_1m` 패턴 (다음 21 영업일 cumprod) 으로 산출 → panel 생성 시점에 boundary 데이터 부족 시 NaN 발생
+  - 결과: dashboard 의 HO 24m SPY CAGR = 22m 데이터로 산출 (NaN dropna) → **Fund 24m vs SPY 22m 비대칭 비교** ⚠️
+- **해결 — `lib/data_loader.py` 의 `load_fund_results` 에 SPY NaN 보강 로직 추가**:
+  - 신규 helper 함수 `_fill_spy_ret_nan(spy_ret)`:
+    - daily_returns.pkl 의 SPY 로그 수익률 → 산술 변환 (`exp(log) - 1`)
+    - NaN 시점 t 에 대해 다음 21 영업일 cumprod 산출 (panel 산식 일치)
+    - 21 영업일 데이터 부족 시 → NaN 유지 (안전 fallback)
+  - `load_fund_results(fill_spy_nan=True)` 파라미터 추가 (기본 True)
+  - 보강 후 `config["spy_filled_dates"]` 에 채워진 날짜 list 저장
+- **검증 결과 (6 시나리오 PASS)**:
+  - Scenario 1: default 시 `spy_ret.isna().sum() = 0` (목표 0)
+  - Scenario 2: `fill_spy_nan=False` 시 원본 NaN 보존 (목표 2)
+  - Scenario 3: HO 24m SPY CAGR 20.58% (22m) → **21.07% (24m)** — 대칭 회복
+  - Scenario 4: Fund vs SPY 모두 24m 같은 기간 비교 — `차이 -13.87%p`
+  - Scenario 5: TEST 168m 영향 없음 / FULL 192m CAGR 14.25% → 14.37% (+0.12%p)
+  - Scenario 6: 보강값 검증 — `spy_ret[2024-12-31] = +1.9946%`, `spy_ret[2025-12-31] = +1.9782%`
+- **docs 일괄 갱신**:
+  - **decisionlog**: `00_README.md`, `02_overview.md`, `06_sector_watch.md`, `11_dl_sections.md` (E-3, E-4, I-1 Footer)
+  - **plan**: `00_README.md`, `02_common.md`, `03_pages/06_sector_watch.md`
+  - 정정 패턴: `~~원본 수치~~ → **새 수치** [정정 2026-05-12]`
+  - 원본 결정 기록은 보존 + 사후 정정 박스 / inline 마커로 갱신 사실 명시
+- **최종 정합 수치 (편측 20bp + SPY NaN 보강)**:
+  - HO 24m: Fund **+7.20%** / SPY **+21.07%** / 차이 **−13.87%p**
+  - (이전 docs: Fund +8.3% / SPY +21.2% / 차이 −12.9%p)
+- **영향 파일**: `lib/data_loader.py`, 7개 docs 파일
+
+### 일별 데이터 source 차이 정직성 caption 도입 (옵션 β — Tier B) — Performance/Risk Metrics
+- **카테고리**: Narrative / 학술 정직성
+- **배경**:
+  - 검증 과정에서 `daily_returns.pkl` 과 `monthly_panel.fwd_ret_1m` 가 **별도 source** 임을 발견
+    - `monthly_panel.fwd_ret_1m`: 21-day fixed forward window 의 **산술 수익률** (BL backtest 입력 의도)
+    - `daily_returns.pkl`: **로그 수익률** (LW 공분산 추정 입력 의도)
+  - 두 데이터는 다른 분석 목적으로 설계되어 단일 ticker level 외에는 완벽 일치 X
+  - Streamlit 의 일별 사용 3개 영역 (Performance 영역 9, Risk Metrics 영역 7/10) 이 펀드 backtest 와 다른 source 사용 중
+- **결정**: 옵션 β (caption + expander 로 학술 정직성 확보)
+  - 데이터 재생성 (γ) 의 위험 (펀드 결과 변동) 과 작업 비용 (1-2주) 을 고려
+  - 실무 펀드 분석의 표준 패턴 (월별 NAV + 일별 risk metric) 으로 narrative 정당화
+  - 펀드 backtest 결과 자체에는 영향 없음
+- **변경 내역**:
+  - **Performance 영역 9 (분포 통계 — 왜도/첨도/꼬리비율)**:
+    - 기존 caption 끝에 1줄 추가: `ℹ️ 일별 = 시장 데이터 기반 (펀드 backtest 의 월별 source 와 별도).`
+    - `st.expander("ℹ️ 데이터 source 안내 (분포 통계)")` 추가 — 학술 근거 (Cont 2001) + 산식 + 펀드 관계 명시
+  - **Risk Metrics 영역 7 (VaR / CVaR)**:
+    - 기존 caption 끝에 1줄 추가: `ℹ️ Basel III 표준 = 일별 (시장 데이터 기반). 펀드 누적 수익률과는 별도 source.`
+    - `st.expander("ℹ️ 데이터 source 안내 (VaR / CVaR)")` 추가 — Basel III/EU CRR + 산식 + 펀드 관계 명시
+  - **Risk Metrics 영역 10 (Hill Estimator)**:
+    - 기존 caption 끝에 1줄 추가: `ℹ️ Hill 은 일별 필수 (꼬리 sample 필요). 시장 데이터 기반 — 펀드 backtest 와 별도 source.`
+    - `st.expander("ℹ️ 데이터 source 안내 (Hill Estimator)")` 추가 — Hill (1975), Embrechts (1997) EVT 표준 + 일별 필수 근거 + 펀드 관계 명시
+- **영향 파일**: `pages/03_Performance.py`, `pages/04_Risk_Metrics.py`
+- **영향 범위**:
+  - 변경 X: 펀드 backtest 결과 / KPI / 차트 / lib 모듈 / 데이터 파일
+  - 변경 O: 3개 영역의 caption (1줄 추가) + expander (펼치기 박스)
+- **학술 정직성**:
+  - 검토자/평가자 질문 ("왜 source 가 다른가?") 대비 강화
+  - Cont 2001, Hill 1975, Embrechts 1997 등 학술 표준 인용으로 근거 명시
+  - 실무 패턴 (월별 NAV + 일별 risk) 으로 narrative 정당화
+
+### TC override 도입 (편측 10bp → 편측 20bp, 펀드 의도값) — `lib/data_loader.py`
+- **카테고리**: Data / Bug Fix / 학술 정직성
+- **발견 경위**:
+  - 시뮬레이션 일별 시점 지원 검토 중 일별 데이터 source 차이 (monthly_panel vs daily_returns) 발견 → 추가 검증 진행
+  - 검증 과정에서 `(gross_ret − ret) / turnover = 0.001` (모든 192월 일관) 확인 → 펀드 backtest 가 **편측 10bp** 로 산출되었음을 발견
+  - 그러나 dashboard / docs 의 모든 표기는 **편측 20bp** 로 안내 → 표기와 실제 데이터 불일치
+- **팀 확인 결과 (2026-05-12)**:
+  - 펀드의 **의도된 거래비용 = 편측 20bp (tc=0.002)**
+  - 초기 config 설정은 tc=0.001 (편측 10bp) 였으나 차후 의도가 0.002 로 변경됨
+  - **pkl 재실행은 불필요** — dashboard 사용 시점에 net 재산출로 의도값 반영
+- **변경 내역**:
+  - `lib/data_loader.py` 의 `load_fund_results(config_name, tc_override=0.002)` 시그니처에 `tc_override` 파라미터 추가
+  - pkl 로드 후 자동으로 `net = gross_ret − turnover × tc_override` 재산출
+  - `config["tc"]` = 새 값으로 갱신, `config["tc_original_in_pkl"]` = 원본 tc 보존
+  - 모든 페이지 (`app.py` + 5 페이지) 의 `fund_ret = fund["ret"]` 자동으로 새 net 반영
+- **검증 결과 (6 시나리오 모두 PASS)**:
+  - SCENARIO 1: `(gross − ret) / turnover = 0.002` 일관 (CV=0, mean=0.002000000)
+  - SCENARIO 2: `tc_override=None` 시 원본 (편측 10bp) 보존
+  - SCENARIO 3: `tc_override=0.001` 명시 시 원본과 동일
+  - SCENARIO 4: pkl 파일 자체 무수정 (size / mtime 변화 X)
+  - SCENARIO 5: FULL/TEST/HO 모든 KPI 자동 갱신
+  - SCENARIO 6: dashboard subperiod 함수 (`calc_*_subperiod`) 자동 반영
+- **KPI 변화** (편측 10bp → 편측 20bp):
+  | 기간 | CAGR | Sortino | Sharpe | MDD |
+  |---|---|---|---|---|
+  | FULL 16년 | 16.440% → **15.080%** (−1.36%p) | 1.911 → 1.724 | 1.103 → 1.014 | −12.89% → −13.65% |
+  | TEST 168m | 17.657% → **16.251%** (−1.41%p) | 2.039 → 1.853 | 1.185 → 1.096 | −12.89% → −13.65% |
+  | HO 24m | 8.268% → **7.202%** (−1.07%p) | 0.685 → 0.516 | 0.397 → 0.302 | −8.25% → −8.95% |
+- **영향 범위**:
+  - 모든 페이지의 펀드 net 기반 메트릭 (CAGR / Sortino / Sharpe / Calmar / MDD / Active Return / Tracking Error / Information Ratio) 자동 갱신
+  - 누적 수익률 차트 / Drawdown 차트 / Investment Simulator 결과 / Regime 분석 / Sub-events / Holdings Attribution 모두 자동 반영
+  - Vol / 분포 통계 (Skew/Kurt) 는 거의 영향 없음 (TC 가 변동성에 미치는 영향 미미)
+  - SPY / EW / IVW 벤치마크는 영향 없음 (TC 미적용)
+- **영향 파일**: `lib/data_loader.py` (단일 파일 수정으로 모든 페이지 자동 반영)
+- **장점**:
+  - pkl 원본 보존 (재실행 X, 변경 X)
+  - 모든 페이지 코드 변경 없이 자동 반영
+  - `tc_override=None` 으로 검증 / 디버깅 가능
+  - dashboard 표기 ("편측 20bp") 와 실제 적용 일치
+
+### lib/backtesting_charts.py 미사용 함수 cleanup (옵션 A — 완전 제거)
+- **카테고리**: Code Structure / Cleanup
+- **변경 내역**: 567 라인 → 169 라인 (약 70% 감소)
+  - **제거된 deprecated 함수 3개**: `render_backtest_kpi`, `render_cumulative_comparison`, `render_sensitivity_test`
+  - **제거된 미사용 헬퍼 5개**: `_fmt_pct`, `_fmt_ratio`, `_color_by_threshold`, `_compute_all_config_metrics`, `_compute_all_config_cumulative`
+  - **제거된 imports 7개**: `numpy`, `BENCHMARK_COLORS`, `list_available_configs`, `load_fund_results`, `load_monthly_panel`, `add_event_annotations`, `add_regime_backgrounds` (모두 제거된 함수만 의존)
+- **유지**: USED 함수 2개 (`render_regime_detail_table`, `render_sub_events`) + 핵심 imports (`pandas`, `plotly.graph_objects`, `streamlit`, `metric_calculators`, `COLORS`)
+- **검증**: `python -c "from lib.backtesting_charts import render_regime_detail_table, render_sub_events"` 정상 동작 확인
+- **복원 방법**: `git log -p lib/backtesting_charts.py` 에서 복구 가능 (모듈 docstring 에 명시)
+- **사유**: 2026-05-11 Backtesting 페이지 통합 삭제 후 두 함수만 Risk Metrics 페이지로 이전됨. 나머지는 deprecated 상태로 남아 파일 비대 + 신규 개발자 혼동 우려.
+- **영향 파일**: `lib/backtesting_charts.py` 단독
+
 ---
 
 ## 📅 2026-05-11
@@ -285,12 +409,32 @@
 - **상태**: 메타 결정만 확정 (영역별 구현 X)
 - **자세한 이력**: `docs/decisionlog/09_about.md`
 
-### lib/backtesting_charts.py 미사용 함수 cleanup
-- **상태**: 보류
-- **배경**: Backtesting 페이지 통합 삭제 후 두 함수 (`render_regime_detail_table`, `render_sub_events`) 만 사용됨. 나머지 (`render_backtest_kpi`, `render_cumulative_comparison`, `render_sensitivity_test`) 는 deprecated 상태로 남아있음.
-- **결정 필요**: 완전 제거 vs 보존 (향후 재도입 가능성)
+### About 페이지 — 데이터 source 종합 안내 박스 추가 (옵션 β 후속)
+- **상태**: 보류 (Tier B 옵션 β 의 후속 작업)
+- **배경**: 2026-05-12 일별 데이터 source 차이 caption (Performance 영역 9 + Risk Metrics 영역 7/10) 도입. 각 영역의 expander 는 효과적이나, **한 곳에서 종합 reference** 도 필요.
+- **목적**:
+  - 학술 / 평가자 청중을 위한 "데이터 source 종합 안내" 한 페이지 reference
+  - 펀드 backtest (`monthly_panel`) 과 시장 risk metric (`daily_returns`) 의 본질적 분리 명시
+  - yfinance / retroactive adjustment / NaN 처리 등 데이터 한계 narrative
+- **구현 예시**:
+  - About 페이지의 한 영역으로 "데이터 source 와 한계" 박스 추가
+  - 또는 Methodology 페이지 (만약 부활 시) 의 하위 섹션
+  - 또는 Sidebar 의 "Data Notes" expander
+- **의존성**: About / FAQ 페이지 구현 (Phase 4) 완료 후 진행 권장
+- **자세한 분석**: 본 파일의 "일별 데이터 source 차이 정직성 caption 도입 (옵션 β)" 항목 참조
 
-### docs 의 "경진대회" 표현 정리 (선택)
-- **상태**: 보류 (사용자 표시 부분은 모두 변경 완료)
-- **배경**: 결정 당시 (2026-05-10) 의 청중 컨텍스트 ("경진대회 심사위원 + 가상 투자자") 가 docs 에 남아있음. 의사결정 이력 보존 차원에서 그대로 둠.
-- **결정 필요**: docs 도 정리 vs 이력 보존
+### ~~lib/backtesting_charts.py 미사용 함수 cleanup~~ → ✅ 완료 (2026-05-12)
+- **상태**: ✅ 완료 (2026-05-12)
+- **배경**: Backtesting 페이지 통합 삭제 후 두 함수 (`render_regime_detail_table`, `render_sub_events`) 만 사용됨. 나머지 (`render_backtest_kpi`, `render_cumulative_comparison`, `render_sensitivity_test`) 는 deprecated 상태로 남아있음.
+- **결정**: 옵션 A — 완전 제거 (567 → 169 라인, 약 70% 감소)
+  - deprecated 함수 3개 + 미사용 헬퍼 5개 + 불필요 imports 7개 제거
+  - 복원 필요 시 `git log -p lib/backtesting_charts.py` 에서 복구
+- **상세 변경 이력**: 본 파일 상단 2026-05-12 섹션 참조
+
+### ~~docs 의 "경진대회" 표현 정리 (선택)~~ → ✅ 완료 (2026-05-12)
+- **상태**: ✅ 완료 (2026-05-12)
+- **배경**: 결정 당시 (2026-05-10) 의 청중 컨텍스트 ("경진대회 심사위원 + 가상 투자자") 가 docs 에 남아있음.
+- **결정**: 옵션 B — 본문 inline 정정 (`~~취소선~~ → [정정 ...]` 마커) + 각 파일 상단 사후 정정 박스 추가. 원본 텍스트는 취소선으로 보존하고 정정 사항을 명시.
+- **유지**: 검토된 옵션 표 (A-1 의 `(b) 경진대회` 행) + 변경 이력 인용 부분 (`updatelog.md`, `10_sidebar.md`) — 의사결정 이력 보존 차원
+- **변경 파일**: `docs/decisionlog/01_meta_A_B_C.md` (6건) + `docs/plan/00_README.md` (2건)
+- **상세 변경 이력**: 본 파일 상단 2026-05-12 섹션 마지막 항목 참조
