@@ -19,7 +19,7 @@ final_pt/
 ├── master_table.py           ← results/*.pkl → mt/rt 빌더
 ├── analyze_plots.py          ← 시각화 모듈
 │
-├── 99_run.ipynb              ← walk_forward 실행 → results/*.pkl
+├── 04_BL_Walkforward.ipynb              ← walk_forward 실행 → results/*.pkl
 ├── 99_analyze.ipynb          ← 분석 단일 진입점 (K_CUT → I → J → K → L → M → N)
 ├── 99_slot_effects.ipynb     ← 슬롯 차원 효과 라인플롯 (pivot CSV 자동 생성)
 │
@@ -35,7 +35,7 @@ final_pt/
 
 ```
 ① bl_config.py에 실험 dict 추가 (필요 시)
-② 99_run.ipynb 셀 순서대로 실행
+② 04_BL_Walkforward.ipynb 셀 순서대로 실행
    cell-00 : 패키지 임포트 + 경로 설정
    cell-01 : 데이터 로드 (monthly_panel, daily_returns, FF3)
    cell-02 : LSTM 예측 로드 + monthly_cache 빌드 (Σ 등 사전계산)
@@ -73,7 +73,7 @@ final_pt/
 3개 파일을 **이 순서대로** 수정:
 1. `bl_functions.py` — 새 함수 추가 (예: `compute_Q_my_method`)
 2. `bl_config.py` — 슬롯 주석 + 실험 dict 추가
-3. `99_run.ipynb` cell-03 — dispatcher (`get_Q`, `get_omega` 등)에 elif 추가
+3. `04_BL_Walkforward.ipynb` cell-03 — dispatcher (`get_Q`, `get_omega` 등)에 elif 추가
 
 ---
 
@@ -159,10 +159,10 @@ s.t.      Σw_i = 1, 0 ≤ w_i ≤ max_weight (기본 0.10)
 |---|---|---|
 | `trailing_vol21` | `vol_21d` (과거 21일 실현) | `01_DataCollection.ipynb`에서 `lr.rolling(21).std() × √252` |
 | `trailing_vol252` | `vol_252d` (과거 252일 실현) | 동일하게 `× √252` |
-| `lstm_predicted` | LSTM+HAR 앙상블 예측, `exp(y_pred_ensemble) × √252` (Phase3 산출) | `99_run.ipynb` cell-03에서 `× √252` |
+| `lstm_predicted` | LSTM+HAR 앙상블 예측, `exp(y_pred_ensemble) × √252` (Phase3 산출) | `04_BL_Walkforward.ipynb` cell-03에서 `× √252` |
 
 > ⚠️ **단위 일관성 중요**: `lstm_predicted` 모드는 LSTM 예측이 있는 종목만 `vol_21d`를 LSTM 값으로 덮어쓰고, 나머지는 `vol_21d` 그대로 둠. **두 시리즈가 같은 단위(연환산)** 여야 P 랭킹이 올바름. 과거 버그(2026-05-07 이전): LSTM `vol_pred = exp(y_pred)`만 적용해 일별 단위로 계산되어 vol_21d(연환산)와 혼합 → LSTM 커버 종목이 인위적으로 ~16배 작게 보여 P "저변동 30%"가 사실상 "LSTM 커버리지 dummy"로 변질. 이 버그 수정 후 LSTM 슬롯 모든 backtest 재실행 (`results_backup/`은 옛 결과 보관용).
-> [99_run.ipynb](99_run.ipynb) cell-04 `get_vol_series`에 `pred_slice.median() < 0.05` sanity guard 추가됨.
+> [04_BL_Walkforward.ipynb](04_BL_Walkforward.ipynb) cell-04 `get_vol_series`에 `pred_slice.median() < 0.05` sanity guard 추가됨.
 
 **`p_weight`별 가중 수식** (σ_i: 자산 i의 변동성, m_i: 시가총액):
 
@@ -335,7 +335,7 @@ date        ticker  y_pred_lstm  y_pred_har  y_pred_ensemble  y_true  ...
 ```bash
 # 특정 실험만 재실행
 rm final_pt/results/{name}.pkl
-# 99_run.ipynb 실행 (해당 cfg만 walk_forward)
+# 04_BL_Walkforward.ipynb 실행 (해당 cfg만 walk_forward)
 ```
 
 전체 재실행: cell-05의 `SKIP_IF_EXISTS = True`를 `False`로 변경.
@@ -352,7 +352,7 @@ rm final_pt/results/{name}.pkl
 | **vol_mcap** | 전체 유니버스, 30% 컷 없음 |
 | **거래비용 단위** | `tc=0.001` = 편측(per-side) 10bp. turnover는 two-way Σ\|Δw\|∈[0,2]이므로 월 TC = `turnover × tc`가 매수+매도 비용 모두 반영 |
 | **데이터 선행** | `01_DataCollection.ipynb` 실행 후 `data/` 채워진 상태에서 실행 |
-| **monthly_cache** | `99_run` cell-02에서 빌드 후 캐시 — 재시작 시 자동 재사용 |
+| **monthly_cache** | `04_BL_Walkforward` cell-02에서 빌드 후 캐시 — 재시작 시 자동 재사용 |
 | **vol_pred 단위** | `np.exp(y_pred_ensemble) × √252` 로 연환산. 일별/연환산 혼합 시 P 랭킹 왜곡 (cell-04에 guard) |
 | **results_backup/** | 2026-05-07 이전 단위 혼합 버그 결과 (LSTM 슬롯 한정) — **분석엔 절대 사용 금지**, 감사용으로만 보관 |
 
@@ -360,6 +360,6 @@ rm final_pt/results/{name}.pkl
 
 ## 10. 분석 흐름 (다음 단계)
 
-`99_run` 완료 → `99_analyze` 실행 → 슬롯 효과 + 매트릭스 히트맵 + 3-레짐 안정성 → 위험성향별 최종 후보.
+`04_BL_Walkforward` 완료 → `99_analyze` 실행 → 슬롯 효과 + 매트릭스 히트맵 + 3-레짐 안정성 → 위험성향별 최종 후보.
 
 상세: `99_analyze.ipynb` 안 markdown 셀 참고.
