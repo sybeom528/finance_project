@@ -1,34 +1,34 @@
 {
-  "phase": "Phase 3-2 §2-B (final 통합)",
-  "n_tickers_503": 503,
+  "phase": "05_Statistical_Validation",
+  "n_tickers_503": 506,
   "anova": {
-    "eta_sq_period": 0.44975722882267616,
-    "eta_sq_ticker": 0.19444004090076417,
-    "F_period": 634.5598548203658,
-    "F_ticker": 2.1859308471256433
+    "eta_sq_period": 0.4503676914870787,
+    "eta_sq_ticker": 0.19461197018989684,
+    "F_period": 640.6271969524081,
+    "F_ticker": 2.192685310471696
   },
   "welch_anova": {
-    "levene_stat": 16.777221881549394,
-    "levene_p": 1.4004788219872036e-13,
-    "welch_F": 420.5864573350606,
-    "welch_p": 1.1102230246251565e-16
+    "levene_stat": 16.492475058575113,
+    "levene_p": 2.394282973646383e-13,
+    "welch_F": 425.8115736047484,
+    "welch_p": 0.0
   },
   "kruskal_wallis": {
-    "H": 97.2995584622181,
-    "p_value": 2.808514258612366e-13,
-    "epsilon_sq": 0.16556609992209917
+    "H": 104.91758480964472,
+    "p_value": 1.0823087767589076e-14,
+    "epsilon_sq": 0.18015898526566543
   },
   "pairwise": {
     "n_total": 153,
-    "n_sig_bonferroni": 24,
+    "n_sig_bonferroni": 26,
     "n_large_d": 24
   },
   "heavy_tail": {
-    "skewness": 1.2993494658082332,
-    "excess_kurtosis": 4.705553407353376,
-    "jb_stat": 605.6008712641503,
-    "jb_p": 3.1292602762012194e-132,
-    "ad_stat": 4.886381365089733
+    "skewness": 1.288193159697327,
+    "excess_kurtosis": 4.655778828408834,
+    "jb_stat": 596.9544058627861,
+    "jb_p": 2.360466237605601e-130,
+    "ad_stat": 4.7975991770343285
   },
   "academic_propositions": {
     "prop1_period_systematic": true,

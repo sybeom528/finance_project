@@ -76,11 +76,10 @@ def build_P(
 ) -> pd.Series:
     """
     변동성 정렬 P 행렬 (뷰 포트폴리오).
-    weighting: 'mcap' | 'eq' | 'rp' | 'vol_mcap'
+    weighting: 'mcap' | 'eq' | 'rp'
       - mcap     : 시총 비례 (하위/상위 30% 컷, 기본)
       - eq       : 동일가중 (하위/상위 30% 컷)
       - rp       : 전체 유니버스, Long 1/σ / Short σ  (순수 vol 신호, 대칭)
-      - vol_mcap : 전체 유니버스, Long (1/σ)×mcap / Short σ×mcap  (vol × 시총, 대칭)
     """
     n_group = max(1, int(len(vol_series) * pct))
     sorted_idx = vol_series.sort_values().index
@@ -107,16 +106,8 @@ def build_P(
         P[inv_low.index]  =  inv_low  / inv_low.sum()
         P[high_vol.index] = -high_vol / high_vol.sum()
 
-    elif weighting == 'vol_mcap':
-        # vol rank가 롱/숏 비율을 결정, mcap이 포지션 크기를 결정
-        # rank=0(최저변동) → 완전 롱, rank=1(최고변동) → 완전 숏, rank=0.5 → 중립
-        r       = vol_series.rank(pct=True)
-        long_w  = (1 - r) * mcap_series
-        short_w =      r  * mcap_series
-        P       = long_w / long_w.sum() - short_w / short_w.sum()
-
     else:
-        raise ValueError(f"weighting={weighting!r} 미지원. 'mcap'/'eq'/'rp'/'vol_mcap' 중 선택")
+        raise ValueError(f"weighting={weighting!r} 미지원. 'mcap'/'eq'/'rp' 중 선택")
 
     return P
 
@@ -179,111 +170,6 @@ def compute_Q_raw_lam(
 
 
 
-def compute_Q_ff3_paper(
-    P: pd.Series,
-    ret_matrix: pd.DataFrame,
-    ff3_train: pd.DataFrame,
-    rf_train: pd.Series,
-) -> float:
-    """
-    논문 방식 Q: X_next = 훈련 윈도우 마지막 월 실현 팩터.
-    Ω는 walk-forward 루프에서 전월 오차²로 별도 계산.
-    """
-    # 방어: 중복 라벨 제거 (threading 환경에서 stale state 가능)
-    if P.index.duplicated().any():
-        P = P[~P.index.duplicated(keep='first')]
-    if ret_matrix.columns.duplicated().any():
-        ret_matrix = ret_matrix.loc[:, ~ret_matrix.columns.duplicated(keep='first')]
-    if ret_matrix.index.duplicated().any():
-        ret_matrix = ret_matrix[~ret_matrix.index.duplicated(keep='first')]
-
-    view_tickers = P[P != 0].index.intersection(ret_matrix.columns).tolist()
-    if not view_tickers:
-        return 0.003
-
-    ff3_aligned = ff3_train.reindex(ret_matrix.index).dropna()
-    rf_aligned  = rf_train.reindex(ff3_aligned.index).fillna(0)
-    n = len(ff3_aligned)
-    if n < 24:
-        return 0.003
-
-    X      = np.column_stack([np.ones(n), ff3_aligned[['mkt_rf', 'smb', 'hml']].values])
-    X_next = np.array([1.0] + ff3_aligned.iloc[-1][['mkt_rf', 'smb', 'hml']].tolist())
-    rf_next = float(rf_train.iloc[-1]) if len(rf_train) > 0 else 0.0
-
-    r_hat_next = pd.Series(0.0, index=ret_matrix.columns)
-    for t in view_tickers:
-        y = ret_matrix[t].reindex(ff3_aligned.index) - rf_aligned
-        valid = y.notna()
-        if valid.sum() < 12:
-            continue
-        coef = np.linalg.lstsq(X[valid], y[valid].values, rcond=None)[0]
-        r_hat_next[t] = float(X_next @ coef) + rf_next
-
-    P_vec = P.reindex(ret_matrix.columns).fillna(0)
-    return float(P_vec @ r_hat_next)
-
-
-
-def compute_Q_ff3_paper_mean(
-    P: pd.Series,
-    ret_matrix: pd.DataFrame,
-    ff3_train: pd.DataFrame,
-    rf_train: pd.Series,
-) -> float:
-    """
-    논문 방식 Q (학계 표준 변형):
-      X_next = 훈련 윈도우 60개월 팩터 평균 (장기 평균 회귀 가정).
-
-    기존 compute_Q_ff3_paper 와의 차이:
-      - 기존:  X_next = ff3_aligned.iloc[-1]      (직전월 실현값, random walk)
-      - 신규:  X_next = ff3_aligned.mean()         (60개월 평균, mean reversion)
-
-    재무학 표준 (Fama-MacBeth 1973, Cochrane 2005):
-      월별 팩터는 σ/μ 비율이 8~15배라 random walk 예측 시 노이즈 큼.
-      장기 평균을 다음달 기대 프리미엄으로 쓰는 것이 일반적.
-
-    rf_next 는 변동성 작은 이자율이라 직전월 그대로 사용.
-    """
-    # 방어: 중복 라벨 제거 (threading 환경에서 stale state 가능)
-    if P.index.duplicated().any():
-        P = P[~P.index.duplicated(keep='first')]
-    if ret_matrix.columns.duplicated().any():
-        ret_matrix = ret_matrix.loc[:, ~ret_matrix.columns.duplicated(keep='first')]
-    if ret_matrix.index.duplicated().any():
-        ret_matrix = ret_matrix[~ret_matrix.index.duplicated(keep='first')]
-
-    view_tickers = P[P != 0].index.intersection(ret_matrix.columns).tolist()
-    if not view_tickers:
-        return 0.003
-
-    ff3_aligned = ff3_train.reindex(ret_matrix.index).dropna()
-    rf_aligned  = rf_train.reindex(ff3_aligned.index).fillna(0)
-    n = len(ff3_aligned)
-    if n < 24:
-        return 0.003
-
-    X      = np.column_stack([np.ones(n), ff3_aligned[['mkt_rf', 'smb', 'hml']].values])
-    X_next = np.array([
-        1.0,
-        float(ff3_aligned['mkt_rf'].mean()),
-        float(ff3_aligned['smb'].mean()),
-        float(ff3_aligned['hml'].mean()),
-    ])
-    rf_next = float(rf_train.iloc[-1]) if len(rf_train) > 0 else 0.0
-
-    r_hat_next = pd.Series(0.0, index=ret_matrix.columns)
-    for t in view_tickers:
-        y = ret_matrix[t].reindex(ff3_aligned.index) - rf_aligned
-        valid = y.notna()
-        if valid.sum() < 12:
-            continue
-        coef = np.linalg.lstsq(X[valid], y[valid].values, rcond=None)[0]
-        r_hat_next[t] = float(X_next @ coef) + rf_next
-
-    P_vec = P.reindex(ret_matrix.columns).fillna(0)
-    return float(P_vec @ r_hat_next)
-
 
 
 def compute_Q_vol_spread(
@@ -330,25 +216,6 @@ def compute_omega_he(P: pd.Series, Sigma: pd.DataFrame, tau: float) -> float:
     return max(float(tau * p @ Sigma.values @ p), 1e-8)
 
 
-
-def compute_omega_rmse(
-    P: pd.Series,
-    Sigma: pd.DataFrame,
-    tau: float,
-    pred_rmse: float,
-    base_rmse: float = 0.39,
-) -> float:
-    """
-    LSTM 예측 RMSE로 Omega 스케일링.
-    RMSE가 base_rmse보다 높으면 Omega 증가 (뷰 신뢰도 감소).
-    scale = (pred_rmse / base_rmse)^2
-
-    이 함수의 경우, baseline을 없애는 것도 방법이고, 
-    다른 방식으로 구현해도 됨(변경해도 된다는 의미)
-    아니면 그냥 추가해도 되고
-    """
-    scale = (pred_rmse / base_rmse) ** 2 if base_rmse > 0 else 1.0
-    return max(compute_omega_he(P, Sigma, tau) * scale, 1e-8)
 
 
 
