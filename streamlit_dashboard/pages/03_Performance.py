@@ -184,8 +184,29 @@ st.caption(
     "수익률 분포의 **왜도** (비대칭성, 기준=0) / **첨도** (극단값 정도, 기준=0) / "
     "**꼬리 비율** (상승 vs 하락 꼬리, 기준=1). "
     "**일별 데이터** (~4,000 sample) 기준 — 월별 (192 sample) 은 중심극한정리 효과로 분포가 정규에 수렴해 의미가 약함. "
-    "양수 왜도 = 상승 쪽 치우침 (✓), 낮은 첨도 = 안정적 (✓), 꼬리 비율 > 1 = 상승 꼬리 우세 (✓)."
+    "양수 왜도 = 상승 쪽 치우침 (✓), 낮은 첨도 = 안정적 (✓), 꼬리 비율 > 1 = 상승 꼬리 우세 (✓). "
+    "ℹ️ 일별 = 시장 데이터 기반 (펀드 backtest 의 월별 source 와 별도)."
 )
+
+with st.expander("ℹ️ 데이터 source 안내 (분포 통계)"):
+    st.markdown(
+        """
+        **왜 일별 데이터인가?**
+        - 분포 형상 (왜도/첨도/꼬리비율) 은 sample 수가 충분해야 신뢰 가능
+        - 일별 (~4,000) vs 월별 (192): 월별은 중심극한정리 (CLT) 효과로 정규에 수렴 → 분포 특성 분석 의미 약함
+        - 학술 표준: 분포 통계는 일별 데이터 사용 (Cont 2001 — *Empirical properties of asset returns*)
+
+        **일별 데이터의 source**
+        - 출처: yfinance Adjusted Close 의 일별 가격 변동 (`daily_returns.pkl`)
+        - 원래 의도: LW (Ledoit-Wolf) 공분산 추정 / 변동성 분포 분석용
+
+        **펀드 backtest 와의 관계**
+        - 펀드의 누적 수익률 / KPI (CAGR, Sortino 등) = **월별 backtest 데이터** (`monthly_panel.fwd_ret_1m`) 기반
+        - 본 영역의 분포 형상 = **일별 시장 데이터** 기반
+        - 두 데이터는 다른 분석 목적으로 설계되어 누적 수익률 일치 X
+        - 이는 **실무 펀드 분석의 표준 패턴**: 월별 NAV (official 성과) + 일별 risk metric (학술 표준)
+        """
+    )
 
 # 일별 portfolio return 산출 (캐시됨)
 fund_daily = None

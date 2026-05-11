@@ -149,8 +149,29 @@ st.caption(
     "수익률 분포 + 펀드 vs 시장 비교 + 정규분포 곡선 + VaR/CVaR 표시 (**일별 데이터, ~4,000 영업일**). "
     "**VaR 5%** = 95% 확률로 손실이 이 값을 넘지 않음 (= 가장 나쁜 5% 시나리오의 경계). "
     "**CVaR 5%** = 최악 5% 시나리오의 평균 손실 (VaR 보다 보수적). "
-    "월별 (192 sample) 은 5% 분위수가 단 ~10개로 통계 신뢰성 낮아 학술 표준 (일별) 만 표시합니다."
+    "월별 (192 sample) 은 5% 분위수가 단 ~10개로 통계 신뢰성 낮아 학술 표준 (일별) 만 표시합니다. "
+    "ℹ️ Basel III 표준 = 일별 (시장 데이터 기반). 펀드 누적 수익률과는 별도 source."
 )
+
+with st.expander("ℹ️ 데이터 source 안내 (VaR / CVaR)"):
+    st.markdown(
+        """
+        **왜 일별 데이터인가?**
+        - Basel III, EU CRR 등 학술 / 규제 표준 = 일별 VaR / CVaR
+        - 월별 (192 sample) 의 5% 분위수 = 단 9~10 개 점 → 통계 신뢰성 ↓
+        - 일별 (~4,000) 의 5% 분위수 = 약 200 개 점 → 통계 신뢰성 ↑
+
+        **일별 데이터의 source**
+        - 출처: yfinance Adjusted Close 의 일별 가격 변동 (`daily_returns.pkl`)
+        - 산식: `portfolio_daily_return = Σ weight_i × daily_ret_i`
+
+        **펀드 backtest 와의 관계**
+        - 펀드 CAGR / Sortino 등 (Performance KPI) = **월별 backtest 정답값** (`monthly_panel.fwd_ret_1m`)
+        - 본 영역의 VaR / CVaR = **일별 시장 변동 분포** 기반
+        - 두 데이터의 누적 수익률은 다를 수 있음
+        - 이는 **실무 펀드 분석의 표준 패턴**: 월별 NAV (official) + 일별 risk metric (학술 표준)
+        """
+    )
 
 # 일별 portfolio (영역 5, 8 공유 — 한 번 산출)
 fund_daily = None
@@ -214,8 +235,31 @@ st.divider()
 st.subheader("Tail Risk 분석 — Hill Estimator")
 st.caption(
     "수익률 분포의 꼬리 (극단값) 두께 측정 (일별 데이터). "
-    "펀드의 꼬리 추정치가 시장보다 작으면 **극단적 손실 위험이 시장보다 적다** 는 의미입니다."
+    "펀드의 꼬리 추정치가 시장보다 작으면 **극단적 손실 위험이 시장보다 적다** 는 의미입니다. "
+    "ℹ️ Hill 은 일별 필수 (꼬리 sample 필요). 시장 데이터 기반 — 펀드 backtest 와 별도 source."
 )
+
+with st.expander("ℹ️ 데이터 source 안내 (Hill Estimator)"):
+    st.markdown(
+        """
+        **왜 일별 데이터 필수인가?**
+        - Hill estimator 는 분포 top-k 꼬리만 사용 (k ≈ 50~100)
+        - 월별 (192 sample) 의 top 50 = 상위 26% → 꼬리 분석 의미 상실
+        - 일별 (~4,000) 의 top 50 = 상위 1.3% → 진정한 꼬리 분석
+        - **월별 데이터로는 산출 불가능** (sample 부족)
+
+        **학술 근거**
+        - Hill (1975) — *A simple general approach to inference about the tail of a distribution*
+        - Embrechts, Klüppelberg, Mikosch (1997) — *Modelling Extremal Events* (EVT 표준 교과서)
+
+        **일별 데이터의 source / 한계**
+        - 출처: yfinance Adjusted Close 의 일별 변동 (`daily_returns.pkl`)
+        - 펀드 backtest 의 monthly panel 과 **별도 source** (다른 학술 목적)
+        - 꼬리 형상은 일별 시장 데이터 기반 → 펀드 backtest 의 실제 꼬리와 정확히 일치 X
+        - 이는 **실무 펀드 분석의 표준 패턴**: 월별 NAV + 일별 EVT 분석
+        """
+    )
+
 render_tail_risk(
     fund_ret_daily=fund_daily,
     spy_ret_daily=spy_daily,
