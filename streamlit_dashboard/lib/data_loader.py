@@ -17,6 +17,7 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -202,8 +203,63 @@ def load_sp500_membership() -> dict:
 
 # === 펀드 결과 ========================================================
 
+def _fill_spy_ret_nan(spy_ret: pd.Series) -> tuple[pd.Series, list[pd.Timestamp]]:
+    """
+    spy_ret 의 NaN 시점을 일별 SPY 데이터로 보강.
+
+    원본 산식 (`monthly_panel.fwd_ret_1m`):
+        spy_ret[t] = (1 + simple_daily_spy[t+1 .. t+21]).prod() - 1
+        (다음 21 영업일 산술 cumprod, panel 산식과 일치)
+
+    NaN 발생 원인: monthly_panel 생성 시점에 다음 21 영업일 데이터가
+    충분히 없었을 가능성. 현재 daily_returns.pkl 가 더 확장되어 있어 보강 가능.
+
+    보강 방식:
+      1) daily_returns.pkl 의 SPY 로그 수익률 → 산술 변환 (`exp(log) - 1`)
+      2) NaN 시점 t 에 대해 다음 21 영업일 cumprod 산출
+      3) 21 영업일 데이터 부족 시 → NaN 유지
+
+    Args:
+        spy_ret: forward-looking 인덱스 (월말) 의 SPY 월별 수익률 Series
+
+    Returns:
+        (filled_spy_ret, filled_dates): 보강된 Series + 실제 채워진 날짜 list
+    """
+    nan_mask = spy_ret.isna()
+    if not nan_mask.any():
+        return spy_ret, []
+
+    # daily SPY 로드 (별도 — cache 효율을 위해 직접 pickle.load)
+    daily_path = DATA_DIR / "daily_returns.pkl"
+    if not daily_path.exists():
+        return spy_ret, []
+    with open(daily_path, "rb") as f:
+        daily = pickle.load(f)
+    if "SPY" not in daily.columns:
+        return spy_ret, []
+
+    # log → simple 변환 (panel 산식과 정합)
+    spy_daily_simple = (np.exp(daily["SPY"]) - 1).dropna()
+
+    filled = spy_ret.copy()
+    filled_dates = []
+    for t in spy_ret[nan_mask].index:
+        after = spy_daily_simple[spy_daily_simple.index > t]
+        if len(after) >= 21:
+            next_21 = after.iloc[:21]
+            cum = float((1 + next_21).prod() - 1)
+            filled.loc[t] = cum
+            filled_dates.append(t)
+
+    return filled, filled_dates
+
+
 @st.cache_data
-def load_fund_results(config_name: str = "mat_eq_eq_raw_pap") -> dict:
+def load_fund_results(
+    config_name: str = "mat_eq_eq_raw_pap",
+    tc_override: float | None = 0.002,
+    fill_spy_nan: bool = True,
+) -> dict:
     """
     펀드 backtest 결과 (최종 Top 1 = mat_eq_eq_raw_pap, 2026-05-11 최종 변경).
 
@@ -211,23 +267,84 @@ def load_fund_results(config_name: str = "mat_eq_eq_raw_pap") -> dict:
 
     대시보드 사본 (Top 1) 우선, 없으면 final 원본 fallback.
 
-    pkl 구조: {"weights": DataFrame, "ret": Series, "spy_ret": Series,
-              "comp": DataFrame, "config": dict, "meta": DataFrame, ...}
+    ── TC override (2026-05-12) ─────────────────────────────────────────
+    원본 pkl 은 tc=0.001 (편측 10bp/side) 로 산출되었으나, 펀드의 의도된
+    보수적 거래비용 가정은 편측 20bp (tc=0.002) 였습니다. 차후 의도가 변경
+    되었으나 원본 backtest 는 재실행하지 않고, **대시보드 사용 시점에 net
+    재산출** 하는 방식으로 의도값을 반영합니다.
+
+    재산출 산식:
+        net_ret = gross_ret − turnover × tc_override
+        (turnover 는 two-way Σ|Δw| ∈ [0, 2], tc 는 편측 rate)
+
+    tc_override 파라미터:
+      - 0.002 (기본, 편측 20bp) — 펀드의 의도된 보수적 가정
+      - 0.001                  — pkl 원본 (편측 10bp)
+      - None                   — pkl 원본 그대로 사용 (검증/디버깅용)
+
+    재산출 후 `config["tc"]` 는 새 값으로 갱신되고, 원본 tc 는
+    `config["tc_original_in_pkl"]` 로 보존됩니다.
+
+    ── SPY NaN 보강 (2026-05-12) ──────────────────────────────────────────
+    `monthly_panel.spy_ret` 는 `fwd_ret_1m` 패턴 (다음 21 영업일 cumprod) 으로
+    산출되며, panel 생성 시점에 다음 21 영업일 데이터가 부족하면 NaN 발생.
+    현재 daily_returns.pkl 가 충분히 확장되어 있어, NaN 시점의 SPY 를 일별 데이터로
+    보강 가능 (panel 산식 정합 유지).
+
+    fill_spy_nan 파라미터:
+      - True (기본): NaN 인 SPY 시점을 일별 데이터로 보강
+      - False: pkl 원본 그대로 (NaN 유지)
+
+    보강 후 `config["spy_filled_dates"]` 에 채워진 날짜 list 저장.
+
+    pkl 구조: {"weights": DataFrame, "ret": Series (재산출), "gross_ret": Series,
+              "spy_ret": Series (NaN 보강), "comp": DataFrame, "config": dict (갱신), ...}
     """
     local = RESULTS_DIR / f"{config_name}.pkl"
     if local.exists():
         with open(local, "rb") as f:
-            return pickle.load(f)
-
-    original = ORIGINAL_RESULTS_DIR / f"{config_name}.pkl"
-    if original.exists():
+            d = pickle.load(f)
+    else:
+        original = ORIGINAL_RESULTS_DIR / f"{config_name}.pkl"
+        if not original.exists():
+            raise FileNotFoundError(
+                f"Config '{config_name}' pkl 을 찾을 수 없습니다.\n"
+                f"  확인한 경로:\n  - {local}\n  - {original}"
+            )
         with open(original, "rb") as f:
-            return pickle.load(f)
+            d = pickle.load(f)
 
-    raise FileNotFoundError(
-        f"Config '{config_name}' pkl 을 찾을 수 없습니다.\n"
-        f"  확인한 경로:\n  - {local}\n  - {original}"
-    )
+    # TC override — 의도된 보수적 가정 (편측 20bp) 으로 net 재산출
+    if tc_override is not None:
+        original_tc = d.get("config", {}).get("tc")
+        # 원본과 다를 때만 재산출 (소수점 비교는 ε 허용)
+        needs_recompute = (
+            original_tc is None
+            or abs(float(tc_override) - float(original_tc)) > 1e-9
+        )
+        if needs_recompute and "gross_ret" in d and "comp" in d:
+            comp = d["comp"]
+            if "turnover" in comp.columns:
+                turnover = comp["turnover"]
+                # net = gross - turnover × tc (apply_tc 산식과 동일)
+                d["ret"] = d["gross_ret"] - turnover * float(tc_override)
+                # config 갱신 — 사용자 표시 / 검증 일관성
+                cfg = dict(d.get("config", {}))
+                cfg["tc_original_in_pkl"] = original_tc
+                cfg["tc"] = float(tc_override)
+                d["config"] = cfg
+
+    # SPY NaN 보강 (panel.spy_ret 의 boundary NaN → 일별 SPY 로 채움)
+    if fill_spy_nan and "spy_ret" in d:
+        filled_spy, filled_dates = _fill_spy_ret_nan(d["spy_ret"])
+        d["spy_ret"] = filled_spy
+        if filled_dates:
+            # config 에 보강 기록 (사용자 추적용)
+            cfg = dict(d.get("config", {}))
+            cfg["spy_filled_dates"] = [t.strftime("%Y-%m-%d") for t in filled_dates]
+            d["config"] = cfg
+
+    return d
 
 
 @st.cache_data
