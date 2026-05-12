@@ -224,8 +224,10 @@ st.divider()
 # === 영역 9: Risk Metrics 종합 표 ====================================
 st.subheader(f"위험 메트릭 종합 표 — {period}")
 st.caption(
-    "20여 개 메트릭을 5개 카테고리로 (수익률 / 위험조정 / 위험 / 시장 노출 / 분포) 정리. "
-    "펼치기로 카테고리 상세 + CSV 다운로드 가능."
+    "**월별 표준 메트릭 15개** 를 4개 카테고리로 (수익률 / 위험조정 / 위험 / 시장 노출) 정리. "
+    "펼치기로 카테고리 상세 + CSV 다운로드 가능. "
+    "ℹ️ **VaR / CVaR / 분포 통계 (Skewness / Kurtosis / Tail Ratio)** 는 학술 표준 (일별 데이터 필수) 이므로 "
+    "**영역 7** (VaR / CVaR 분포), **영역 10** (Hill Tail) 에서 일별 기반으로 확인하실 수 있습니다."
 )
 render_risk_metrics_table(fund_ret, fund_spy, ew_ret, ivw_ret, fund_rf, period)
 st.divider()

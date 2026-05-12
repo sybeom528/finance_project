@@ -610,8 +610,7 @@ _TABLE_CATEGORIES = {
         ("Volatility", "vol"),
         ("MDD", "mdd"),
         ("Downside Dev", "down_dev"),
-        ("VaR 5%", "var_5"),
-        ("CVaR 5%", "cvar_5"),
+        # VaR/CVaR 는 일별 학술 표준 (Basel III) → 영역 7 에서 일별 기반 산출
     ],
     "Market Exposure": [
         ("Beta", "beta"),
@@ -620,16 +619,20 @@ _TABLE_CATEGORIES = {
         ("Tracking Error", "te"),
         ("Alpha (CAPM)", "alpha"),
     ],
-    "Distribution": [
-        ("Skewness", "skew"),
-        ("Excess Kurtosis", "kurt"),
-        ("Tail Ratio", "tail"),
-    ],
+    # Distribution (Skew/Kurt/Tail Ratio) 는 일별 학술 표준 (sample size 필수)
+    # → 영역 7 (Performance 영역 9 와 정합) 에서 일별 기반 산출
 }
 
 
 def _calc_all_metrics_for_series(ret: pd.Series, mkt: pd.Series, rf: pd.Series) -> dict:
-    """단일 시리즈 (Fund or 벤치마크) 의 ~20 메트릭 산출."""
+    """
+    단일 시리즈 (Fund or 벤치마크) 의 종합 표 메트릭 산출 (월별 표준만).
+
+    제외 메트릭 (학술 표준 = 일별 → 영역 7, 10 에서 별도 산출):
+      - VaR 5%, CVaR 5% (Basel III 표준 = 일별)
+      - Skewness, Excess Kurtosis, Tail Ratio (Cont 2001 — sample size 필요, 일별)
+      - Hill Tail Index (Hill 1975 — 꼬리 sample 필요, 일별)
+    """
     return {
         "cum_ret": mc.calc_cumulative_return(ret),
         "cagr": mc.calc_cagr(ret),
@@ -641,16 +644,11 @@ def _calc_all_metrics_for_series(ret: pd.Series, mkt: pd.Series, rf: pd.Series) 
         "vol": mc.calc_volatility(ret),
         "mdd": mc.calc_mdd(ret),
         "down_dev": mc.calc_downside_deviation(ret),
-        "var_5": mc.calc_var(ret, 0.05),
-        "cvar_5": mc.calc_cvar(ret, 0.05),
         "beta": mc.calc_beta(ret, mkt, rf) if mkt is not None else np.nan,
         "r2": mc.calc_r_squared(ret, mkt) if mkt is not None else np.nan,
         "corr": mc.calc_correlation(ret, mkt) if mkt is not None else np.nan,
         "te": mc.calc_tracking_error(ret, mkt) if mkt is not None else np.nan,
         "alpha": mc.calc_alpha(ret, mkt, rf) if mkt is not None else np.nan,
-        "skew": mc.calc_skewness(ret),
-        "kurt": mc.calc_excess_kurtosis(ret),
-        "tail": mc.calc_tail_ratio(ret),
     }
 
 
@@ -659,12 +657,12 @@ def _format_metric(key: str, v: float) -> str:
     if pd.isna(v):
         return "—"
     pct_keys = {"cum_ret", "cagr", "arith_mean", "vol", "mdd", "down_dev",
-                "var_5", "cvar_5", "alpha", "te"}
+                "alpha", "te"}
     if key in pct_keys:
         return f"{v*100:+.2f}%"
     if key == "r2":
         return f"{v*100:.1f}%"
-    return f"{v:+.3f}" if v < 0 or key in {"skew", "kurt"} else f"{v:.3f}"
+    return f"{v:+.3f}" if v < 0 else f"{v:.3f}"
 
 
 def render_risk_metrics_table(
