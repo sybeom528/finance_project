@@ -24,6 +24,7 @@ sweep 을 in-notebook 으로 돌릴 때도 동일 모듈 import 해서 사용.
                           spy_series=spy_series, tau=0.1, pct_group=0.30)
 """
 from __future__ import annotations
+import pickle
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -40,6 +41,42 @@ from bl_functions import (
     black_litterman, optimize_portfolio,
     compute_turnover, apply_tc,
 )
+
+
+# ════════════════════════════════════════════════════════════════
+# SPY forward 21bd cumprod fallback
+# ════════════════════════════════════════════════════════════════
+# walk_forward 안의 r_spy 계산에서 next_date 가 None 이거나 spy_series 룩업이
+# NaN 일 때 사용. 종목 fwd_ret_1m (forward 21영업일 cumprod) 과 단위 정합.
+_BASE_DIR = Path(__file__).parent
+_DAILY_RETURNS_PATH = _BASE_DIR / 'data' / 'daily_returns.pkl'
+
+
+def _load_daily_spy_simple() -> pd.Series:
+    with open(_DAILY_RETURNS_PATH, 'rb') as f:
+        daily = pickle.load(f)
+    return (np.exp(daily['SPY']) - 1).dropna()
+
+
+_daily_spy_simple: Optional[pd.Series] = None
+
+
+def _get_daily_spy_simple() -> pd.Series:
+    global _daily_spy_simple
+    if _daily_spy_simple is None:
+        _daily_spy_simple = _load_daily_spy_simple()
+    return _daily_spy_simple
+
+
+def _compute_spy_fwd_21d(pred_date: pd.Timestamp,
+                        daily_spy_simple: Optional[pd.Series] = None) -> float:
+    """pred_date 다음 21영업일 SPY 누적수익. panel.fwd_ret_1m 과 정합."""
+    if daily_spy_simple is None:
+        daily_spy_simple = _get_daily_spy_simple()
+    after = daily_spy_simple[daily_spy_simple.index > pred_date]
+    if len(after) >= 21:
+        return float((1 + after.iloc[:21]).prod() - 1)
+    return np.nan
 
 
 # ════════════════════════════════════════════════════════════════
@@ -362,7 +399,15 @@ def walk_forward(
             gross_ret  = float(w @ actual_ret)
             turnover   = compute_turnover(w, prev_w) if prev_w is not None else 0.0
             net_ret    = apply_tc(gross_ret, turnover, tc)
-            r_spy      = float(spy_series.get(next_date, np.nan)) if next_date else np.nan
+            # next_date 가 None 이거나 spy_series 룩업이 NaN 이면 21bd cumprod fallback.
+            # walk-forward 가 분리 실행(TEST+HO)되면 각 구간 끝에서 next_date=None 이라
+            # 이전 코드(`else np.nan`) 가 마지막 시점을 NaN 으로 박는 버그가 있었음.
+            if next_date is not None:
+                r_spy = float(spy_series.get(next_date, np.nan))
+                if pd.isna(r_spy):
+                    r_spy = _compute_spy_fwd_21d(pred_date)
+            else:
+                r_spy = _compute_spy_fwd_21d(pred_date)
 
             ret_list.append({'date': pred_date, 'ret': net_ret, 'gross_ret': gross_ret})
             spy_list.append({'date': pred_date, 'ret': r_spy})
