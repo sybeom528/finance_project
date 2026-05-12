@@ -635,11 +635,8 @@ def compute_fund_daily_returns(
         # 남은 NaN 은 0 처리 (final 패턴)
         period_clean = period_active[valid_tickers].fillna(0)
 
-        # log return → simple return 변환 (학술 표준 — 2026-05-12 산식 정정)
+        # log return → simple return 변환
         # daily_returns.pkl 은 np.log(close/close.shift(1)) 산출본 (log return)
-        # portfolio simple return = Σ_i (w_i × simple_ret_i) 가 학술 표준
-        # 이전: port_d = Σ_i (w_i × log_ret_i) — log return 의 weighted sum 은
-        #       portfolio 의 log return 도 simple return 도 아니므로 부정확
         period_simple = np.exp(period_clean) - 1
 
         # weight 정규화 (active ∩ valid 만으로 sum=1 재조정)
@@ -649,8 +646,18 @@ def compute_fund_daily_returns(
             continue
         w_norm = w_valid / w_sum
 
-        # 일별 portfolio simple return = Σ_i (w_i × simple_ret_i)
-        port_d = period_simple.dot(w_norm)
+        # 일별 portfolio return (drift 반영, 2026-05-12 정정 — 펀드 실제 운용 정합):
+        #   - 시점 t (월말) 에 자산 1.0, 종목 i 에 w_i 투자
+        #   - 시점 t+d 의 종목 i 가치 = w_i × Π_d'=1..d (1+r_i,d')  ← 자연 drift
+        #   - 시점 t+d 의 portfolio 가치 = Σ_i w_i × Π_d'=1..d (1+r_i,d')
+        #   - 시점 t+d 의 일별 수익률 = portfolio(t+d) / portfolio(t+d-1) - 1
+        # 이는 본 펀드의 월말 리밸런싱 + 보유 기간 자연 drift 시나리오를 정확 모사.
+        # 이전 산식 (drift 무시): port_d = Σ_i (w_i × r_i,d) — 매일 비중 고정 가정
+        # → 수학적으로 "일별 리밸런싱 가상 portfolio" 와 동일 결과 (펀드 실제와 미세 차이)
+        cum_factor = (1 + period_simple).cumprod()       # 종목별 누적 (drift 추적)
+        port_value = cum_factor.dot(w_norm)              # 일별 portfolio 가치 (시작 1.0)
+        port_d = port_value / port_value.shift(1) - 1    # 일별 수익률
+        port_d.iloc[0] = port_value.iloc[0] - 1          # 첫 일자: 1.0 → port_value[0]
         parts.append(port_d)
 
     if not parts:
