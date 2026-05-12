@@ -5,9 +5,9 @@ pages/09_About.py — About / FAQ 페이지 (6 영역)
   1. Header
   2. Sub-header (페이지 컨텍스트)
   3. 펀드 소개 (1.1 정체성 / 1.2 운용 철학 / 1.3 프로젝트 메타)
-  4. FAQ (13개, 4 카테고리)
+  4. FAQ (2.1 펀드 일반 / 2.2 성과 관련 / 2.3 위험 관리 / 2.4 학술 토대)
   5. 데이터 출처
-  6. Disclosure (표준 disclaimer + Risk Factor 5가지)
+  6. Disclosure (3.1 표준 disclaimer / 3.2 위험 요인 5가지)
   7. Footer
 
 설계 원칙:
@@ -106,8 +106,8 @@ st.caption(
     "각 질문을 클릭하시면 답변이 펼쳐집니다."
 )
 
-# --- 4.1 펀드 일반 ---
-st.markdown("#### 4.1 펀드 일반")
+# --- 2.1 펀드 일반 ---
+st.markdown("#### 2.1 펀드 일반")
 
 with st.expander("Q1. 이 펀드는 실제로 가입 가능한가요?"):
     st.markdown(
@@ -133,8 +133,8 @@ with st.expander("Q4. 거래비용은 반영되어 있나요?"):
         "mid-cap 포함 액티브 ETF 수준의 보수적 가정입니다."
     )
 
-# --- 4.2 성과 관련 ---
-st.markdown("#### 4.2 성과 관련")
+# --- 2.2 성과 관련 ---
+st.markdown("#### 2.2 성과 관련")
 
 with st.expander("Q5. 왜 최근 24개월 (2024-2025) 에 시장 대비 부진했나요?"):
     st.markdown(
@@ -172,8 +172,8 @@ with st.expander("Q8. SPY 와 비교하는 것 외에 다른 벤치마크는 없
         "더 정확히 측정하기 위한 비교 기준입니다."
     )
 
-# --- 4.3 위험 관리 ---
-st.markdown("#### 4.3 위험 관리")
+# --- 2.3 위험 관리 ---
+st.markdown("#### 2.3 위험 관리")
 
 with st.expander("Q9. 변동성 예측이 틀리면 어떻게 되나요?"):
     st.markdown(
@@ -197,8 +197,8 @@ with st.expander("Q11. Tail Risk (꼬리 위험) 은 어떻게 관리하나요?"
         "본 펀드의 꼬리 분포는 시장 (SPY) 대비 양호한 편으로 측정됩니다."
     )
 
-# --- 4.4 학술 토대 ---
-st.markdown("#### 4.4 학술 토대")
+# --- 2.4 학술 토대 ---
+st.markdown("#### 2.4 학술 토대")
 
 with st.expander("Q12. 시점별로 어떻게 운용 결정을 내리나요?"):
     st.markdown(
@@ -257,8 +257,8 @@ st.divider()
 # === 영역 6: Disclosure ===============================================
 st.subheader("Disclosure (위험 고지)")
 
-# --- 6.1 표준 disclaimer ---
-st.markdown("#### 6.1 표준 위험 고지")
+# --- 3.1 표준 disclaimer ---
+st.markdown("#### 3.1 표준 위험 고지")
 
 st.warning(
     """
@@ -270,8 +270,8 @@ st.warning(
     """
 )
 
-# --- 6.2 Risk Factor 5가지 ---
-st.markdown("#### 6.2 위험 요인 (Risk Factors)")
+# --- 3.2 Risk Factor 5가지 ---
+st.markdown("#### 3.2 위험 요인 (Risk Factors)")
 
 st.markdown(
     "본 펀드의 백테스트 결과를 해석하실 때 다음 **5가지 위험 요인** 을 고려하셔야 합니다."
