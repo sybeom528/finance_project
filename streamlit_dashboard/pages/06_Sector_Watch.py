@@ -88,6 +88,7 @@ period = st.session_state.get("period", "FULL")
 st.subheader(f"섹터 KPI — {period}")
 st.caption(
     "**섹터 집중도 / 섹터 비중 평균 차이 / 섹터 비중 최대 차이 / 최대 over-weight 섹터 / 최대 under-weight 섹터**. "
+    "메인 = **사이드바 기간 평균** (토글에 즉시 반응) / caption = **최신 시점** 값 (보조). "
     "시장 (SPY) 대비 어떤 섹터에 더/덜 투자했는지 비교합니다."
 )
 render_sector_kpi(weights, panel, sp500_membership, ticker_to_sector, period)

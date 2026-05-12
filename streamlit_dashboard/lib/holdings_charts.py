@@ -107,7 +107,7 @@ def render_holdings_kpi(
     period: str,
 ) -> None:
     """
-    Holdings KPI 6개 — Latest snapshot + 사이드바 토글 평균.
+    Holdings KPI 6개 — 사이드바 토글 기간 평균 (메인) + Latest snapshot (caption).
 
     KPI:
       1. Number of Holdings (final.comp.n_stocks)
@@ -117,12 +117,17 @@ def render_holdings_kpi(
       5. Top Weights (T1/T5/T10) — final.top1/top10 + 학술 T5
       6. Avg Turnover (final.comp.turnover)
 
+    표시 규칙 (2026-05-13 변경):
+      - 메인 value = 기간 평균 (사이드바 토글에 반응)
+      - caption = "최신 (YYYY-MM): ..." 형식 — 최신 시점 값 보조 표시
+      - delta = 기간 평균 vs 균등가중 기준선
+
     SPY 비교 (4 KPI: EffN/SingleHHI/SectorHHI/TopW): universe 균등가중 기준선.
     """
     ticker_to_sector = _build_ticker_to_sector(universe)
     latest_date = weights.index.max()
 
-    # Latest snapshot
+    # Latest snapshot — caption 보조 표시용
     snap = mc.calc_holdings_kpi_snapshot(weights.loc[latest_date], ticker_to_sector)
     snap["turnover_latest"] = (
         float(comp.loc[latest_date, "turnover"])
@@ -130,7 +135,7 @@ def render_holdings_kpi(
         else np.nan
     )
 
-    # 기간 평균 (사이드바 토글)
+    # 기간 평균 (사이드바 토글) — 메인 KPI value
     period_idx = _filter_period_index(weights.index, period)
     if len(period_idx) > 0:
         weights_p = weights.loc[period_idx]
@@ -144,89 +149,94 @@ def render_holdings_kpi(
 
     # === 헤더 라벨 ===
     period_label_map = {"FULL": "FULL 192개월", "TEST": "TEST 168개월", "HO": "Hold Out 24개월"}
+    latest_label = latest_date.strftime("%Y-%m")
     st.caption(
-        f"**Latest snapshot**: {latest_date.strftime('%Y-%m')}  ·  "
-        f"**기간 평균**: {period_label_map.get(period, period)}"
+        f"**기간 평균**: {period_label_map.get(period, period)} (메인 표시)  ·  "
+        f"**최신 시점**: {latest_label} (보조 표시)"
     )
 
     cols = st.columns(6)
 
     # --- KPI 1: Number of Holdings ---
     with cols[0]:
+        n_avg = avg.get("n_stocks_avg", np.nan)
         st.metric(
             label="Number of Holdings",
-            value=f"{snap['n_stocks']}",
-            help="보유 종목 수 (활성 weight > 0)",
+            value=f"{n_avg:.1f}" if not pd.isna(n_avg) else "—",
+            help="보유 종목 수 (활성 weight > 0). 메인 = 기간 평균, caption = 최신 시점.",
         )
-        st.caption(
-            f"평균 {avg.get('n_stocks_avg', np.nan):.1f}"
-            if not pd.isna(avg.get('n_stocks_avg', np.nan))
-            else "평균 —"
-        )
+        st.caption(f"최신 ({latest_label}): {snap['n_stocks']}")
 
     # --- KPI 2: Effective N ---
     with cols[1]:
-        delta = snap["eff_n"] - spy["eff_n"]
+        eff_avg = avg.get("eff_n_avg", np.nan)
+        delta = (eff_avg - spy["eff_n"]) if not pd.isna(eff_avg) else np.nan
         st.metric(
             label="Effective N",
-            value=_fmt_ratio(snap["eff_n"], 1),
-            delta=f"{delta:+.0f} vs 균등",
+            value=_fmt_ratio(eff_avg, 1),
+            delta=f"{delta:+.0f} vs 균등" if not pd.isna(delta) else None,
             delta_color="off",
-            help="유효 종목 수 = 1/Σw². 높을수록 분산 (Hirschman 1945)",
+            help="유효 종목 수 = 1/Σw². 높을수록 분산 (Hirschman 1945). 메인 = 기간 평균.",
         )
-        st.caption(f"평균 {_fmt_ratio(avg.get('eff_n_avg', np.nan), 1)}")
+        st.caption(f"최신 ({latest_label}): {_fmt_ratio(snap['eff_n'], 1)}")
 
     # --- KPI 3: Single Stock HHI ---
     with cols[2]:
-        delta = snap["single_hhi"] - spy["single_hhi"]
+        shhi_avg = avg.get("single_hhi_avg", np.nan)
+        delta = (shhi_avg - spy["single_hhi"]) if not pd.isna(shhi_avg) else np.nan
         st.metric(
             label="Single Stock HHI",
-            value=_fmt_ratio(snap["single_hhi"], 4),
-            delta=f"{delta:+.4f} vs 균등",
+            value=_fmt_ratio(shhi_avg, 4),
+            delta=f"{delta:+.4f} vs 균등" if not pd.isna(delta) else None,
             delta_color="inverse",  # 낮을수록 좋음
-            help="개별 종목 집중도 = Σw². 낮을수록 분산",
+            help="개별 종목 집중도 = Σw². 낮을수록 분산. 메인 = 기간 평균.",
         )
-        st.caption(f"평균 {_fmt_ratio(avg.get('single_hhi_avg', np.nan), 4)}")
+        st.caption(f"최신 ({latest_label}): {_fmt_ratio(snap['single_hhi'], 4)}")
 
     # --- KPI 4: Sector HHI ---
     with cols[3]:
-        delta = snap["sector_hhi"] - spy["sector_hhi"]
+        sec_avg = avg.get("sector_hhi_avg", np.nan)
+        delta = (sec_avg - spy["sector_hhi"]) if not pd.isna(sec_avg) else np.nan
         st.metric(
             label="Sector HHI",
-            value=_fmt_ratio(snap["sector_hhi"], 3),
-            delta=f"{delta:+.3f} vs 균등",
+            value=_fmt_ratio(sec_avg, 3),
+            delta=f"{delta:+.3f} vs 균등" if not pd.isna(delta) else None,
             delta_color="inverse",
-            help="섹터 집중도 = Σ(섹터 weight)². 낮을수록 섹터 분산",
+            help="섹터 집중도 = Σ(섹터 weight)². 낮을수록 섹터 분산. 메인 = 기간 평균.",
         )
-        st.caption(f"평균 {_fmt_ratio(avg.get('sector_hhi_avg', np.nan), 3)}")
+        st.caption(f"최신 ({latest_label}): {_fmt_ratio(snap['sector_hhi'], 3)}")
 
     # --- KPI 5: Top 10 비중 (가장 비중 큰 10 종목의 weight 합) ---
     with cols[4]:
+        top10_avg = avg.get("top10_avg", np.nan)
+        top1_avg = avg.get("top1_avg", np.nan)
+        top5_avg = avg.get("top5_avg", np.nan)
+        delta_top = ((top10_avg - spy["top10"]) * 100) if not pd.isna(top10_avg) else np.nan
         st.metric(
             label="Top 10 비중",
-            value=_fmt_pct(snap["top10"], digits=1),
-            delta=f"{(snap['top10'] - spy['top10']) * 100:+.1f}%p vs 균등가중",
+            value=_fmt_pct(top10_avg, digits=1),
+            delta=f"{delta_top:+.1f}%p vs 균등가중" if not pd.isna(delta_top) else None,
             delta_color="inverse",
             help=(
                 "**Top 10 종목 weight 합계** — 가장 비중 큰 10개 종목이 portfolio 의 X% 차지. "
-                "낮을수록 분산 운용, 높을수록 소수 종목 집중. "
-                "**vs 균등가중** = 모든 종목을 1/N (= 1/펀드 universe 종목 수, 약 1/500) 씩 보유한 경우 대비 차이. "
-                "예: 균등가중 시 Top 10 = 10/500 = 2.0%, 펀드가 23% 면 +21%p 더 집중."
+                "낮을수록 분산 운용, 높을수록 소수 종목 집중. 메인 = 기간 평균. "
+                "**vs 균등가중** = 모든 종목을 1/N (= 1/펀드 universe 종목 수, 약 1/500) 씩 보유한 경우 대비 차이."
             ),
         )
         st.caption(
-            f"Top 1: {_fmt_pct(snap['top1'], digits=2)} · "
-            f"Top 5: {_fmt_pct(snap['top5'], digits=1)}"
+            f"Top 1 평균: {_fmt_pct(top1_avg, digits=2)} · "
+            f"Top 5 평균: {_fmt_pct(top5_avg, digits=1)}"
         )
 
     # --- KPI 6: Avg Turnover ---
     with cols[5]:
+        turnover_avg = avg.get("turnover_avg", np.nan)
         st.metric(
-            label="Latest Turnover",
-            value=_fmt_pct(snap["turnover_latest"], digits=1),
-            help="월별 회전율 = Σ|w_new - w_prev|. 낮을수록 안정 운용",
+            label="평균 회전율",
+            value=_fmt_pct(turnover_avg, digits=1),
+            help="월별 회전율 = Σ|w_new - w_prev|. 낮을수록 안정 운용. 메인 = 기간 평균.",
         )
-        st.caption(f"평균 {_fmt_pct(avg.get('turnover_avg', np.nan), digits=1)}/월")
+        st.caption(f"최신 ({latest_label}): {_fmt_pct(snap['turnover_latest'], digits=1)}")
 
 
 # ======================================================================

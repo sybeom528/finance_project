@@ -86,7 +86,7 @@ period = st.session_state.get("period", "FULL")
 st.subheader(f"보유 종목 KPI — {period}")
 st.caption(
     "**보유 종목 수 / 유효 종목 수 / 종목 집중도 / 섹터 집중도 / 상위 비중 / 회전율**. "
-    "**최신 시점** (2025-12) 값 + **기간 평균** 함께 표시. "
+    "메인 = **사이드바 기간 평균** (토글에 즉시 반응) / caption = **최신 시점** 값 (보조). "
     "비교 기준은 균등 가중 (모든 종목 동일 비중) 기준선."
 )
 render_holdings_kpi(weights, comp, universe, panel, period)

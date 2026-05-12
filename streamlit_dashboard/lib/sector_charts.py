@@ -95,40 +95,42 @@ def render_sector_kpi(
     period: str,
 ) -> None:
     """
-    Sector KPI 5개 — Latest snapshot + 사이드바 토글 평균.
+    Sector KPI 5개 — 사이드바 토글 기간 평균 (메인) + Latest snapshot (caption).
 
     1. Sector HHI (Hirschman 1945, sector level)
     2. 섹터 비중 평균 차이 (vs SPY) = Avg |Tilt|
     3. 섹터 비중 최대 차이 (vs SPY) = Max |Tilt|
-       (2026-05-12 변경: Active Bets → Max |Tilt|, "베팅" 표현 제거)
-    4. Most Overweight Sector (이름 + Tilt%)
-    5. Most Underweight Sector (이름 + Tilt%, HO 정당화 narrative 직접 연결)
+    4. Most Overweight Sector (기간 평균 Tilt 기준)
+    5. Most Underweight Sector (기간 평균 Tilt 기준, HO 정당화 narrative 직접 연결)
+
+    표시 규칙 (2026-05-13 변경):
+      - 메인 value = 기간 평균 (사이드바 토글에 반응)
+      - caption = "최신 (YYYY-MM): ..." 형식 — 최신 시점 값 보조 표시
+      - KPI 4/5 의 Most Over/Under 섹터도 기간 평균 Tilt 기준으로 산출
     """
     latest = weights.index.max()
 
-    # Latest snapshot
+    # Latest snapshot — caption 보조 표시용
     fund_sw_latest = mc.calc_sector_weights(weights.loc[latest], ticker_to_sector)
     spy_sw_latest = mc.compute_spy_sector_weights(panel, sp500_membership, latest, ticker_to_sector)
     tilt_latest = mc.calc_sector_tilt(fund_sw_latest, spy_sw_latest)
 
     sector_hhi_latest = float((fund_sw_latest ** 2).sum())
     spy_hhi_latest = float((spy_sw_latest ** 2).sum()) if len(spy_sw_latest) > 0 else np.nan
-
-    avg_tilt_latest = float(tilt_latest.abs().mean())
-    # Max |Tilt| 산출 — 가장 큰 단일 베팅 (under/over 무관)
+    avg_tilt_latest = float(tilt_latest.abs().mean()) if len(tilt_latest) > 0 else np.nan
     if len(tilt_latest) > 0:
         max_tilt_latest = float(tilt_latest.abs().max())
         max_tilt_sector_latest = str(tilt_latest.abs().idxmax())
-        max_tilt_signed_latest = float(tilt_latest.loc[max_tilt_sector_latest])
     else:
         max_tilt_latest = np.nan
         max_tilt_sector_latest = ""
-        max_tilt_signed_latest = np.nan
-    most_over = tilt_latest.head(1)
-    most_under = tilt_latest.tail(1)
+    most_over_latest = tilt_latest.head(1) if len(tilt_latest) > 0 else pd.Series(dtype=float)
+    most_under_latest = tilt_latest.tail(1) if len(tilt_latest) > 0 else pd.Series(dtype=float)
 
-    # 기간 평균 (사이드바 토글)
+    # 기간 평균 (사이드바 토글) — 메인 KPI value
     period_idx = _filter_period_index(weights.index, period)
+    tilt_frames: list[pd.Series] = []
+    spy_hhi_list: list[float] = []
     if len(period_idx) > 0:
         hhi_list, avg_tilt_list, max_tilt_list = [], [], []
         for t in period_idx:
@@ -139,86 +141,118 @@ def render_sector_kpi(
             avg_tilt_list.append(float(tt.abs().mean()))
             if len(tt) > 0:
                 max_tilt_list.append(float(tt.abs().max()))
-        avg_hhi = float(np.mean(hhi_list))
-        avg_tilt_mean = float(np.mean(avg_tilt_list))
+                tilt_frames.append(tt)
+            if len(ssw) > 0:
+                spy_hhi_list.append(float((ssw ** 2).sum()))
+        avg_hhi = float(np.mean(hhi_list)) if hhi_list else np.nan
+        avg_tilt_mean = float(np.mean(avg_tilt_list)) if avg_tilt_list else np.nan
         max_tilt_mean = float(np.mean(max_tilt_list)) if max_tilt_list else np.nan
+        spy_hhi_mean = float(np.mean(spy_hhi_list)) if spy_hhi_list else np.nan
     else:
-        avg_hhi = avg_tilt_mean = max_tilt_mean = np.nan
+        avg_hhi = avg_tilt_mean = max_tilt_mean = spy_hhi_mean = np.nan
+
+    # 기간 평균 Tilt → 섹터별 평균 → Most Over/Under
+    if tilt_frames:
+        mean_tilt_by_sector = (
+            pd.concat(tilt_frames, axis=1).mean(axis=1).sort_values(ascending=False)
+        )
+        most_over_avg = mean_tilt_by_sector.head(1)
+        most_under_avg = mean_tilt_by_sector.tail(1)
+    else:
+        most_over_avg = pd.Series(dtype=float)
+        most_under_avg = pd.Series(dtype=float)
 
     # 헤더 라벨
     period_label_map = {"FULL": "FULL 192개월", "TEST": "TEST 168개월", "HO": "Hold Out 24개월"}
+    latest_label = latest.strftime("%Y-%m")
     st.caption(
-        f"**Latest snapshot**: {latest.strftime('%Y-%m')}  ·  "
-        f"**기간 평균**: {period_label_map.get(period, period)}"
+        f"**기간 평균**: {period_label_map.get(period, period)} (메인 표시)  ·  "
+        f"**최신 시점**: {latest_label} (보조 표시)"
     )
 
     cols = st.columns(5)
 
     with cols[0]:
-        delta = sector_hhi_latest - spy_hhi_latest if not pd.isna(spy_hhi_latest) else None
+        delta = (avg_hhi - spy_hhi_mean) if not (pd.isna(avg_hhi) or pd.isna(spy_hhi_mean)) else None
         st.metric(
             label="Sector HHI",
-            value=_fmt_ratio(sector_hhi_latest, 3),
+            value=_fmt_ratio(avg_hhi, 3),
             delta=f"{delta:+.3f} vs SPY" if delta is not None else None,
             delta_color="inverse",
-            help="섹터 집중도 = Σ(섹터 weight)². 낮을수록 분산 (Hirschman 1945)",
+            help="섹터 집중도 = Σ(섹터 weight)². 낮을수록 분산 (Hirschman 1945). 메인 = 기간 평균.",
         )
-        st.caption(f"평균 {_fmt_ratio(avg_hhi, 3)}")
+        st.caption(f"최신 ({latest_label}): {_fmt_ratio(sector_hhi_latest, 3)}")
 
     with cols[1]:
         st.metric(
             label="섹터 비중 평균 차이 (vs SPY)",
-            value=_fmt_pct(avg_tilt_latest, digits=2),
+            value=_fmt_pct(avg_tilt_mean, digits=2),
             help=(
                 "**11개 GICS 섹터의 |Fund 비중 − SPY 비중| 평균**. "
                 "펀드가 SPY 대비 각 섹터를 얼마나 다르게 보유했는지의 평균 차이 (절대값 평균 — 방향 무관). "
                 "예: 5%p = 각 섹터가 평균적으로 SPY 대비 ±5%p 차이. "
-                "일반 active fund 4-8%p, passive ~0%p."
+                "일반 active fund 4-8%p, passive ~0%p. 메인 = 기간 평균."
             ),
         )
-        st.caption(f"평균 {_fmt_pct(avg_tilt_mean, digits=2)}")
+        st.caption(f"최신 ({latest_label}): {_fmt_pct(avg_tilt_latest, digits=2)}")
 
     with cols[2]:
         # Max |Tilt| — 단일 섹터 최대 차이 (under/over 무관)
         st.metric(
-            label="섹터 비중 최대 차이 (vs SPY)",
-            value=_fmt_pct(max_tilt_latest, digits=2),
+            label="섹터 비중 최대 차이 평균 (vs SPY)",
+            value=_fmt_pct(max_tilt_mean, digits=2),
             help=(
-                "**가장 큰 단일 섹터 비중 차이의 크기** = max |Fund 비중 − SPY 비중|. "
+                "**각 시점의 최대 단일 섹터 비중 차이를 기간 평균** = mean( max |Fund 비중 − SPY 비중| ). "
                 "방향 (over/under) 무관 — 절대값 기준. "
-                "펀드가 SPY 대비 어느 섹터에서 가장 다르게 운용했는지 그 크기를 보여줍니다 "
+                "매월 가장 크게 벌어진 섹터 차이가 평균적으로 얼마였는지를 나타냅니다 "
                 "(어느 섹터인지는 KPI 4 / 5 참조). "
-                "KPI 2 (평균 차이) 와 짝 — 평균 vs 최대."
+                "KPI 2 (전체 섹터 평균 차이) 와 짝 — 전체 평균 vs 최대 섹터 평균. 메인 = 기간 평균."
             ),
         )
-        # 부호 + 섹터명 표시 (섹터명 한글 매핑)
-        sign_str = f"{max_tilt_signed_latest * 100:+.2f}%p"
         st.caption(
-            f"{_sector_ko(max_tilt_sector_latest)}: {sign_str}  ·  "
-            f"평균 {_fmt_pct(max_tilt_mean, digits=2)}"
+            f"최신 ({latest_label}): {_sector_ko(max_tilt_sector_latest)} "
+            f"{_fmt_pct(max_tilt_latest, digits=2)}"
         )
 
     with cols[3]:
-        if len(most_over) > 0:
-            sec, val = most_over.index[0], float(most_over.iloc[0])
+        if len(most_over_avg) > 0:
+            sec_avg, val_avg = most_over_avg.index[0], float(most_over_avg.iloc[0])
             st.metric(
                 label="Most Overweight",
-                value=_sector_ko(sec),
-                delta=f"{val:+.2%}",
+                value=_sector_ko(sec_avg),
+                delta=f"{val_avg:+.2%}",
                 delta_color="off",
-                help=f"펀드 vs SPY 가장 큰 over-weight 섹터: {sec}",
+                help=(
+                    f"기간 평균 Tilt 기준 가장 큰 over-weight 섹터: {sec_avg}. "
+                    "메인 = 기간 평균 Tilt 최대 섹터."
+                ),
             )
+            if len(most_over_latest) > 0:
+                sec_l = str(most_over_latest.index[0])
+                val_l = float(most_over_latest.iloc[0])
+                st.caption(
+                    f"최신 ({latest_label}): {_sector_ko(sec_l)} {val_l:+.2%}"
+                )
 
     with cols[4]:
-        if len(most_under) > 0:
-            sec, val = most_under.index[0], float(most_under.iloc[0])
+        if len(most_under_avg) > 0:
+            sec_avg, val_avg = most_under_avg.index[0], float(most_under_avg.iloc[0])
             st.metric(
                 label="Most Underweight",
-                value=_sector_ko(sec),
-                delta=f"{val:+.2%}",
+                value=_sector_ko(sec_avg),
+                delta=f"{val_avg:+.2%}",
                 delta_color="off",
-                help=f"펀드 vs SPY 가장 큰 under-weight 섹터: {sec}",
+                help=(
+                    f"기간 평균 Tilt 기준 가장 큰 under-weight 섹터: {sec_avg}. "
+                    "메인 = 기간 평균 Tilt 최소 섹터."
+                ),
             )
+            if len(most_under_latest) > 0:
+                sec_l = str(most_under_latest.index[0])
+                val_l = float(most_under_latest.iloc[0])
+                st.caption(
+                    f"최신 ({latest_label}): {_sector_ko(sec_l)} {val_l:+.2%}"
+                )
 
 
 # ======================================================================
