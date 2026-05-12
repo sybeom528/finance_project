@@ -1,0 +1,43 @@
+{
+  "phase": "07_Statistical_Validation",
+  "n_tickers_503": 506,
+  "anova": {
+    "eta_sq_period": 0.4503676914870787,
+    "eta_sq_ticker": 0.19461197018989684,
+    "F_period": 640.6271969524081,
+    "F_ticker": 2.192685310471696
+  },
+  "welch_anova": {
+    "levene_stat": 16.492475058575113,
+    "levene_p": 2.394282973646383e-13,
+    "welch_F": 425.8115736047484,
+    "welch_p": 0.0
+  },
+  "kruskal_wallis": {
+    "H": 104.91758480964472,
+    "p_value": 1.0823087767589076e-14,
+    "epsilon_sq": 0.18015898526566543
+  },
+  "pairwise": {
+    "n_total": 153,
+    "n_sig_bonferroni": 26,
+    "n_large_d": 24
+  },
+  "heavy_tail": {
+    "skewness": 1.288193159697327,
+    "excess_kurtosis": 4.655778828408834,
+    "jb_stat": 596.9544058627861,
+    "jb_p": 2.360466237605601e-130,
+    "ad_stat": 4.7975991770343285
+  },
+  "academic_propositions": {
+    "prop1_period_systematic": true,
+    "prop2_heavy_tail": true,
+    "prop3_sector_effect": true,
+    "prop4_covid_sector_specific": true,
+    "all_pass": true
+  },
+  "reproducibility": {
+    "random_seed": 42
+  }
+}
