@@ -23,7 +23,7 @@ final_pt/
 │
 ├── 04_BL_Walkforward.ipynb              ← walk_forward 실행 → results/*.pkl
 ├── 05b_Analyze.ipynb          ← 분석 단일 진입점 (K_CUT → I → J → K → L → M(Q sens) → N(PCT sens))
-├── 99_slot_effects.ipynb     ← 슬롯 차원 효과 라인플롯 (pivot CSV 자동 생성)
+├── appendix/99_slot_effects.ipynb  ← 슬롯 차원 효과 라인플롯 (pivot CSV 자동 생성)
 │
 ├── results/                  ← 90 pkl
 ├── data/                     ← monthly_panel.csv, daily_returns.pkl
@@ -45,7 +45,7 @@ final_pt/
    cell-05 : 전체 실험 walk_forward 실행 (이미 저장된 pkl 자동 스킵)
 ③ 05b_Analyze.ipynb 실행 (Setup → K_CUT → I → J → K → L → M → N 순서대로)
    ※ K_CUT은 mandatory pre-step. 모든 후속 분석은 2023-12-31 cutoff 기준.
-④ (선택) 99_slot_effects.ipynb 실행 — 슬롯 차원 효과 라인플롯
+④ (선택) appendix/99_slot_effects.ipynb 실행 — 슬롯 차원 효과 라인플롯
 ```
 
 > **자동 스킵**: `(RESULTS_DIR / f'{cfg["name"]}.pkl').exists()` → 이미 있으면 스킵.

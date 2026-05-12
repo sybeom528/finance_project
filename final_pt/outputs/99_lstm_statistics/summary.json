@@ -1,5 +1,5 @@
 {
-  "phase": "07_Statistical_Validation",
+  "phase": "99_lstm_statistics",
   "n_tickers_503": 506,
   "anova": {
     "eta_sq_period": 0.4503676914870787,

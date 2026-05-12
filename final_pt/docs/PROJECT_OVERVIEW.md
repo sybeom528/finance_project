@@ -31,12 +31,16 @@ final_pt/
 ├── 02b_LowVol_PortfolioSort.ipynb         ← 횡단면 EDA (저변동 anomaly 6단 검증)
 ├── 03a_LSTM_Optuna_GridSearch.ipynb   ← HPO 보조 (12-trial Optuna → V4_BEST_CONFIG)
 ├── 03b_Volatility_Forecasting.ipynb   ← LSTM 학습 + HAR baseline + Diebold-Pauly ensemble
-├── 07_Statistical_Validation.ipynb    ← 학술 통계 심화 분석
 ├── 05a_HMM_Regime.ipynb                   ← 3-레짐 HMM 분류
 │
 ├── 04_BL_Walkforward.ipynb                       ← walk_forward 실행 → results/*.pkl
-├── 05b_Analyze.ipynb                   ← 분석 (K_CUT → I → J → K → L → M → N)
-├── 99_slot_effects.ipynb              ← 슬롯 차원 효과 라인플롯 (pivot CSV 자동 생성)
+├── 05b_Analyze.ipynb                   ← 분석 (§1 K_CUT → §2-§6 → §7 BL α 분해)
+├── 06_Regime_Analysis.ipynb               ← 4-레짐 (3-K_CUT + R4 hold-out) winner 검증
+│
+├── appendix/                              ← Utility / Appendix 노트북 (발표 본문 외)
+│   ├── 99_explore.ipynb                ← 실험 탐색 utility (Q&A 백업)
+│   ├── 99_slot_effects.ipynb           ← Winner OAT (One-At-a-Time) 슬롯 효과
+│   └── 99_lstm_statistics.ipynb        ← LSTM RMSE 학술 통계
 │
 ├── timeseries_lib.py                  ← 시계열·통계 함수 (LSTM, HAR-RV, ensemble, 통계 검정)
 ├── lstm_pipeline.py                   ← LSTM high-level orchestration (V4_BEST_CONFIG, walk_forward)
