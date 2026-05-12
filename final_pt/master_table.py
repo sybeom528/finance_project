@@ -89,13 +89,15 @@ def parse_config(cfg: dict) -> dict:
     }
 
 
-# ── 3-레짐 정의 (HMM n=3 구조전환점, 2026-05-07) ──────────────────────
+# ── 3-레짐 정의 (HMM n=3 구조전환점, K_CUT 적용, 2026-05-07/12 갱신) ───────
 # 근거: HMM Bull/Neutral/Bear (≥63거래일 지속 필터) — N→B 전환점 ~2012-06, ~2020-01
 # 본 프로젝트 단일 기간 시스템. mt와 rt 모두 동일 레짐 사용.
+# R3 의 종료점은 K_CUT (2023-12-31, 168m TEST 구간 끝) 으로 정렬 — hold-out 24m
+# (2024-01 ~ 2025-12) 는 EVAL_PERIODS['HOLD_OUT'] 으로 분리 책임.
 REGIMES = [
     ('R1_회복',  '2010-01-01', '2012-06-30'),  # Post-GFC + EU위기 (30개월)
     ('R2_확장',  '2012-07-01', '2019-12-31'),  # 장기 Bull (90개월)
-    ('R3_변동',  '2020-01-01', '2024-12-31'),  # COVID + 22 베어 + AI랠리 (60개월)
+    ('R3_변동',  '2020-01-01', '2023-12-31'),  # COVID + 22 베어 + 23 AI도입기 (48개월, K_CUT)
 ]
 PERIODS_DEFAULT = {label: (s, e) for label, s, e in REGIMES}
 
@@ -108,6 +110,56 @@ EVAL_PERIODS = {
     'HOLD_OUT': ('2024-01-01', '2025-12-31'),  # 24m, 실전 검증
     'FULL'    : ('2010-01-01', '2025-12-31'),  # 192m, 보조 통합 비교
 }
+
+
+def identify_winner(
+    mt: 'pd.DataFrame',
+    rt: 'pd.DataFrame',
+    ir_threshold: float = 10.0,
+    sortino_key: str = 'sortino',
+) -> dict:
+    """
+    자동 winner 식별 — 05b / 06 / 기타 분석 노트북 공통 single source.
+
+    기준
+    ----
+    1) `rt['sortino_ir'] >= ir_threshold` 필터 (3-레짐 안정성 robust)
+    2) 그 중 `mt[sortino_key]` 최댓값 → winner
+
+    Parameters
+    ----------
+    mt : DataFrame
+        build_master_table 결과 (이름, sortino, sortino_TEST 등 컬럼 포함).
+    rt : DataFrame
+        build_regime_table 결과 (sortino_ir 컬럼 포함, 3-레짐 기반).
+    ir_threshold : float
+        sortino_ir 절대 임계값. 기본 10.0.
+    sortino_key : str
+        최댓값 정렬 컬럼. 'sortino' (전체기간) / 'sortino_TEST' (168m) 등.
+
+    Returns
+    -------
+    dict with keys:
+      name        : winner pkl name (e.g., 'mat_eq_eq_raw_pap')
+      n_stable    : sortino_ir 통과 후보 수 (== Top n_stable rank cutoff)
+      threshold   : ir_threshold passthrough (display 용)
+      sortino_key : sortino_key passthrough
+      sortino_val : winner 의 sortino_key 값
+    """
+    stable = rt[rt['sortino_ir'] >= ir_threshold]['name'].values
+    n_stable = len(stable)
+    if n_stable == 0:
+        cand = mt.sort_values(sortino_key, ascending=False)
+    else:
+        cand = mt[mt['name'].isin(stable)].sort_values(sortino_key, ascending=False)
+    top = cand.iloc[0]
+    return {
+        'name': top['name'],
+        'n_stable': n_stable,
+        'threshold': ir_threshold,
+        'sortino_key': sortino_key,
+        'sortino_val': float(top[sortino_key]),
+    }
 
 
 def _sharpe_subperiod(ret: pd.Series, rf: pd.Series, start: str, end: str) -> float:

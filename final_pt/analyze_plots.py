@@ -79,34 +79,32 @@ def plot_marginal_effects(
     mt: pd.DataFrame,
     metric: str = 'sortino',   # 사용자 요청: Sortino 우선 (2026-05-07)
     slots: list = None,
-    figsize=(15, 9),
+    figsize=(13, 9),
     save_path=None,
 ):
     """
-    각 슬롯값별 metric 분포를 boxplot으로 비교.
+    각 슬롯값별 metric 분포를 boxplot으로 비교. 2×2 레이아웃 (§2.1 turnover boxplot 와 통일, 2026-05-12).
 
-    slots: None이면 ['prior_s','p_s','pw_s','q_s','om_s'] 5개.
+    slots: None이면 ['prior_s','pw_s','q_s','om_s'] 4개 (p_s = 'ls' 단일이라 제외, §2.1 와 동일 순서).
     """
     if slots is None:
-        slots = ['prior_s', 'p_s', 'pw_s', 'q_s', 'om_s']
+        slots = ['prior_s', 'pw_s', 'q_s', 'om_s']
 
-    n = len(slots)
-    ncol = 3
-    nrow = int(np.ceil(n / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=figsize)
-    axes = np.atleast_1d(axes).flatten()
-
+    # §2.1 와 동일한 짧은 라벨
     slot_label = {
-        'prior_s': 'Prior (시장균형)',
-        'p_s'    : 'P 변동성 (LSTM)',
-        'pw_s'   : 'P 가중치',
-        'q_s'    : 'Q 모드',
-        'om_s'   : 'Omega 모드',
+        'prior_s': 'Prior',
+        'p_s'    : 'P_mode',
+        'pw_s'   : 'P_weight',
+        'q_s'    : 'Q_mode',
+        'om_s'   : 'Omega',
     }
+
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    axes = axes.flatten()
 
     for i, slot in enumerate(slots):
         ax = axes[i]
-        # 그룹별 mean 기준 정렬
+        # 그룹별 mean 기준 정렬 (descending — high metric = better)
         order = mt.groupby(slot)[metric].mean().sort_values(ascending=False).index.tolist()
         data  = [mt[mt[slot] == k][metric].dropna().values for k in order]
         counts = [len(d) for d in data]
@@ -118,20 +116,22 @@ def plot_marginal_effects(
             patch.set_facecolor('#9ecae1')
             patch.set_alpha(0.7)
 
-        ax.set_title(f'{slot_label.get(slot, slot)}\n(n={counts})', fontsize=11)
-        ax.set_ylabel(metric)
-        ax.grid(True, alpha=0.3, axis='y')
-        ax.tick_params(axis='x', rotation=30)
+        ax.set_title(f'{slot_label.get(slot, slot)}  (n={counts})', fontsize=11)
+        ax.set_ylabel(f'{metric} (월평균)' if metric == 'turnover' else metric)
+        ax.tick_params(axis='x', rotation=20)
+        ax.grid(alpha=0.3, axis='y')
 
-        # 전체 중앙값 가로선
+        # 전체 중앙값 가로선 + 레전드 (§2.1 와 동일)
         overall = mt[metric].median()
-        ax.axhline(overall, color='gray', linestyle='--', alpha=0.5, lw=1)
+        ax.axhline(overall, color='gray', linestyle='--', alpha=0.5, lw=1,
+                   label=f'전체 중앙값={overall:.3f}')
+        ax.legend(fontsize=8, loc='upper right')
 
-    # 남는 axes 숨김
-    for j in range(n, len(axes)):
+    # 남는 axes 숨김 (slots < 4 인 경우)
+    for j in range(len(slots), len(axes)):
         axes[j].set_visible(False)
 
-    fig.suptitle(f'슬롯별 {metric} 분포 (red ◆=평균, 가로선=전체 중앙값)',
+    fig.suptitle(f'슬롯별 {metric} 분포 (red ◆=평균, 회색선=전체 중앙값)',
                  fontsize=13, y=1.00)
     fig.tight_layout()
 
@@ -479,10 +479,23 @@ def plot_styled_regime_dashboard(
     top_n: int = 20,
     regime_labels: list = None,
     save_path=None,
+    winner_name: str = None,
+    threshold_rank: int = None,
+    threshold_label: str = None,
 ):
     """
     Top N × 3 metric (sortino/sharpe/mdd) × 3 레짐을 단일 matplotlib 그림으로.
     1 figure, 3 panel 병치.
+
+    Parameters
+    ----------
+    winner_name : str | None
+        자동 식별된 winner 의 pkl `name` (e.g., 'mat_eq_eq_raw_pap').
+        주어지면 y축 라벨에서 매칭되는 행 끝에 ⭐ 표시.
+    threshold_rank : int | None
+        가로 구분선을 그을 rank (1-base). e.g., 13 이면 rank 13 과 rank 14 사이에 점선.
+    threshold_label : str | None
+        구분선 위쪽에 표시할 캡션.
 
     Returns matplotlib Figure (PNG로 저장 가능).
     """
@@ -491,11 +504,18 @@ def plot_styled_regime_dashboard(
 
     top = rt.nlargest(top_n, rank_by).reset_index(drop=True)
     canonicals = top['canonical'].tolist()
-    rank_labels = [f'{i+1:>2}. {n}' for i, n in enumerate(canonicals)]
+    names = top['name'].tolist() if 'name' in top.columns else [None] * top_n
+    rank_labels = []
+    for i, (nm, c) in enumerate(zip(names, canonicals)):
+        # ★ (U+2605, AppleGothic / NanumGothic 등 한글 폰트에 글리프 있음).
+        # ⭐ (U+2B50) 은 emoji 폰트 필요해서 matplotlib 한글 폰트에서 □ 로 깨짐.
+        marker = ' ★' if (winner_name and nm == winner_name) else ''
+        rank_labels.append(f'{i+1:>2}. {c}{marker}')
 
-    height = max(8, top_n * 0.4 + 2)
-    fig, axes = plt.subplots(1, 3, figsize=(18, height), sharey=True,
-                              gridspec_kw={'wspace': 0.05})
+    # x축 라벨 + colorbar 분리 공간 확보를 위해 세로 여백 +3 (기존 +2)
+    height = max(10, top_n * 0.45 + 3)
+    fig, axes = plt.subplots(1, 3, figsize=(19, height), sharey=True,
+                              gridspec_kw={'wspace': 0.06})
 
     for ax, metric in zip(axes, ['sortino', 'sharpe', 'mdd']):
         cols = [f'{metric}_{lbl}' for lbl in regime_labels]
@@ -510,7 +530,8 @@ def plot_styled_regime_dashboard(
 
         im = ax.imshow(data, cmap='RdYlGn', aspect='auto', vmin=vmin, vmax=vmax)
         ax.set_xticks(range(len(regime_labels)))
-        ax.set_xticklabels(regime_labels, rotation=20, ha='right', fontsize=10)
+        # 회전각 30° + ha='right' → 한글 라벨 (R4_HOLD_OUT 등) 충돌 방지
+        ax.set_xticklabels(regime_labels, rotation=30, ha='right', fontsize=10)
         ax.set_title(f'{metric.upper()}', fontsize=13, fontweight='bold', pad=8)
 
         # 셀 값 표시
@@ -521,8 +542,8 @@ def plot_styled_regime_dashboard(
                     fmt = f'{v*100:.1f}%' if metric == 'mdd' else f'{v:.2f}'
                     ax.text(j, i, fmt, ha='center', va='center', fontsize=8)
 
-        # colorbar (각 panel 하단)
-        cbar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.04,
+        # colorbar (각 panel 하단) — pad 키워서 회전된 x축 라벨과 분리
+        cbar = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.18,
                             orientation='horizontal', location='bottom')
         cbar.ax.tick_params(labelsize=8)
 
@@ -530,9 +551,21 @@ def plot_styled_regime_dashboard(
     axes[0].set_yticks(range(top_n))
     axes[0].set_yticklabels(rank_labels, fontsize=10)
 
-    fig.suptitle(f'Top {top_n} × 3 레짐 통합 대시보드 (정렬: {rank_by})\n'
-                 f'좌→우: SORTINO / SHARPE / MDD  ·  녹=좋음 / 적=나쁨',
-                 fontsize=13, y=1.0)
+    # 가로 구분선 (threshold_rank) — 모든 panel 에 점선 + 첫 panel 좌측 캡션
+    if threshold_rank is not None and 0 < threshold_rank < top_n:
+        y_line = threshold_rank - 0.5
+        for ax in axes:
+            ax.axhline(y_line, color='black', linestyle='--', linewidth=1.6, alpha=0.75)
+        if threshold_label:
+            axes[-1].text(len(regime_labels) - 0.4, y_line, f' {threshold_label}',
+                          ha='left', va='center', fontsize=10, color='black',
+                          fontweight='bold')
+
+    suptitle = (f'Top {top_n} × 3 레짐 통합 대시보드 (정렬: {rank_by})\n'
+                f'좌→우: SORTINO / SHARPE / MDD  ·  녹=좋음 / 적=나쁨')
+    if winner_name:
+        suptitle += f'  ·  ★ = winner ({winner_name})'
+    fig.suptitle(suptitle, fontsize=13, y=1.0)
 
     if save_path:
         fig.savefig(save_path, dpi=120, bbox_inches='tight')
