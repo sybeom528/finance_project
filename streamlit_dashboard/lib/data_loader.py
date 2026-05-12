@@ -677,23 +677,3 @@ def compute_fund_daily_returns(
 
     return pd.concat(parts).sort_index()
 
-
-@st.cache_data
-def compute_fwd_log_rv(_daily_returns: pd.DataFrame, horizon: int = 21) -> pd.DataFrame:
-    """LSTM 예측 target 산식 그대로 재현: log(rolling(21).std()).shift(-21)
-
-    시점 t 의 값 = log(std(log_ret[t+1 : t+horizon+1], ddof=1)).
-    pandas rolling().std() 기본 ddof=1 → final/lstm_pipeline.py:179-182 의 target_logrv 와 정확히 동일.
-
-    Args:
-        _daily_returns: 일별 log return DataFrame (index=date, columns=ticker)
-                        underscore prefix = streamlit 캐시 hash 우회 (이미 상위 캐시)
-        horizon: forward window (default 21 거래일 = LSTM 표준 horizon)
-
-    Returns:
-        DataFrame: index=date, columns=ticker, values=forward log-RV
-        (forward 데이터 부재로 우측 끝 horizon 일 NaN)
-
-    학술: log-RV = log(realized volatility), Andersen & Bollerslev (1998).
-    """
-    return np.log(_daily_returns.rolling(horizon).std()).shift(-horizon)

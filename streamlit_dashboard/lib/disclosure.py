@@ -70,6 +70,7 @@ def render_footer() -> None:
             "- Yahoo Finance (Adj Close)\n"
             "- Fama-French Library (FF5 factors)\n"
             "- FRED (Risk-free rate)\n"
+            "- Wikipedia (S&P 500 ticker 매핑)\n"
             "- Methodology: Black-Litterman + LSTM 4-slot"
         )
 

@@ -4,7 +4,7 @@ pages/09_About.py — About / FAQ 페이지 (6 영역)
 영역 구조:
   1. Header
   2. Sub-header (페이지 컨텍스트)
-  3. 펀드 소개 (3.1 정체성 / 3.2 운용 철학 / 3.4 프로젝트 메타) — 3.3 팀 정보 제외
+  3. 펀드 소개 (1.1 정체성 / 1.2 운용 철학 / 1.3 프로젝트 메타)
   4. FAQ (13개, 4 카테고리)
   5. 데이터 출처
   6. Disclosure (표준 disclaimer + Risk Factor 5가지)
@@ -55,7 +55,7 @@ st.subheader("펀드 소개")
 
 st.markdown(
     """
-    #### 3.1 펀드 정체성
+    #### 1.1 펀드 정체성
 
     **Adaptive Volatility Control Fund (변동성 인지 적응 펀드)** 는
     시장의 변동성을 예측하고 그에 맞춰 자산 배분을 조정하는 **학술 목적의 가상 펀드** 입니다.
@@ -69,7 +69,7 @@ st.markdown(
 
 st.markdown(
     """
-    #### 3.2 운용 철학
+    #### 1.2 운용 철학
 
     본 펀드는 두 가지 학술 모델을 결합하여 운용합니다:
 
@@ -87,7 +87,7 @@ st.markdown(
 
 st.markdown(
     """
-    #### 3.3 프로젝트 메타
+    #### 1.3 프로젝트 메타
 
     - **위치**: 부트캠프 최종 프로젝트
     - **기간**: 2025년 4월 8일 ~ 2025년 5월 13일
@@ -241,6 +241,7 @@ st.markdown(
     |---|---|---|
     | **일별 주가 (Adjusted Close)** | Yahoo Finance (`yfinance`) | 펀드 backtest 의 기초 데이터 + 일별 분포 통계 |
     | **S&P 500 편입 종목 명단 (시점별)** | S&P 공식 historical membership | 생존편향 (survivorship bias) 차단 — 시점별 실제 편입 종목만 사용 |
+    | **S&P 500 종목 티커 매핑** | Wikipedia (S&P 500 종목 목록) | 종목 ticker ↔ 회사명 / GICS 섹터 매핑 정보 |
     | **무위험 수익률 (Risk-Free Rate)** | 3M Treasury Bill | Sharpe / Sortino / Information Ratio 산출 시 무위험 수익률 기준 |
     | **시장 벤치마크** | SPY ETF (Yahoo Finance) | 시장 대비 초과 수익 / Beta / Alpha 측정 |
 
