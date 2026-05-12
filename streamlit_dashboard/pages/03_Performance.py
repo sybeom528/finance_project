@@ -214,7 +214,7 @@ spy_daily = None
 try:
     daily_returns = load_daily_returns()
     with st.spinner("일별 portfolio return 산출 중 (최초 1회만)..."):
-        fund_daily = compute_fund_daily_returns(fund_weights, daily_returns)
+        fund_daily = compute_fund_daily_returns(fund_weights, daily_returns, _comp=fund["comp"], tc=0.002)
     if "SPY" in daily_returns.columns:
         spy_daily = daily_returns["SPY"].dropna()
 except Exception as exc:

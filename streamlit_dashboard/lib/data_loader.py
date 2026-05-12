@@ -567,42 +567,48 @@ def filter_by_regime(returns: pd.Series, regime_label: str) -> pd.Series:
 def compute_fund_daily_returns(
     _fund_weights: pd.DataFrame,
     _daily_returns: pd.DataFrame,
+    _comp: pd.DataFrame | None = None,
+    tc: float = 0.002,
     nan_threshold: float = 0.9,
 ) -> pd.Series:
     """
-    펀드 일별 portfolio return 산출 — final/bl_functions.py:compute_daily_slice 결함처리 차용.
+    펀드 일별 portfolio return 산출 (drift 반영 + TC 차감, 펀드 실제 운용 정합).
 
     매월 t 시점 fund.weights 결정 → 다음 월 (t, t+1] 기간 일별 portfolio return:
-      simple_ret_i = exp(log_ret_i) - 1   (daily_returns 는 log return 으로 저장됨)
-      port_d = Σ_i (weight_i × simple_ret_i)   ← 학술 표준 (simple return weighted sum)
+      산식 (drift 반영, 2026-05-12 정정):
+        - 시점 t (월말) 에 자산 1.0 → 종목 i 에 w_i 투자
+        - 시점 t+d 의 종목 i 가치 = w_i × Π_d'=1..d (1+r_i,d')   ← 자연 drift
+        - 시점 t+d 의 portfolio 가치 = Σ_i [w_i × Π_d' (1+r_i,d')]
+        - 일별 수익률 = portfolio(d) / portfolio(d-1) - 1
 
-    산식 정정 (2026-05-12):
-      이전: port_d = Σ_i (w_i × log_ret_i) — log return 의 weighted sum
-      → 이는 portfolio 의 log return 도 simple return 도 아니므로 학술적으로 부정확
-      → log → simple 변환 후 weighted sum (학술 표준) 으로 정정
+      TC 처리 (2026-05-12 추가):
+        - _comp + tc 제공 시 시점 t (월말 매매 시점) 에 turnover × tc 만큼 차감
+        - 펀드 net 분포 산출 (펀드 자체 평가 의도)
+        - _comp=None 시 gross 분포 (TC 미반영)
+
+    산식 변경 이력:
+      1) 이전: port_d = Σ_i (w_i × log_ret_i) — log return weighted sum (학술 부정확)
+      2) → simple return weighted sum (학술 표준)
+      3) → drift 반영 (펀드 실제 운용 정합)
+      4) → TC 차감 추가 (펀드 자체 평가 — 분포 분석이 시장이 아닌 펀드 net 기준)
 
     데이터 결함 처리 (final compute_daily_slice 패턴):
       1) NaN 비율 < (1-nan_threshold) ticker 만 active universe 유지
-         (예: nan_threshold=0.9 → NaN 10% 초과 ticker 자동 배제)
       2) 남은 NaN 은 fillna(0) 처리 (그 일자 0% 수익)
-
-    이는 펀드 backtest 와 동일 처리 → 일관성 보장.
 
     Args:
         _fund_weights: pd.DataFrame (월별 index, ticker columns, sum=1)
-        _daily_returns: pd.DataFrame (일별 index, ticker columns)
-        nan_threshold: float (final compute_daily_slice thresh_daily 와 동일, 기본 0.9)
+        _daily_returns: pd.DataFrame (일별 index, ticker columns, log return)
+        _comp: pd.DataFrame | None (pkl['comp'], turnover 컬럼 사용). None 이면 TC 미반영 (gross).
+        tc: float (편측 거래비용, 기본 0.002 = 20bp)
+        nan_threshold: float (기본 0.9)
 
     Returns:
-        pd.Series (일별 portfolio return, DatetimeIndex)
-
-    NOTE: 펀드 backtest 자체는 forward-looking weights (t 시점 결정 → t+1 보유) 패턴.
-          여기서는 fund.weights[t] = t 시점 보유 weight 가정 (= t-1 결정).
-          호출 측에서 주의 — t 시점 weight 로 t 까지의 일별 수익률 산출은 look-ahead.
-          따라서 weight[t]를 (t, t+1] 보유 기간에 적용 (shift 1).
+        pd.Series (일별 portfolio return, DatetimeIndex). _comp 제공 시 net, 미제공 시 gross.
     """
     daily_returns = _daily_returns
     weights = _fund_weights
+    comp = _comp
 
     # 월별 weight 의 인덱스 정렬
     monthly_dates = pd.DatetimeIndex(weights.index).sort_values()
@@ -646,18 +652,24 @@ def compute_fund_daily_returns(
             continue
         w_norm = w_valid / w_sum
 
-        # 일별 portfolio return (drift 반영, 2026-05-12 정정 — 펀드 실제 운용 정합):
+        # 일별 portfolio return (drift 반영 + TC 차감, 2026-05-12 정정):
         #   - 시점 t (월말) 에 자산 1.0, 종목 i 에 w_i 투자
         #   - 시점 t+d 의 종목 i 가치 = w_i × Π_d'=1..d (1+r_i,d')  ← 자연 drift
-        #   - 시점 t+d 의 portfolio 가치 = Σ_i w_i × Π_d'=1..d (1+r_i,d')
-        #   - 시점 t+d 의 일별 수익률 = portfolio(t+d) / portfolio(t+d-1) - 1
-        # 이는 본 펀드의 월말 리밸런싱 + 보유 기간 자연 drift 시나리오를 정확 모사.
-        # 이전 산식 (drift 무시): port_d = Σ_i (w_i × r_i,d) — 매일 비중 고정 가정
-        # → 수학적으로 "일별 리밸런싱 가상 portfolio" 와 동일 결과 (펀드 실제와 미세 차이)
+        #   - 시점 t (월말 매매) 에 turnover × tc 만큼 차감 (TC 반영, _comp 제공 시)
         cum_factor = (1 + period_simple).cumprod()       # 종목별 누적 (drift 추적)
         port_value = cum_factor.dot(w_norm)              # 일별 portfolio 가치 (시작 1.0)
-        port_d = port_value / port_value.shift(1) - 1    # 일별 수익률
-        port_d.iloc[0] = port_value.iloc[0] - 1          # 첫 일자: 1.0 → port_value[0]
+
+        # TC 차감 (월말 매매 시점, 첫 일자에 반영)
+        # 첫 일자의 net return = tc_factor × port_value[0] - 1
+        # 그 후 일자: gross 와 동일 비율 (= port_value 의 pct_change)
+        if comp is not None and "turnover" in comp.columns and t_decision in comp.index:
+            turnover = comp.loc[t_decision, "turnover"]
+            tc_factor = (1 - turnover * tc) if (turnover and not pd.isna(turnover)) else 1.0
+        else:
+            tc_factor = 1.0  # TC 미반영 (gross)
+
+        port_d = port_value / port_value.shift(1) - 1    # 일별 수익률 (둘째 일자부터)
+        port_d.iloc[0] = tc_factor * port_value.iloc[0] - 1  # 첫 일자: TC 반영
         parts.append(port_d)
 
     if not parts:
