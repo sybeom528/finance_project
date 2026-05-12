@@ -143,7 +143,7 @@ def render_holdings_kpi(
     spy = _spy_kpi_baseline(panel, ticker_to_sector)
 
     # === 헤더 라벨 ===
-    period_label_map = {"FULL": "FULL 192m", "TEST": "TEST 168m", "HO": "Hold Out 24m"}
+    period_label_map = {"FULL": "FULL 192개월", "TEST": "TEST 168개월", "HO": "Hold Out 24개월"}
     st.caption(
         f"**Latest snapshot**: {latest_date.strftime('%Y-%m')}  ·  "
         f"**기간 평균**: {period_label_map.get(period, period)}"
@@ -318,7 +318,7 @@ def render_top_n_table(
                 "Mcap ($B)", format="%.1f"
             ),
             "12m Return": st.column_config.NumberColumn(
-                "12m Return", format="%+.2f%%",
+                "12개월 수익률", format="%+.2f%%",
                 help="종목 자체의 12개월 가격 추세 (펀드 보유 기간 수익이 아님 — 종목 정보 참고용)",
             ),
             "ΔWeight (vs 전월)": st.column_config.NumberColumn(
@@ -397,7 +397,7 @@ def render_market_cap_distribution(
                 "Treemap 차원",
                 options=[
                     "면적=비중 / 색상=섹터",
-                    "면적=비중 / 색상=12m 수익률",
+                    "면적=비중 / 색상=12개월 수익률",
                     "면적=시가총액 / 색상=섹터",
                 ],
                 index=0,
@@ -435,7 +435,7 @@ def render_market_cap_distribution(
     with tabs[1]:
         cols_b = st.columns(4)
         axis_options = ["Mcap_B", "Weight", "Return_12m"]
-        axis_labels = {"Mcap_B": "시가총액 ($B)", "Weight": "비중", "Return_12m": "12m 수익률"}
+        axis_labels = {"Mcap_B": "시가총액 ($B)", "Weight": "비중", "Return_12m": "12개월 수익률"}
 
         with cols_b[0]:
             x_col = st.selectbox("X축", axis_options, index=0, key="hb_x", format_func=axis_labels.get)
@@ -678,7 +678,7 @@ def render_attribution_tornado(
     is_carino = method.startswith("복리")
 
     # 기간 boundary
-    period_label_map = {"FULL": "FULL 192m", "TEST": "TEST 168m", "HO": "Hold Out 24m"}
+    period_label_map = {"FULL": "FULL 192개월", "TEST": "TEST 168개월", "HO": "Hold Out 24개월"}
     if period == "TEST":
         s, e = EVAL_PERIODS["TEST"]
     elif period == "HO":

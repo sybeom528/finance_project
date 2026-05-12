@@ -146,7 +146,7 @@ def render_sector_kpi(
         avg_hhi = avg_tilt_mean = max_tilt_mean = np.nan
 
     # 헤더 라벨
-    period_label_map = {"FULL": "FULL 192m", "TEST": "TEST 168m", "HO": "Hold Out 24m"}
+    period_label_map = {"FULL": "FULL 192개월", "TEST": "TEST 168개월", "HO": "Hold Out 24개월"}
     st.caption(
         f"**Latest snapshot**: {latest.strftime('%Y-%m')}  ·  "
         f"**기간 평균**: {period_label_map.get(period, period)}"
@@ -333,7 +333,7 @@ def render_sector_decomposition_table(
                 "Tilt vs SPY", format="%+.2f%%",
                 help="펀드 weight − SPY weight (양수 = over, 음수 = under)",
             ),
-            "Return_12m": st.column_config.NumberColumn("12m R", format="%+.2f%%"),
+            "Return_12m": st.column_config.NumberColumn("12개월 R", format="%+.2f%%"),
             "N_Holdings": st.column_config.NumberColumn("#H", width="small"),
             "Volatility": st.column_config.NumberColumn("Vol", format="%.2f%%"),
             "Beta": st.column_config.NumberColumn("β", format="%.3f"),
@@ -409,7 +409,7 @@ def render_sector_tilt_tornado(
     st.plotly_chart(fig, use_container_width=True)
     st.caption(
         "임계선: ±1% (점선, 의미 있는 차이) · ±5% (대시, 큰 차이). "
-        "★ = Information Technology (Hold Out 24m 정당화 narrative 핵심)."
+        "★ = Information Technology (Hold Out 24개월 정당화 narrative 핵심)."
     )
 
 
@@ -547,8 +547,8 @@ def render_ho_justification(
     st.info(
         "ℹ️ 본 펀드 (**BL+LSTM 변동성 예측** 모델) 는 단순한 섹터 분산이 아니라, "
         "**시장 변동성에 따라 비중을 조정하는 적응형 분산 운용** 입니다. "
-        "시장 상황에 따라 섹터 집중 (예: 2017 방어주 선호 시기) 과 섹터 분산 (Hold Out 24m) 을 "
-        "동적으로 선택합니다. **Hold Out 24m 시기의 IT 축소 (under-weight)** 는 "
+        "시장 상황에 따라 섹터 집중 (예: 2017 방어주 선호 시기) 과 섹터 분산 (Hold Out 24개월) 을 "
+        "동적으로 선택합니다. **Hold Out 24개월 시기의 IT 축소 (under-weight)** 는 "
         "AI Rally 라는 단기 시장 쏠림에 따른 트레이드오프이며, "
         "장기 변동성 인지 운용의 일관성을 보여주는 의도된 결과입니다."
     )
@@ -663,7 +663,7 @@ def render_ho_justification(
     st.caption(
         f"IT 섹터 평균 변동성이 시장 평균보다 **일관되게 높음** "
         f"(거의 항상 0 위 = 빨간 영역). "
-        f"**전체 평균 +{full_gap:.2f}%p**, **Hold Out 24m 평균 +{ho_gap:.2f}%p** "
+        f"**전체 평균 +{full_gap:.2f}%p**, **Hold Out 24개월 평균 +{ho_gap:.2f}%p** "
         f"(Hold Out 시기에 차이 ↑ — IT 변동성이 시장보다 더 spike). "
         f"본 펀드는 **LSTM 변동성 예측** 기반 운용 → 변동성 큰 종목/섹터에 낮은 confidence → "
         f"**IT under-weight 의 학술적 근거**. "
@@ -672,7 +672,7 @@ def render_ho_justification(
     st.divider()
 
     # === 4. Chart 3: HO 24m Sector Contribution Tornado ===
-    st.markdown("##### Chart 3 — Hold Out 24m Sector Contribution (복리 보정)")
+    st.markdown("##### Chart 3 — Hold Out 24개월 Sector Contribution (복리 보정)")
 
     ho_start = pd.Timestamp(EVAL_PERIODS["HOLD_OUT"][0])
     ho_end = pd.Timestamp(EVAL_PERIODS["HOLD_OUT"][1])
@@ -703,13 +703,13 @@ def render_ho_justification(
             template="plotly_dark",
             paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["background"],
             font_color=COLORS["text"],
-            xaxis=dict(tickformat=".1%", title="HO 24m Carino Contribution"),
+            xaxis=dict(tickformat=".1%", title="HO 24개월 Carino Contribution"),
             yaxis=dict(autorange="reversed"),
             height=420, margin=dict(t=20, l=10, r=80, b=20),
         )
         st.plotly_chart(fig2, use_container_width=True)
         st.caption(
-            "★ Information Technology = 펀드의 under-weight 가 HO 24m underperform 의 핵심. "
+            "★ Information Technology = 펀드의 under-weight 가 HO 24개월 underperform 의 핵심. "
             "Defensive 섹터 (Utilities/Consumer Staples) 는 양수 기여하지만 IT 의 거대 양수 contribution 을 따라가지 못함."
         )
     st.divider()
@@ -721,7 +721,7 @@ def render_ho_justification(
         "R1 회복기 (2010-2012)": ("2010-01-01", "2012-06-30"),
         "R2 확장기 (2012-2019)": ("2012-07-01", "2019-12-31"),
         "R3 변동기 (2020-2023)": ("2020-01-01", "2023-12-31"),
-        "HO 24m (2024-2025)": ("2024-01-01", "2025-12-31"),
+        "HO 24개월 (2024-2025)": ("2024-01-01", "2025-12-31"),
     }
     fund_hhis, spy_hhis, regime_labels = [], [], []
     for label, (s, e) in regimes.items():
@@ -761,9 +761,9 @@ def render_ho_justification(
     st.plotly_chart(fig3, use_container_width=True)
     st.caption(
         "**R1 / R3 / HO**: Fund HHI 0.14~0.19 — sector 분산 운용. "
-        "**R2 (2012-19, 90m)**: Fund HHI 0.41 — vol-target 모델이 시장 변동성 시기 (특히 2017 정치/금리 불확실성) "
+        "**R2 (2012-19, 90개월)**: Fund HHI 0.41 — vol-target 모델이 시장 변동성 시기 (특히 2017 정치/금리 불확실성) "
         "Defensive 섹터 (Utilities 70%+ / Staples 30%) 로 도피 학습. "
-        "**HO 24m**: Fund 0.14 < SPY 0.16 — **펀드 분산 회복 vs SPY IT 집중** = HO 정당화 narrative 핵심."
+        "**HO 24개월**: Fund 0.14 < SPY 0.16 — **펀드 분산 회복 vs SPY IT 집중** = HO 정당화 narrative 핵심."
     )
     st.divider()
 
@@ -773,9 +773,9 @@ def render_ho_justification(
         "본 펀드의 **BL+LSTM 변동성 예측 모델** 은 단순한 섹터 분산이 아닌 "
         "**변동성을 인지한 적응형 분산 운용** 입니다.\n\n"
         "**회복기 / 변동기 / Hold Out 분산 시기** + **확장기 방어주 선호 시기** 모두 "
-        "시장 변동성에 따른 적응 결과입니다. **TEST 168m (14년) walk-forward 운용 동안** "
+        "시장 변동성에 따른 적응 결과입니다. **TEST 168개월 (14년) walk-forward 운용 동안** "
         "시장 변화에 적응하며 **우수한 위험 조정 성과 (Sharpe 1.05, Sortino 1.86)** 를 입증했습니다.\n\n"
-        "**Hold Out 24m (2024-2025) 의 단기 부진**: 시장의 IT 쏠림 (SPY IT 비중 33.30%) vs "
+        "**Hold Out 24개월 (2024-2025) 의 단기 부진**: 시장의 IT 쏠림 (SPY IT 비중 33.30%) vs "
         "펀드의 IT 축소 (-33.31%p 차이) → AI Rally 라는 단기 섹터 쏠림 시기의 트레이드오프. "
         "펀드는 이 시기에도 **섹터 분산을 유지** (Fund 집중도 0.14 < SPY 0.16) 하여 "
         "운용 철학의 일관성을 잃지 않았습니다.\n\n"

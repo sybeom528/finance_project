@@ -245,6 +245,19 @@ def render_performance_kpi(
 #   Drawdown 은 Risk Metrics 영역 4 에 별도 (책임 분리).
 # ======================================================================
 
+def _annotate_final_return(fig: go.Figure, cum_series: pd.Series, color: str) -> None:
+    """누적 수익률 시계열의 마지막 점에 최종 누적 수익률 % 라벨 추가."""
+    if cum_series is None or len(cum_series) == 0:
+        return
+    final_pct = (cum_series.iloc[-1] - 1) * 100
+    fig.add_annotation(
+        x=cum_series.index[-1], y=cum_series.iloc[-1],
+        text=f"<b>{final_pct:+.1f}%</b>",
+        showarrow=False, xanchor="left", yanchor="middle", xshift=8,
+        font=dict(color=color, size=12),
+    )
+
+
 def render_cumulative_only(
     fund_ret: pd.Series,
     spy_ret: pd.Series,
@@ -285,6 +298,7 @@ def render_cumulative_only(
         name="Fund (Adaptive VolControl)",
         line=dict(color=BENCHMARK_COLORS["Fund"], width=2.5),
     ))
+    _annotate_final_return(fig, fund_cum, BENCHMARK_COLORS["Fund"])
 
     # SPY (사이드바 토글에 따라)
     if spy_filt is not None and len(spy_filt) > 0 and st.session_state.get("show_spy", True):
@@ -294,6 +308,7 @@ def render_cumulative_only(
             name="SPY",
             line=dict(color=BENCHMARK_COLORS["SPY"], width=1.5),
         ))
+        _annotate_final_return(fig, spy_cum, BENCHMARK_COLORS["SPY"])
 
     # EW
     if ew_filt is not None and len(ew_filt) > 0:
@@ -303,6 +318,7 @@ def render_cumulative_only(
             name="균등가중 (EW)",
             line=dict(color=BENCHMARK_COLORS["EW"], width=1.5, dash="dash"),
         ))
+        _annotate_final_return(fig, ew_cum, BENCHMARK_COLORS["EW"])
 
     # IVW
     if ivw_filt is not None and len(ivw_filt) > 0:
@@ -312,6 +328,7 @@ def render_cumulative_only(
             name="역변동성 (IVW)",
             line=dict(color=BENCHMARK_COLORS["IVW"], width=1.5, dash="dot"),
         ))
+        _annotate_final_return(fig, ivw_cum, BENCHMARK_COLORS["IVW"])
 
     # Regime 배경 + Event annotation (FULL 일 때만 의미 있음)
     if period == "FULL":
@@ -320,7 +337,7 @@ def render_cumulative_only(
 
     fig.update_layout(
         height=450,
-        margin=dict(l=20, r=20, t=40, b=20),
+        margin=dict(l=20, r=70, t=40, b=20),
         paper_bgcolor=COLORS["background"],
         plot_bgcolor=COLORS["secondary_bg"],
         font=dict(color=COLORS["text"]),

@@ -39,7 +39,7 @@ SEARCH_INDEX: list[dict] = [
     {"page": "Investment Simulator", "page_file": "pages/02_Investment_Simulator.py",
      "area": "시뮬레이션 입력 (Lump-sum / DCA / Goal-based)",
      "keywords": ["시뮬레이션 입력", "simulator", "lump-sum", "dca",
-                  "goal-based", "일시 투자", "분산 투자", "목표 역산", "월말"]},
+                  "goal-based", "일시 투자", "적립식 투자", "목표 역산", "월말"]},
     {"page": "Investment Simulator", "page_file": "pages/02_Investment_Simulator.py",
      "area": "시뮬레이션 결과 (KPI 5개)",
      "keywords": ["시뮬레이션 결과", "result", "final value", "최종 자산",
@@ -102,9 +102,6 @@ SEARCH_INDEX: list[dict] = [
      "area": "위험 메트릭 종합 표 (15 메트릭, 4 카테고리)",
      "keywords": ["종합 표", "comprehensive", "15 메트릭",
                   "csv 다운로드", "카테고리"]},
-    {"page": "Risk Metrics", "page_file": "pages/04_Risk_Metrics.py",
-     "area": "Tail Risk 분석 — Hill Estimator",
-     "keywords": ["hill", "tail risk", "extreme", "꼬리 위험", "hill estimator"]},
 
     # ─── Holdings ─────────────────────────────────────────────────────
     {"page": "Holdings", "page_file": "pages/05_Holdings.py",
@@ -145,8 +142,8 @@ SEARCH_INDEX: list[dict] = [
      "area": "Sector Rotation — 시계열 변화",
      "keywords": ["sector rotation", "rotation", "시계열 변화"]},
     {"page": "Sector Watch", "page_file": "pages/06_Sector_Watch.py",
-     "area": "Hold Out 24m 분석 (정당화 narrative)",
-     "keywords": ["hold out", "ho", "24m", "정당화", "ai rally",
+     "area": "Hold Out 24개월 분석 (정당화 narrative)",
+     "keywords": ["hold out", "ho", "24개월", "정당화", "ai rally",
                   "ai 빅테크"]},
 
     # ─── About / FAQ ──────────────────────────────────────────────────

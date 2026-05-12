@@ -524,92 +524,6 @@ def calc_avg_recovery_time(returns: pd.Series) -> float:
     return float(np.mean(completed))
 
 
-def calc_hill_estimator(
-    returns: pd.Series, k: int | None = None, side: str = "loss"
-) -> float:
-    """
-    Hill (1975) tail index estimator.
-
-    ξ̂_k = (1/k) Σ log(X_(i)) - log(X_(k+1))   (i=1..k)
-
-    Args:
-        returns: 일별 수익률 (월별도 가능하지만 sample size 부족)
-        k: tail order statistic (None → auto sqrt(n))
-        side: "loss" (음수 꼬리, 큰 손실) / "gain" (양수 꼬리)
-
-    Returns:
-        ξ̂ (tail index). > 0 = fat tail (극단값 자주). 주식 일반 0.2-0.4.
-
-    학술: Hill, B.M. (1975) "A simple general approach to inference about
-    the tail of a distribution." Annals of Statistics, 3, 1163-1174.
-    """
-    r = pd.Series(returns).dropna()
-    if len(r) < 50:
-        return np.nan
-
-    if side == "loss":
-        values = -r[r < 0].values  # 큰 손실을 양수로
-    else:
-        values = r[r > 0].values
-
-    if len(values) < 50:
-        return np.nan
-
-    # 양수만 (log 위해)
-    values = values[values > 1e-12]
-    if len(values) < 50:
-        return np.nan
-
-    sorted_values = np.sort(values)[::-1]  # 큰 값 먼저
-    n = len(sorted_values)
-
-    if k is None:
-        k = int(np.sqrt(n))  # auto: sqrt(n) 표준
-    if k >= n - 1 or k < 2:
-        return np.nan
-
-    log_vals = np.log(sorted_values[:k + 1])
-    xi_hat = float(np.mean(log_vals[:k]) - log_vals[k])
-    return xi_hat
-
-
-def hill_plot_data(
-    returns: pd.Series, side: str = "loss", k_min: int = 10, k_max: int | None = None
-) -> pd.DataFrame:
-    """
-    Hill plot 데이터 (k 별 ξ̂) — plateau detection 시각화용.
-
-    Returns:
-        pd.DataFrame: columns=[k, xi]
-    """
-    r = pd.Series(returns).dropna()
-    if len(r) < 50:
-        return pd.DataFrame(columns=["k", "xi"])
-
-    if side == "loss":
-        values = -r[r < 0].values
-    else:
-        values = r[r > 0].values
-    values = values[values > 1e-12]
-
-    if len(values) < 50:
-        return pd.DataFrame(columns=["k", "xi"])
-
-    sorted_values = np.sort(values)[::-1]
-    n = len(sorted_values)
-
-    if k_max is None:
-        k_max = min(n - 1, n // 2)
-
-    rows = []
-    for k in range(k_min, k_max):
-        log_vals = np.log(sorted_values[:k + 1])
-        xi = float(np.mean(log_vals[:k]) - log_vals[k])
-        rows.append({"k": k, "xi": xi})
-
-    return pd.DataFrame(rows)
-
-
 # ======================================================================
 # Rolling 메트릭 (영역 6 — Volatility / Sortino / Beta / R² / TE)
 # ======================================================================
@@ -1506,7 +1420,7 @@ REGIME_PERIODS: dict[str, tuple[str, str]] = {
     "R1 회복": ("2010-01-01", "2012-06-30"),
     "R2 확장": ("2012-07-01", "2019-12-31"),
     "R3 변동": ("2020-01-01", "2023-12-31"),
-    "HO 24m": ("2024-01-01", "2025-12-31"),
+    "HO 24개월": ("2024-01-01", "2025-12-31"),
     "FULL":   ("2010-01-01", "2025-12-31"),
 }
 

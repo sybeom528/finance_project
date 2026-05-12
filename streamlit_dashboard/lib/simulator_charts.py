@@ -113,7 +113,7 @@ def render_input_section(available_dates: pd.DatetimeIndex | None = None) -> dic
         options=["lump_sum", "dca", "goal"],
         format_func=lambda s: {
             "lump_sum": "💵 Lump-sum (일시 투자)",
-            "dca": "🔄 DCA (분산 투자)",
+            "dca": "🔄 DCA (적립식 투자)",
             "goal": "🎯 Goal-based (목표 역산)",
         }[s],
         horizontal=True,
@@ -124,7 +124,7 @@ def render_input_section(available_dates: pd.DatetimeIndex | None = None) -> dic
     if scenario == "lump_sum":
         st.caption("일시 투자 — 시작 시점에 한 번 투자하고 종료 시점까지 보유.")
     elif scenario == "dca":
-        st.caption("Dollar Cost Averaging — 매월 일정 금액 추가 투자 (Constantinides 1979).")
+        st.caption("적립식 투자 (Dollar Cost Averaging) — 매월 일정 금액 추가 투자.")
     else:
         st.caption("Goal-based 역산 — 시작/종료 + 목표 금액 → 필요 초기 투자 금액.")
 
@@ -137,7 +137,7 @@ def render_input_section(available_dates: pd.DatetimeIndex | None = None) -> dic
     c1, c2 = st.columns(2)
     with c1:
         start_date = st.date_input(
-            "시작 시점", value=pd.Timestamp("2015-01-31").date(),
+            "시작 시점", value=pd.Timestamp("2010-01-31").date(),
             min_value=DATA_MIN.date(), max_value=DATA_MAX.date(),
             key="sim_start_date",
         )

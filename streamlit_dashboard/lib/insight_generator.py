@@ -109,7 +109,7 @@ def generate_insight_cards(
         cards.append({
             "icon": "🔄",
             "title": "DCA 효과 — Dollar Cost Averaging",
-            "value": f"매월 ${sim_result['dca_monthly']:,.0f} 분산 투자",
+            "value": f"매월 ${sim_result['dca_monthly']:,.0f} 적립식 투자",
             "subtitle": f"일시 투자 대비 {dca_advantage:+,.0f}",
             "color": "blue",
         })

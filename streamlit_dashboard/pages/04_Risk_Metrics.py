@@ -1,9 +1,9 @@
 """
-pages/04_Risk_Metrics.py - Risk Metrics 페이지 (11 영역)
+pages/04_Risk_Metrics.py - Risk Metrics 페이지 (10 영역)
 
 위험 지표 전담 페이지. Performance 가 수익 위주라면 Risk Metrics 는 위험 위주.
 
-11 영역:
+10 영역:
   1. Header
   2. Sub-header
   3. Risk Summary KPI 5개 (Vol / MDD / Beta / R² / TE)
@@ -13,8 +13,7 @@ pages/04_Risk_Metrics.py - Risk Metrics 페이지 (11 영역)
   7. VaR / CVaR 분포 (월별/일별 Tab + Fund vs SPY 오버레이 + 정규분포 비교)
   8. Volatility / Sortino / Beta / R² / TE Rolling 시계열 (Q-G 보강 — 5 메트릭 통합)
   9. Risk Metrics 종합 표 (~22 메트릭, 카테고리 expander, CSV 다운로드)
-  10. Tail Risk 분석 (Hill estimator + Hill plot, 일별 only)
-  11. Footer
+  10. Footer
 
 모든 메트릭 = final/bl_functions.compute_metrics + 학술 표준 (decisionlog Q-E,Q-F,Q-G).
 
@@ -48,7 +47,6 @@ from lib.risk_charts import (
     render_risk_kpi,
     render_risk_metrics_table,
     render_rolling_risk_metrics,
-    render_tail_risk,
     render_var_cvar_distribution,
 )
 
@@ -176,7 +174,7 @@ with st.expander("ℹ️ 데이터 source 안내 (VaR / CVaR)"):
         """
     )
 
-# 일별 portfolio (영역 5, 8 공유 — 한 번 산출)
+# 일별 portfolio (영역 7 VaR/CVaR 분포 — 일별 source 필요)
 fund_daily = None
 spy_daily = None
 try:
@@ -230,46 +228,11 @@ st.caption(
     "**월별 표준 메트릭 15개** 를 4개 카테고리로 (수익률 / 위험조정 / 위험 / 시장 노출) 정리. "
     "펼치기로 카테고리 상세 + CSV 다운로드 가능. "
     "ℹ️ **VaR / CVaR / 분포 통계 (Skewness / Kurtosis / Tail Ratio)** 는 학술 표준 (일별 데이터 필수) 이므로 "
-    "**영역 7** (VaR / CVaR 분포), **영역 10** (Hill Tail) 에서 일별 기반으로 확인하실 수 있습니다."
+    "**영역 7** (VaR / CVaR 분포) 에서 일별 기반으로 확인하실 수 있습니다."
 )
 render_risk_metrics_table(fund_ret, fund_spy, ew_ret, ivw_ret, fund_rf, period)
 st.divider()
 
 
-# === 영역 10: Tail Risk (Hill estimator) ==============================
-st.subheader("Tail Risk 분석 — Hill Estimator")
-st.caption(
-    "수익률 분포의 꼬리 (극단값) 두께 측정 (일별 데이터). "
-    "펀드의 꼬리 추정치가 시장보다 작으면 **극단적 손실 위험이 시장보다 적다** 는 의미입니다. "
-    "ℹ️ Hill 은 일별 필수 (꼬리 sample 필요). 시장 데이터 기반 — 펀드 backtest 와 별도 source."
-)
-
-with st.expander("ℹ️ 데이터 source 안내 (Hill Estimator)"):
-    st.markdown(
-        """
-        **왜 일별 데이터 필수인가?**
-        - Hill estimator 는 분포 top-k 꼬리만 사용 (k ≈ 50~100)
-        - 월별 (192 sample) 의 top 50 = 상위 26% → 꼬리 분석 의미 상실
-        - 일별 (~4,000) 의 top 50 = 상위 1.3% → 진정한 꼬리 분석
-        - **월별 데이터로는 산출 불가능** (sample 부족)
-
-        **학술 근거**
-        - Hill (1975) — *A simple general approach to inference about the tail of a distribution*
-        - Embrechts, Klüppelberg, Mikosch (1997) — *Modelling Extremal Events* (EVT 표준 교과서)
-
-        **일별 데이터의 source / 한계**
-        - 출처: yfinance Adjusted Close 의 일별 변동 (`daily_returns.pkl`)
-        - 펀드 backtest 의 monthly panel 과 **별도 source** (다른 학술 목적)
-        - 꼬리 형상은 일별 시장 데이터 기반 → 펀드 backtest 의 실제 꼬리와 정확히 일치 X
-        - 이는 **실무 펀드 분석의 표준 패턴**: 월별 NAV + 일별 EVT 분석
-        """
-    )
-
-render_tail_risk(
-    fund_ret_daily=fund_daily,
-    spy_ret_daily=spy_daily,
-)
-
-
-# === 영역 11: Footer ==================================================
+# === 영역 10: Footer ==================================================
 render_footer()

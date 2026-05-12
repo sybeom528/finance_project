@@ -1,13 +1,12 @@
 """
-lib/risk_charts.py - Risk Metrics 페이지 6 영역 차트 함수
+lib/risk_charts.py - Risk Metrics 페이지 5 영역 차트 함수
 
-영역 3-8 함수화:
+영역 3-7 함수화:
   - 영역 3: render_risk_kpi (Vol / MDD / Beta / R² / TE)
   - 영역 4: render_drawdown_recovery (DD 시계열 + Top 3 + Recovery 표)
   - 영역 5: render_var_cvar_distribution (월별/일별 Tab + 분포)
   - 영역 6: render_rolling_risk_metrics (Vol/Sortino/Beta/R²/TE rolling — Q-G 보강)
   - 영역 7: render_risk_metrics_table (~22 메트릭 카테고리 expander)
-  - 영역 8: render_tail_risk (Hill estimator + plot)
 
 모든 메트릭 = final/bl_functions.compute_metrics + 학술 표준 (decisionlog Q-E,Q-F,Q-G).
 
@@ -628,10 +627,9 @@ def _calc_all_metrics_for_series(ret: pd.Series, mkt: pd.Series, rf: pd.Series) 
     """
     단일 시리즈 (Fund or 벤치마크) 의 종합 표 메트릭 산출 (월별 표준만).
 
-    제외 메트릭 (학술 표준 = 일별 → 영역 7, 10 에서 별도 산출):
+    제외 메트릭 (학술 표준 = 일별 → 영역 7 에서 별도 산출):
       - VaR 5%, CVaR 5% (Basel III 표준 = 일별)
       - Skewness, Excess Kurtosis, Tail Ratio (Cont 2001 — sample size 필요, 일별)
-      - Hill Tail Index (Hill 1975 — 꼬리 sample 필요, 일별)
     """
     return {
         "cum_ret": mc.calc_cumulative_return(ret),
@@ -721,106 +719,3 @@ def render_risk_metrics_table(
     )
 
 
-# ======================================================================
-# 영역 8: Tail Risk (Hill estimator)
-# ======================================================================
-
-def render_tail_risk(
-    fund_ret_daily: pd.Series | None,
-    spy_ret_daily: pd.Series | None,
-) -> None:
-    """
-    영역 8: Hill estimator + Hill plot (일별 only).
-    학술: Hill (1975) — fat tail 측정.
-    """
-    if fund_ret_daily is None or len(fund_ret_daily.dropna()) < 50:
-        st.warning("일별 데이터 미산출 또는 부족. Tail Risk 분석 불가.")
-        return
-
-    # 학술 설명 박스
-    st.info(
-        "**Hill estimator (Hill 1975)** — 분포 tail 의 두께 측정.\n\n"
-        "ξ̂ > 0 = fat tail (극단 손실 자주 발생). 주식 일반 ξ̂ ≈ 0.2-0.4.\n"
-        "펀드 ξ̂ 가 SPY 보다 낮으면 tail risk 가 적음."
-    )
-
-    fund_xi = mc.calc_hill_estimator(fund_ret_daily, side="loss")
-    spy_xi = (
-        mc.calc_hill_estimator(spy_ret_daily, side="loss")
-        if spy_ret_daily is not None else np.nan
-    )
-
-    cols = st.columns(2)
-    with cols[0]:
-        st.markdown(
-            f'<div style="border-left:3px solid {BENCHMARK_COLORS["Fund"]};padding:8px 12px;">'
-            f'<div style="color:#9CA3AF;font-size:13px;">Fund ξ̂ (loss tail)</div>'
-            f'<div style="font-size:24px;color:#FAFAFA;font-weight:700;">{fund_xi:.4f}</div>'
-            f'<div style="font-size:11px;color:#9CA3AF;">{"Fat tail" if fund_xi > 0.1 else "Light tail"}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    with cols[1]:
-        st.markdown(
-            f'<div style="border-left:3px solid {BENCHMARK_COLORS["SPY"]};padding:8px 12px;">'
-            f'<div style="color:#9CA3AF;font-size:13px;">SPY ξ̂ (loss tail)</div>'
-            f'<div style="font-size:24px;color:#FAFAFA;font-weight:700;">{_format_ratio(spy_xi, 4)}</div>'
-            f'<div style="font-size:11px;color:#9CA3AF;">'
-            f'{("Fat tail" if spy_xi > 0.1 else "Light tail") if not pd.isna(spy_xi) else ""}'
-            f'</div></div>',
-            unsafe_allow_html=True,
-        )
-
-    # Hill Plot (k 별 ξ̂)
-    st.markdown("##### Hill Plot — k 별 ξ̂ (plateau 영역 = 안정 추정)")
-    fig = go.Figure()
-
-    fund_hill = mc.hill_plot_data(fund_ret_daily, side="loss")
-    if len(fund_hill) > 0:
-        fig.add_trace(go.Scatter(
-            x=fund_hill["k"], y=fund_hill["xi"],
-            name="Fund",
-            line=dict(color=BENCHMARK_COLORS["Fund"], width=2),
-        ))
-
-    if spy_ret_daily is not None:
-        spy_hill = mc.hill_plot_data(spy_ret_daily, side="loss")
-        if len(spy_hill) > 0:
-            fig.add_trace(go.Scatter(
-                x=spy_hill["k"], y=spy_hill["xi"],
-                name="SPY",
-                line=dict(color=BENCHMARK_COLORS["SPY"], width=1.5, dash="dot"),
-            ))
-
-    # Auto k = sqrt(n) 마커
-    n_loss = len(fund_ret_daily[fund_ret_daily < 0])
-    auto_k = int(np.sqrt(n_loss))
-    fig.add_vline(
-        x=auto_k,
-        line_dash="dash",
-        line_color=COLORS["accent_amber"],
-        annotation_text=f"auto k=√n={auto_k}",
-        annotation_position="top",
-    )
-
-    fig.update_layout(
-        height=400,
-        margin=dict(l=20, r=20, t=40, b=20),
-        paper_bgcolor=COLORS["background"],
-        plot_bgcolor=COLORS["secondary_bg"],
-        font=dict(color=COLORS["text"]),
-        xaxis_title="k (tail order)",
-        yaxis_title="ξ̂ (Hill estimator)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-    )
-    st.plotly_chart(fig, use_container_width=True, key="risk_hill_plot")
-
-    # Footnote
-    st.caption(
-        "※ Hill, B.M. (1975). \"A simple general approach to inference about the tail "
-        "of a distribution.\" Annals of Statistics, 3, 1163-1174. / "
-        "Embrechts, Klüppelberg, Mikosch (1997) \"Modelling Extremal Events.\"\n\n"
-        "※ **차트 해석**: 단조 증가 패턴은 **plateau 가 명확하지 않은 fat tail 분포** 의 "
-        "일반적 특성 (Mandelbrot 1963 — 금융 시계열은 정확히 power-law 가 아닌 complex tail). "
-        "auto k = √n 영역 (작은 k) 의 ξ̂ 가 안정 추정값."
-    )

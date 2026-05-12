@@ -217,11 +217,11 @@ def render_hero_kpi(
             st.metric(
                 label=label,
                 value=test_str,
-                delta="TEST 168m",
+                delta="TEST 168개월",
                 delta_color="off",
                 help=get_tooltip(label) or label,
             )
-            st.caption(f"Hold Out 24m: **{ho_str}**")
+            st.caption(f"Hold Out 24개월: **{ho_str}**")
 
 
 # ======================================================================
@@ -375,7 +375,7 @@ _DIFFERENTIATOR_CARDS = [
         "icon": "✅",
         "title_en": "Validated Across Market Regimes",
         "title_ko": "시장 국면별 검증 완료",
-        "body": "회복기 / 확장기 / 변동기 + Hold Out 24m (최근 2년) 구간",
+        "body": "회복기 / 확장기 / 변동기 + Hold Out 24개월 (최근 2년) 구간",
         "value_template": "Sortino (TEST): {sortino}",
         "metric_key": "sortino",
         "citation": "Walk-forward (is=1250d / oos=21d / embargo=63d)",

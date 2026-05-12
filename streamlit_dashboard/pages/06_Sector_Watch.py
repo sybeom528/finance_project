@@ -138,9 +138,9 @@ st.divider()
 
 
 # === 영역 8: Hold Out 24m 분석 ========================================
-st.subheader("Hold Out 24m 분석")
+st.subheader("Hold Out 24개월 분석")
 st.caption(
-    "**Hold Out 24m (2024-2025) 부진 원인 분석**: "
+    "**Hold Out 24개월 (2024-2025) 부진 원인 분석**: "
     "1) 시장 IT 집중도가 급격히 상승, 반면 펀드는 IT under-weight 유지 → 시장 대비 부진. "
     "2) **IT 섹터 평균 변동성이 시장 평균보다 일관되게 높음** → LSTM 변동성 인지 운용의 IT under-weight 근거. "
     "3) Hold Out 기간 섹터별 기여도 분석. "
