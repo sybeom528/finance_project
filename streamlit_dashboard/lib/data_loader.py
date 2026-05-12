@@ -573,7 +573,13 @@ def compute_fund_daily_returns(
     펀드 일별 portfolio return 산출 — final/bl_functions.py:compute_daily_slice 결함처리 차용.
 
     매월 t 시점 fund.weights 결정 → 다음 월 (t, t+1] 기간 일별 portfolio return:
-      port_d = Σ_i (weight_i × daily_ret_i)
+      simple_ret_i = exp(log_ret_i) - 1   (daily_returns 는 log return 으로 저장됨)
+      port_d = Σ_i (weight_i × simple_ret_i)   ← 학술 표준 (simple return weighted sum)
+
+    산식 정정 (2026-05-12):
+      이전: port_d = Σ_i (w_i × log_ret_i) — log return 의 weighted sum
+      → 이는 portfolio 의 log return 도 simple return 도 아니므로 학술적으로 부정확
+      → log → simple 변환 후 weighted sum (학술 표준) 으로 정정
 
     데이터 결함 처리 (final compute_daily_slice 패턴):
       1) NaN 비율 < (1-nan_threshold) ticker 만 active universe 유지
@@ -629,6 +635,13 @@ def compute_fund_daily_returns(
         # 남은 NaN 은 0 처리 (final 패턴)
         period_clean = period_active[valid_tickers].fillna(0)
 
+        # log return → simple return 변환 (학술 표준 — 2026-05-12 산식 정정)
+        # daily_returns.pkl 은 np.log(close/close.shift(1)) 산출본 (log return)
+        # portfolio simple return = Σ_i (w_i × simple_ret_i) 가 학술 표준
+        # 이전: port_d = Σ_i (w_i × log_ret_i) — log return 의 weighted sum 은
+        #       portfolio 의 log return 도 simple return 도 아니므로 부정확
+        period_simple = np.exp(period_clean) - 1
+
         # weight 정규화 (active ∩ valid 만으로 sum=1 재조정)
         w_valid = active_w[valid_tickers]
         w_sum = w_valid.sum()
@@ -636,8 +649,8 @@ def compute_fund_daily_returns(
             continue
         w_norm = w_valid / w_sum
 
-        # 일별 portfolio return = Σ(weight_i × daily_ret_i)
-        port_d = period_clean.dot(w_norm)
+        # 일별 portfolio simple return = Σ_i (w_i × simple_ret_i)
+        port_d = period_simple.dot(w_norm)
         parts.append(port_d)
 
     if not parts:
