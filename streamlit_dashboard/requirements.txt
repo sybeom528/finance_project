@@ -12,8 +12,9 @@ streamlit>=1.30,<2.0
 plotly>=6.0,<7.0
 
 # === 데이터 처리 ===
+# numpy 2.x 강제: pickle 데이터가 numpy 2.x로 생성됨 (binary 포맷 NEP 50)
 pandas>=2.0,<3.0
-numpy>=1.24,<2.0
+numpy>=2.0,<3.0
 
 # === 외부 데이터 (1회 수집용 - scripts/ 에서만) ===
 yfinance>=0.2,<1.0
