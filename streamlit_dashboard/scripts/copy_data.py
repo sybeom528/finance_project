@@ -1,8 +1,8 @@
 """
-copy_data.py — final/data/ + final/results/ 에서 대시보드용 핵심 데이터 복사
+copy_data.py — final_pt/data/ + final_pt/results/ 에서 대시보드용 핵심 데이터 복사
 
 목적:
-  대시보드 (streamlit_dashboard/) 가 final/ 원본 데이터에 의존하지 않도록
+  대시보드 (streamlit_dashboard/) 가 final_pt/ 원본 데이터에 의존하지 않도록
   필요한 파일만 streamlit_dashboard/data/ 로 복사한다.
 
   원본은 read-only 로 유지 (덮어쓰기/수정 절대 불가).
@@ -33,8 +33,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent              # .../streamlit_dashbo
 DASHBOARD_DIR = SCRIPT_DIR.parent                          # .../streamlit_dashboard/
 PROJECT_ROOT = DASHBOARD_DIR.parent                        # .../finance_project/
 
-SOURCE_DATA_DIR = PROJECT_ROOT / "final" / "data"
-SOURCE_RESULTS_DIR = PROJECT_ROOT / "final" / "results"
+SOURCE_DATA_DIR = PROJECT_ROOT / "final_pt" / "data"
+SOURCE_RESULTS_DIR = PROJECT_ROOT / "final_pt" / "results"
 TARGET_DATA_DIR = DASHBOARD_DIR / "data"
 TARGET_RESULTS_DIR = TARGET_DATA_DIR / "results"
 
