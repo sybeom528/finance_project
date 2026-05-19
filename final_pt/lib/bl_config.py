@@ -42,7 +42,7 @@ EVAL_PERIODS = {
 
 # ── LSTM 예측 파일 경로 ────────────────────────────────────────────────────────
 # 03b_Volatility_Forecasting.ipynb 산출물. 없으면 모든 실험 스킵.
-_PHASE3_DIR = Path(__file__).parent / 'data/03b_lstm'
+_PHASE3_DIR = Path(__file__).parent.parent / 'data/03b_lstm'
 _LSTM_PRED_DEFAULT = _PHASE3_DIR / 'data' / 'ensemble_predictions_stockwise.csv'
 
 # ── 공통 default (모든 실험의 default 값, 더 이상 단독 슬롯 아님) ──────────────

@@ -32,7 +32,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from bl_functions import (
+from .bl_functions import (
     compute_sigma, compute_daily_slice, compute_pi,
     build_P,
     compute_Q_fixed, compute_Q_lambda, compute_Q_inv_lambda,
@@ -48,7 +48,7 @@ from bl_functions import (
 # ════════════════════════════════════════════════════════════════
 # walk_forward 안의 r_spy 계산에서 next_date 가 None 이거나 spy_series 룩업이
 # NaN 일 때 사용. 종목 fwd_ret_1m (forward 21영업일 cumprod) 과 단위 정합.
-_BASE_DIR = Path(__file__).parent
+_BASE_DIR = Path(__file__).parent.parent
 _DAILY_RETURNS_PATH = _BASE_DIR / 'data' / 'daily_returns.pkl'
 
 
