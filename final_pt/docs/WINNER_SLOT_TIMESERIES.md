@@ -118,7 +118,7 @@ where λ_raw = spy_excess / σ²_mkt   (clip 없음, 음수 가능)
 
 ### 재계산 방법
 
-[bl_runner.py L380-391](../bl_runner.py) 와 동일 로직 재현:
+[bl_runner.py L380-391](../lib/bl_runner.py) 와 동일 로직 재현:
 1. 매월 `vol_series = vol_21d + LSTM vol_pred overlay` 정렬
 2. bottom 30% → P[low] = +1/n_g, top 30% → P[high] = -1/n_g
 3. `actual_p_t = month_df['ret_1m'] @ P_prev` 계산
