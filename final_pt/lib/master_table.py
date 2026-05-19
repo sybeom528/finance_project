@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from bl_functions import compute_metrics
+from .bl_functions import compute_metrics
 
 
 # ── 슬롯 → 약어 매핑 (canonical 토큰) ─────────────────────────────────

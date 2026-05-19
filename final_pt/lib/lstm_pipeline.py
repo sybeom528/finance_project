@@ -46,12 +46,9 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-import sys as _sys
-_THIS_DIR = Path(__file__).parent
-if str(_THIS_DIR) not in _sys.path:
-    _sys.path.insert(0, str(_THIS_DIR))
+_THIS_DIR = Path(__file__).parent.parent
 
-from timeseries_lib import (   # noqa: E402
+from .timeseries_lib import (   # noqa: E402
     LSTMRegressor,
     build_fold_inputs,
     train_one_fold,

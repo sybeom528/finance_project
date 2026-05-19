@@ -2,23 +2,15 @@
 
 ## 즉시 삭제 가능
 
-### 1. results_backup_pre_spy_fix/ (83MB)
-- SPY NaN 패치 안전망 (2026-05-13 생성)
-- 패치 검증 완료, 더 이상 불필요
-- 삭제 명령: `rm -rf results_backup_pre_spy_fix/`
+~~### 1. results_backup_pre_spy_fix/ (83MB)~~ — 2026-05-19 삭제 완료
 
 ## 발표 후 검토 사항
 
-### 2. .py 모듈 → lib/ 폴더 분리
-- 7개 .py 파일 (bl_*.py, master_table.py, analyze_plots.py, lstm_pipeline.py, timeseries_lib.py)
-- 필요 작업:
-  - lib/ 생성 + 7개 .py 이동
-  - 모든 노트북 import 변경 (예: `from bl_runner` → `from lib.bl_runner`)
-  - bl_config.py 의 `Path(__file__).parent` → `Path(__file__).parent.parent` 수정
-  - 12개 노트북 재실행 + 검증
-- 예상 소요: 30분~1시간
+~~### 2. .py 모듈 → lib/ 폴더 분리~~ — 2026-05-19 완료 (`final_pt/lib/`)
+- 7개 .py → `final_pt/lib/` 이동, `__init__.py` 추가 (패키지화)
+- 내부 cross-import 3건은 상대 import (`from .bl_functions` 등)
+- `Path(__file__).parent` → `.parent.parent` 수정: `bl_config.py`, `bl_runner.py`, `lstm_pipeline.py` (3곳)
+- 5개 노트북 import 일괄 갱신 (03a, 03b, 04, 05b, 06)
+- import sanity check 통과. 단, 노트북 풀 재실행 검증은 사용자가 직접 수행 필요
 
-### 3. results/_backup_before_unit_fix/ 검토
-- 옛 LSTM 단위 버그 (√252 누락) 시기 결과 보관
-- CLAUDE.md: "분석엔 사용 금지" 명시
-- 삭제해도 안전 (단, git history 미추적이므로 신중)
+~~### 3. results/_backup_before_unit_fix/ 검토~~ — 2026-05-19 삭제 완료 (final/, final_pt/ 양쪽, git 추적되어 있어 복구 가능)
