@@ -364,8 +364,8 @@ TC_t = turnover_t × tc(per-side)
 
 ```python
 import pickle, pandas as pd, numpy as np
-from bl_runner import load_lstm_pred
-from bl_config import BASELINE
+from lib.bl_runner import load_lstm_pred
+from lib.bl_config import BASELINE
 
 WINNER = 'mat_eq_eq_raw_pap'
 

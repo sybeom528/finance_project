@@ -45,8 +45,9 @@
   - `USMV` / `SPLV`: 저변동 ETF 카테고리 비교군 (2011년 출시 이후)
   - `^IRX`: 무위험금리 (13주 T-bill)
   - 11개 GICS 섹터 ETF (`XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE`): 섹터 12개월 모멘텀(`indmom`) 계산용
-- **일별 수익률**: 824 ticker × 5,595 영업일 (`daily_returns.pkl`)
-- **월별 패널**: 617 종목 × 192개월 × 13개 변수 (`monthly_panel.csv`)
+- **일별 수익률**: 824 ticker × 5,595 영업일 (2004-01-02 ~ 2026-03-30, `daily_returns.pkl`)
+- **월별 패널**: 617 종목 × 252개월 (2005-01-31 ~ 2025-12-31) × 13개 변수, 총 103,878행 (`monthly_panel.csv`)
+- **BL 백테스트 분석 기간**: 192개월 (2010-01 ~ 2025-12) — 위 월별 패널 중 BL walk-forward에 사용되는 부분
 
 ### 주요 전처리
 - **생존편향 제거**: 시점별 S&P500 멤버십 필터 적용
@@ -128,10 +129,10 @@
 
 | 메트릭 | 선택 조합 | SPY benchmark | 차이 |
 |---|---:|---:|---:|
-| Sharpe | **1.096** | 0.731 | +0.365 |
-| Sortino | **1.826** | 1.108 | +0.718 |
-| CAGR | **16.2%** | 12.7% | +3.5%p |
-| MDD | **−13.6%** | −33.7% | **+20.1%p (방어)** |
+| Sharpe | **1.096** | 0.871 | +0.225 |
+| Sortino | **1.826** | 1.277 | +0.549 |
+| CAGR | **16.25%** | 13.45% | +2.80%p |
+| MDD | **−13.65%** | −23.93% | **+10.28%p (방어)** |
 
 > Sharpe·Sortino·MDD 모두 **변동성·하방 리스크 관리**를 측정하는 메트릭이라 1차 목표와 직접 정합. SPY는 시장 평균 대비 정합성을 확인하기 위한 benchmark.
 
@@ -207,11 +208,11 @@ python -m http.server 8000
 
 ## 📁 Project Navigation
 
-| 폴더 | 역할 | 상세 README |
+| 폴더 | 역할 | 자세히 |
 |---|---|---|
-| `final_pt/` | 분석·백테스트 파이프라인 (7-step 노트북 + lib + docs) | [final_pt/README.md](final_pt/README.md) |
-| `streamlit_dashboard/` | 인터랙티브 분석 대시보드 (7 페이지) | [streamlit_dashboard/README.md](streamlit_dashboard/README.md) |
-| `vercel_deploy/` | Vercel 정적 소개 페이지 | [vercel_deploy/README.md](vercel_deploy/README.md) |
+| `final_pt/` | 분석·백테스트 파이프라인 | [docs/PROJECT_OVERVIEW.md](final_pt/docs/PROJECT_OVERVIEW.md) · [docs/BL_EXPERIMENT_GUIDE.md](final_pt/docs/BL_EXPERIMENT_GUIDE.md) |
+| `streamlit_dashboard/` | 인터랙티브 분석 대시보드 (7 페이지) | [app.py](streamlit_dashboard/app.py) · [docs/IMPLEMENTATION_GUIDELINES.md](streamlit_dashboard/docs/IMPLEMENTATION_GUIDELINES.md) |
+| `vercel_deploy/` | Vercel 정적 소개 페이지 | [index.html](vercel_deploy/index.html) |
 
 ---
 
