@@ -13,6 +13,23 @@
 
 ---
 
+> ### 📌 구현 단계 변경 사항 (2026-05-20 기준)
+>
+> 본 plan은 **2026-05-10 작성 시점의 설계도**이며, 실제 구현 단계에서 다음 변경이 있었습니다 (히스토리 보존을 위해 plan 본문은 갱신하지 않음).
+>
+> | 계획 (plan 시점) | 실제 구현 | 변경 사유 |
+> |---|---|---|
+> | 9개 페이지 (Overview + 8) | **7개 페이지** (Overview + 6) | Methodology + Backtesting → Risk Metrics 페이지로 통합 (2026-05-11) |
+> | `streamlit-card` 라이브러리 사용 | **inline HTML/CSS**로 구현 | Overview 강점 카드 컴포넌트 자체 구현이 더 유연하다고 판단 |
+> | `statsmodels` 의존성 | **제거** (2026-05-20) | Methodology 페이지 삭제로 회귀 분석 불필요 |
+> | `lib/interactions.py` (Q-Zoom) | **미구현 → 삭제** (2026-05-20) | 7-page 흐름에서 expand 인터랙션 우선순위 낮음 |
+> | `scripts/dev_test.py`, `scripts/test_lib.py` | `tests/` 폴더로 이동 (2026-05-20) | 운영 vs 개발 스크립트 분리 |
+> | `data/results/` 90개 pkl | **1개만 유지** (`mat_eq_eq_raw_pap.pkl`) | 다른 슬롯 사용 안 함, 80MB 절감 |
+>
+> 현재 동작 상태는 [Live Demo](https://financeproject-3bpwccevnfnvy4ky633xfu.streamlit.app) 또는 루트 [README.md](../../../README.md) 참고.
+
+---
+
 ## 1. 프로젝트 개요
 
 본 plan 은 `streamlit_dashboard/docs/decisionlog/` 의 12개 의사결정 파일을 토대로 작성된 구현 계획입니다.

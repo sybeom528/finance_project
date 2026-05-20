@@ -12,6 +12,5 @@ Adaptive VolControl Fund - 대시보드 공통 라이브러리
   - metric_calculators  : 16 메트릭 계산 함수 (Sortino / VaR / CVaR / Beta 등)
   - data_loader         : Streamlit 캐싱 + 데이터 로딩
   - validators          : Startup check (필수 데이터 파일 검증)
-  - interactions        : Q-Zoom 인터랙션 (G-1)
   - insight_generator   : Sim 페이지 카드 그리드 (F-6)
 """

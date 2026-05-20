@@ -16,12 +16,8 @@ plotly>=6.0,<7.0
 pandas>=2.0,<3.0
 numpy>=2.0,<3.0
 
-# === 외부 데이터 (1회 수집용 - scripts/ 에서만) ===
+# === 외부 데이터 (1회 수집용 - scripts/build_ticker_company_map.py 에서만) ===
 yfinance>=0.2,<1.0
 
-# === 통계 / 회귀 ===
+# === 통계 ===
 scipy>=1.11,<2.0
-statsmodels>=0.14,<1.0
-
-# === UI 컴포넌트 ===
-streamlit-card>=1.0,<2.0

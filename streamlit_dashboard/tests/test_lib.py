@@ -9,9 +9,9 @@ test_lib.py - lib/* 11개 모듈 자동 검증 (Phase 1.2 검증 방식 A)
   5. plot_helpers — Figure 에 Regime / Event 추가
 
 실행:
-  python streamlit_dashboard/scripts/test_lib.py
+  python streamlit_dashboard/tests/test_lib.py
   또는
-  cd streamlit_dashboard && python scripts/test_lib.py
+  cd streamlit_dashboard && python tests/test_lib.py
 
 Streamlit 미설치 / 데이터 없는 환경에서도 가능한 범위까지 진행 (graceful).
 """
@@ -75,7 +75,6 @@ def test_imports() -> bool:
         "lib.metric_calculators",
         "lib.data_loader",
         "lib.validators",
-        "lib.interactions",
         "lib.insight_generator",
     ]
     failed = []

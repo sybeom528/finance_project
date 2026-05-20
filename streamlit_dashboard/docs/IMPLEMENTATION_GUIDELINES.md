@@ -46,7 +46,7 @@
 | 원칙 | 적용 |
 |---|---|
 | **Streamlit 표준 컴포넌트 우선** | `st.metric`, `st.expander`, `st.dataframe` 등 |
-| **외부 라이브러리 최소화** | 8개 라이브러리만 (J-1 결정) |
+| **외부 라이브러리 최소화** | 6개 라이브러리만 (J-1 결정, 2026-05-20 정합화: statsmodels·streamlit-card 제거) |
 | **Streamlit 버전 핀** | `>=1.30,<2.0` (J-2) |
 | **Fallback chain** | 폰트 (Pretendard → Noto Sans KR → Malgun → sans-serif) |
 | **try-except + graceful degradation** | 모든 외부 호출 (yfinance / file IO / CSS) |

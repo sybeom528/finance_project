@@ -148,8 +148,8 @@
 
 | 자료 | 설명 | 링크 |
 |---|---|---|
-| 🌐 프로젝트 소개 웹페이지 | 정적 단일 페이지 (Vercel 배포) | _배포 후 URL 추가_ |
-| 📊 인터랙티브 분석 대시보드 | Streamlit 7페이지 (직접 필터·시뮬 조작) | _배포 후 URL 추가_ |
+| 🌐 프로젝트 소개 웹페이지 | 정적 단일 페이지 (Vercel 배포) | https://adaptive-volcontrol-fund.vercel.app/ |
+| 📊 인터랙티브 분석 대시보드 | Streamlit 7페이지 (직접 필터·시뮬 조작) | https://financeproject-3bpwccevnfnvy4ky633xfu.streamlit.app |
 | 📥 발표 PDF (11MB) | 프로젝트 발표 슬라이드 | [다운로드](https://github.com/sybeom528/finance_project/releases/download/v1.0/finance.project.pdf) |
 
 ---
