@@ -23,19 +23,19 @@ uv run jupyter lab
 |---|---|---|---|
 | 1 | [`01_DataCollection.ipynb`](01_DataCollection.ipynb) | S&P500 역사적 유니버스 + 월별 패널 생성 | `data/monthly_panel.csv` (617종목 × 13변수), `data/daily_returns.pkl` |
 | 2a | [`02a_EDA_Returns_Volatility.ipynb`](02a_EDA_Returns_Volatility.ipynb) | 시계열 EDA — 수익률 예측 불가 + 변동성 예측 가능 4단 검증 (산점도/ACF/CUSUM/Chow) | LSTM 모델링 정당화 |
-| 2b | [`02b_LowVol_PortfolioSort.ipynb`](02b_LowVol_PortfolioSort.ipynb) | 횡단면 EDA — 저변동 30% Sharpe 0.96 vs 고변동 0.73 forward sort | BL spread view 정당화 |
+| 2b | [`02b_LowVol_PortfolioSort.ipynb`](02b_LowVol_PortfolioSort.ipynb) | 횡단면 EDA — 저변동 30% Sharpe 0.96 vs 고변동 0.73 forward sort (저변동 그룹의 위험조정 우위 확인) | BL spread view 정당화 |
 | 3a | [`03a_LSTM_Optuna_GridSearch.ipynb`](03a_LSTM_Optuna_GridSearch.ipynb) | Optuna 12-trial HPO → V4_BEST_CONFIG | `_evidence/lstm_optuna_v4/best_metrics.json` |
-| 3b | [`03b_Volatility_Forecasting.ipynb`](03b_Volatility_Forecasting.ipynb) | LSTM + HAR + Diebold-Pauly ensemble (617종목 stockwise) | `data/03b_lstm/data/ensemble_predictions_stockwise.csv` |
+| 3b | [`03b_Volatility_Forecasting.ipynb`](03b_Volatility_Forecasting.ipynb) | LSTM + HAR + Diebold-Pauly ensemble (617종목 각각 개별 학습) | `data/03b_lstm/data/ensemble_predictions_stockwise.csv` |
 | 4 | [`04_BL_Walkforward.ipynb`](04_BL_Walkforward.ipynb) | 90개 슬롯 walk-forward 백테스트 (3 prior × 3 p_weight × 5 q_mode × 2 omega_mode, 월별 train=60m rolling) | `results/*.pkl` (90개) |
 | 5a | [`05a_HMM_Regime.ipynb`](05a_HMM_Regime.ipynb) | 3-state HMM 시장 레짐 분류 (회복/확장/변동) | 레짐별 매크로 인수 분석 |
-| 5b | [`05b_Analyze.ipynb`](05b_Analyze.ipynb) | **메인 분석** — K_CUT + 6단 심층분석 (한계/매트릭스/위기/벤치마크/winner/α 분해) | Winner 자동 식별 (`sortino_ir≥10` 필터 + 전체기간 sortino 1위) |
+| 5b | [`05b_Analyze.ipynb`](05b_Analyze.ipynb) | **메인 분석** — K_CUT + 5단 심층분석 (한계/매트릭스/위기/벤치마크/winner) | Winner 자동 식별 (`sortino_ir≥10` 필터 + 전체기간 sortino 1위) |
 | 6 | [`06_Regime_Analysis.ipynb`](06_Regime_Analysis.ipynb) | Winner 4-레짐 검증 — 3-레짐(K_CUT까지) + R4 hold-out(2024-2025) | Frazzini-Pedersen 2014 hold-out 검증 |
 
 ## 부록 노트북 (`appendix/`)
 
 | 파일 | 역할 |
 |---|---|
-| [`99_explore.ipynb`](appendix/99_explore.ipynb) | 저변동 anomaly 세부 특성 탐색 (관성, 분산 지속성 등) |
+| [`99_explore.ipynb`](appendix/99_explore.ipynb) | 저변동 종목군 세부 특성 탐색 (관성, 분산 지속성 등) |
 | [`99_lstm_statistics.ipynb`](appendix/99_lstm_statistics.ipynb) | LSTM 예측값 분포·통계 검증 |
 | [`99_slot_effects.ipynb`](appendix/99_slot_effects.ipynb) | BL 슬롯별 한계효과 OAT 분리 (prior / p_weight / q_mode / omega) |
 
@@ -46,7 +46,7 @@ uv run jupyter lab
 | 모듈 | 역할 | 주요 export |
 |---|---|---|
 | [`bl_config.py`](lib/bl_config.py) | 90개 실험 매트릭스 정의 + 공통 파라미터 + 평가 기간 | `EXPERIMENTS`, `BASELINE`, `EVAL_PERIODS` |
-| [`bl_functions.py`](lib/bl_functions.py) | BL 수식 함수 모음 (Σ, π, P, Q, Ω, BL, MVO, TC, Metrics) | `compute_sigma`, `compute_pi`, `build_P`, `compute_Q_*`, `black_litterman`, `optimize_portfolio`, `compute_metrics` |
+| [`bl_functions.py`](lib/bl_functions.py) | BL 수식 함수 모음 (Σ, π, P, q, Ω, BL, MVO, TC, Metrics) | `compute_sigma`, `compute_pi`, `build_P`, `compute_Q_*`, `black_litterman`, `optimize_portfolio`, `compute_metrics` |
 | [`bl_runner.py`](lib/bl_runner.py) | walk-forward 실행 엔진 (월별 캐시 + 192개월 순차) | `load_lstm_pred`, `build_monthly_cache`, `walk_forward` |
 | [`master_table.py`](lib/master_table.py) | 90개 pkl → 단일 DataFrame 통합 + winner 자동 식별 + 3-레짐 정의 | `build_master_table`, `build_regime_table`, `identify_winner`, `REGIMES`, `parse_config` |
 | [`analyze_plots.py`](lib/analyze_plots.py) | 05b_Analyze의 6개 대시보드 시각화 | `plot_marginal_effects`, `plot_matrix_heatmap`, `plot_styled_regime_dashboard` |
@@ -60,9 +60,9 @@ uv run jupyter lab
 | [`PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md) | 전체 파이프라인 + 결과 요약 (메인 entry-point) |
 | [`BL_EXPERIMENT_GUIDE.md`](docs/BL_EXPERIMENT_GUIDE.md) | 90개 슬롯 매트릭스 상세 + 슬롯 추가법 + 실행 가이드 |
 | [`DATA_COLLECTION.md`](docs/DATA_COLLECTION.md) | 데이터 수집 상세 (S&P500 멤버십, 피처 정의, NaN 처리) |
-| [`ANOMALY_ANALYSIS.md`](docs/ANOMALY_ANALYSIS.md) | 저변동 anomaly forward portfolio sort EDA |
-| [`SENSITIVITY_ANALYSIS.md`](docs/SENSITIVITY_ANALYSIS.md) | Q (6 sweep) + PCT (5 sweep) 민감도 + JK z-test + Bootstrap CI |
-| [`WINNER_SLOT_TIMESERIES.md`](docs/WINNER_SLOT_TIMESERIES.md) | Winner 슬롯 4-패널 시계열 동학 (Q/Ω/노출/Turnover) |
+| [`ANOMALY_ANALYSIS.md`](docs/ANOMALY_ANALYSIS.md) | 저변동 그룹 forward portfolio sort EDA (Sharpe·MDD 우위 검증) |
+| [`SENSITIVITY_ANALYSIS.md`](docs/SENSITIVITY_ANALYSIS.md) | q (6 sweep) + PCT (5 sweep) 민감도 + JK z-test + Bootstrap CI |
+| [`WINNER_SLOT_TIMESERIES.md`](docs/WINNER_SLOT_TIMESERIES.md) | Winner 슬롯 4-패널 시계열 동학 (q/Ω/노출/Turnover) |
 | [`Exploiting_LowRisk_Anomaly_BL_Summary.md`](docs/Exploiting_LowRisk_Anomaly_BL_Summary.md) | 학술 reference — Pyo & Lee 2018 |
 
 ## 데이터 폴더 (gitignored)
@@ -85,7 +85,7 @@ uv run jupyter lab
 | MDD | −13.6% | −33.7% |
 
 **검정 통과**:
-- Q 민감도: 6개 변형 [0.001~0.010] 모두 JK z-test p>0.5 (BAB 학술값 0.0055·0.0064 포함)
+- q 민감도: 6개 변형 [0.001~0.010] 모두 JK z-test p>0.5 (BAB 학술값 0.0055·0.0064 포함)
 - PCT 민감도: [0.20~0.35] 4개 완전 robust, 0.15만 10% marginal
 - 3-레짐 HMM: 모든 레짐에서 winner 상위 (`sortino_ir≥10` 필터 13개 robust 후보 중 1위)
 - Block Bootstrap (block=6, 1000회) 95% CI 0 포함
@@ -96,6 +96,6 @@ uv run jupyter lab
 |---|---|
 | **√252 단위 보정** | LSTM 예측값(log-daily-RV) → `np.exp() × √252` 연환산 필수. 누락 시 `vol_21d`와 단위 혼합 → P 랭킹 왜곡 |
 | **K_CUT 강제성** | `05b_Analyze` 메인 분석은 2023-12-31 cutoff mandatory. Hold-out 2024-2025는 `06_Regime_Analysis`로 별도 검증 |
-| **omega_mode `ff3_paper`** | 역사적 코드명. 실제 동작은 **Bayesian rolling view variance** (직전월 (Q−P·r)² 적응). FF3 회귀 잔차와 무관 |
+| **omega_mode `ff3_paper`** | 역사적 코드명. 실제 동작은 **Bayesian rolling view variance** (직전월 (q−P·r)² 적응). FF3 회귀 잔차와 무관 |
 | **Look-ahead bias** | `fwd_ret_1m`은 forward portfolio sort 평가용만. BL 입력·LSTM 학습 절대 금지 |
 | **Winner 자동 동기화** | `identify_winner()`가 `sortino_ir≥10` 필터 + 전체기간 sortino 1위로 자동 식별. 슬롯 변경 시 winner 재계산 |
